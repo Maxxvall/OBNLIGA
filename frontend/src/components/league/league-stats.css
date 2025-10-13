@@ -150,10 +150,7 @@
 .club-logo {
   width: 32px;
   height: 32px;
-  border-radius: 50%;
   object-fit: cover;
-  border: 1px solid rgba(0, 240, 255, 0.28);
-  box-shadow: 0 0 8px rgba(0, 240, 255, 0.24);
 }
 
 .club-logo.fallback {

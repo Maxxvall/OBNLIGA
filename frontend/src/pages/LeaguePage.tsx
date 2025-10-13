@@ -11,7 +11,7 @@ const subTabLabels: Record<LeagueSubTab, string> = {
   results: 'Результаты',
 }
 
-const SUBTAB_ORDER: LeagueSubTab[] = ['table', 'schedule', 'results', 'stats']
+const SUBTAB_ORDER: LeagueSubTab[] = ['table', 'stats', 'schedule', 'results']
 
 type CompetitionGroup = {
   competitionId: number

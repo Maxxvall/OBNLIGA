@@ -6,6 +6,7 @@ import { secureEquals } from '../utils/secureEquals'
 import { parseBigIntId, parseNumericId } from '../utils/parsers'
 import { serializePrisma } from '../utils/serialization'
 import { handleMatchFinalization } from '../services/matchAggregation'
+import { refreshLeagueMatchAggregates } from '../services/leagueSchedule'
 import {
   RequestError,
   MATCH_STATISTIC_METRICS,
@@ -503,11 +504,23 @@ export default async function assistantRoutes(server: FastifyInstance) {
             },
           })
 
-          if (statusUpdate === MatchStatus.FINISHED) {
-            const publishTopic =
-              typeof request.server.publishTopic === 'function'
-                ? request.server.publishTopic.bind(request.server)
-                : undefined
+          const publishTopic =
+            typeof request.server.publishTopic === 'function'
+              ? request.server.publishTopic.bind(request.server)
+              : undefined
+
+          if (statusUpdate !== MatchStatus.FINISHED || match.status === MatchStatus.FINISHED) {
+            try {
+              await refreshLeagueMatchAggregates(match.seasonId, { publishTopic })
+            } catch (err) {
+              request.server.log.warn(
+                { err, matchId: matchId.toString(), seasonId: match.seasonId },
+                'assistant score update: failed to refresh league aggregates'
+              )
+            }
+          }
+
+          if (statusUpdate === MatchStatus.FINISHED && match.status !== MatchStatus.FINISHED) {
             await handleMatchFinalization(matchId, request.server.log, { publishTopic })
           }
 

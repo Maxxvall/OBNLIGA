@@ -256,6 +256,25 @@ export const AssistantPanel = () => {
 
   const allPlayers = useMemo(() => [...homePlayers, ...awayPlayers], [homePlayers, awayPlayers])
 
+  const isAssistAvailable = newEventForm.eventType === 'GOAL'
+  const isEditingAssistAvailable = editingDraft?.eventType === 'GOAL'
+
+  const homeScoreId = selectedMatch
+    ? `assistant-score-home-${selectedMatch.id}`
+    : 'assistant-score-home'
+  const awayScoreId = selectedMatch
+    ? `assistant-score-away-${selectedMatch.id}`
+    : 'assistant-score-away'
+  const penaltyHomeId = selectedMatch
+    ? `assistant-penalty-home-${selectedMatch.id}`
+    : 'assistant-penalty-home'
+  const penaltyAwayId = selectedMatch
+    ? `assistant-penalty-away-${selectedMatch.id}`
+    : 'assistant-penalty-away'
+  const statusSelectId = selectedMatch
+    ? `assistant-status-${selectedMatch.id}`
+    : 'assistant-status'
+
   useEffect(() => {
     if (!selectedMatch) return
     const teamId = Number(newEventForm.teamId)
@@ -291,6 +310,23 @@ export const AssistantPanel = () => {
       return { ...prev, playerId: String(options[0].personId) }
     })
   }, [editingDraft, selectedMatch, lineupByClub])
+
+  useEffect(() => {
+    if (!isAssistAvailable) {
+      setNewEventForm(prev => (prev.relatedPlayerId ? { ...prev, relatedPlayerId: '' } : prev))
+    }
+  }, [isAssistAvailable])
+
+  useEffect(() => {
+    if (!isEditingAssistAvailable) {
+      setEditingDraft(prev => {
+        if (!prev || !prev.relatedPlayerId) {
+          return prev
+        }
+        return { ...prev, relatedPlayerId: '' }
+      })
+    }
+  }, [isEditingAssistAvailable])
 
   const handleSelectMatch = async (matchId: string) => {
     if (!assistantToken) return
@@ -506,30 +542,28 @@ export const AssistantPanel = () => {
                 <h2>Статус и счёт</h2>
                 <form className="score-form" onSubmit={handleScoreSubmit}>
                   <div className="score-grid">
-                    <div>
-                      <label>Хозяева</label>
-                      <div className="score-input">
-                        <span className="club-caption">{selectedMatch.homeClub.name}</span>
-                        <input
-                          type="number"
-                          min={0}
-                          value={scoreForm.homeScore}
-                          onChange={event => handleScoreChange('homeScore', event.target.value)}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label>Гости</label>
-                      <div className="score-input">
-                        <span className="club-caption">{selectedMatch.awayClub.name}</span>
-                        <input
-                          type="number"
-                          min={0}
-                          value={scoreForm.awayScore}
-                          onChange={event => handleScoreChange('awayScore', event.target.value)}
-                        />
-                      </div>
-                    </div>
+                    <label className="score-field" htmlFor={homeScoreId}>
+                      <span className="score-field-title">{selectedMatch.homeClub.name}</span>
+                      <input
+                        id={homeScoreId}
+                        className="form-control"
+                        type="number"
+                        min={0}
+                        value={scoreForm.homeScore}
+                        onChange={event => handleScoreChange('homeScore', event.target.value)}
+                      />
+                    </label>
+                    <label className="score-field" htmlFor={awayScoreId}>
+                      <span className="score-field-title">{selectedMatch.awayClub.name}</span>
+                      <input
+                        id={awayScoreId}
+                        className="form-control"
+                        type="number"
+                        min={0}
+                        value={scoreForm.awayScore}
+                        onChange={event => handleScoreChange('awayScore', event.target.value)}
+                      />
+                    </label>
                   </div>
 
                   <label
@@ -554,9 +588,13 @@ export const AssistantPanel = () => {
 
                   {scoreForm.hasPenaltyShootout ? (
                     <div className="score-grid">
-                      <div>
-                        <label>Пенальти хозяев</label>
+                      <label className="score-field" htmlFor={penaltyHomeId}>
+                        <span className="score-field-title">
+                          Пенальти {selectedMatch.homeClub.name}
+                        </span>
                         <input
+                          id={penaltyHomeId}
+                          className="form-control"
                           type="number"
                           min={0}
                           value={scoreForm.penaltyHomeScore}
@@ -565,10 +603,14 @@ export const AssistantPanel = () => {
                             handleScoreChange('penaltyHomeScore', event.target.value)
                           }
                         />
-                      </div>
-                      <div>
-                        <label>Пенальти гостей</label>
+                      </label>
+                      <label className="score-field" htmlFor={penaltyAwayId}>
+                        <span className="score-field-title">
+                          Пенальти {selectedMatch.awayClub.name}
+                        </span>
                         <input
+                          id={penaltyAwayId}
+                          className="form-control"
                           type="number"
                           min={0}
                           value={scoreForm.penaltyAwayScore}
@@ -577,21 +619,23 @@ export const AssistantPanel = () => {
                             handleScoreChange('penaltyAwayScore', event.target.value)
                           }
                         />
-                      </div>
+                      </label>
                     </div>
                   ) : null}
 
                   <div className="score-grid">
-                    <div>
-                      <label>Статус матча</label>
+                    <label className="score-field" htmlFor={statusSelectId}>
+                      <span className="score-field-title">Статус матча</span>
                       <select
+                        id={statusSelectId}
+                        className="form-control form-select"
                         value={scoreForm.status}
                         onChange={event => handleScoreChange('status', event.target.value)}
                       >
                         <option value="LIVE">Идёт</option>
                         <option value="FINISHED">Завершён</option>
                       </select>
-                    </div>
+                    </label>
                     <div className="status-hint">
                       <span>Текущий статус: {matchStatusLabel(selectedMatch)}</span>
                       {pendingFinishConfirmation ? (
@@ -615,6 +659,7 @@ export const AssistantPanel = () => {
                     <div>
                       <label>Минута</label>
                       <input
+                        className="form-control"
                         type="number"
                         min={1}
                         max={150}
@@ -627,13 +672,16 @@ export const AssistantPanel = () => {
                     <div>
                       <label>Тип</label>
                       <select
+                        className="form-control form-select"
                         value={newEventForm.eventType}
-                        onChange={event =>
+                        onChange={event => {
+                          const nextType = event.target.value as MatchEventEntry['eventType']
                           setNewEventForm(prev => ({
                             ...prev,
-                            eventType: event.target.value as MatchEventEntry['eventType'],
+                            eventType: nextType,
+                            relatedPlayerId: nextType === 'GOAL' ? prev.relatedPlayerId : '',
                           }))
-                        }
+                        }}
                       >
                         {EVENT_OPTIONS.map(option => (
                           <option key={option.value} value={option.value}>
@@ -645,6 +693,7 @@ export const AssistantPanel = () => {
                     <div>
                       <label>Команда</label>
                       <select
+                        className="form-control form-select"
                         value={newEventForm.teamId}
                         onChange={event =>
                           setNewEventForm(prev => ({ ...prev, teamId: event.target.value }))
@@ -662,6 +711,7 @@ export const AssistantPanel = () => {
                     <div>
                       <label>Игрок</label>
                       <select
+                        className="form-control form-select"
                         value={newEventForm.playerId}
                         onChange={event =>
                           setNewEventForm(prev => ({ ...prev, playerId: event.target.value }))
@@ -678,7 +728,9 @@ export const AssistantPanel = () => {
                     <div>
                       <label>Второй игрок (опционально)</label>
                       <select
+                        className="form-control form-select"
                         value={newEventForm.relatedPlayerId}
+                        disabled={!isAssistAvailable}
                         onChange={event =>
                           setNewEventForm(prev => ({
                             ...prev,
@@ -714,6 +766,7 @@ export const AssistantPanel = () => {
                         <li key={entry.id} className="event-item">
                           <form className="event-inline" onSubmit={handleUpdateEvent}>
                             <input
+                              className="form-control"
                               type="number"
                               min={1}
                               max={150}
@@ -725,18 +778,22 @@ export const AssistantPanel = () => {
                               }
                             />
                             <select
+                              className="form-control form-select"
                               value={editingDraft.eventType}
-                              onChange={event =>
+                              onChange={event => {
+                                const nextType =
+                                  event.target.value as MatchEventEntry['eventType']
                                 setEditingDraft(prev =>
                                   prev
                                     ? {
                                         ...prev,
-                                        eventType: event.target
-                                          .value as MatchEventEntry['eventType'],
+                                        eventType: nextType,
+                                        relatedPlayerId:
+                                          nextType === 'GOAL' ? prev.relatedPlayerId : '',
                                       }
                                     : prev
                                 )
-                              }
+                              }}
                             >
                               {EVENT_OPTIONS.map(option => (
                                 <option key={option.value} value={option.value}>
@@ -745,6 +802,7 @@ export const AssistantPanel = () => {
                               ))}
                             </select>
                             <select
+                              className="form-control form-select"
                               value={editingDraft.teamId}
                               onChange={event =>
                                 setEditingDraft(prev =>
@@ -760,6 +818,7 @@ export const AssistantPanel = () => {
                               </option>
                             </select>
                             <select
+                              className="form-control form-select"
                               value={editingDraft.playerId}
                               onChange={event =>
                                 setEditingDraft(prev =>
@@ -774,7 +833,9 @@ export const AssistantPanel = () => {
                               ))}
                             </select>
                             <select
+                              className="form-control form-select"
                               value={editingDraft.relatedPlayerId}
+                              disabled={!isEditingAssistAvailable}
                               onChange={event =>
                                 setEditingDraft(prev =>
                                   prev ? { ...prev, relatedPlayerId: event.target.value } : prev

@@ -17,7 +17,9 @@ type RealtimeCommand = {
   topic?: string
 }
 
-type TrackedWebSocket = WebSocket & { topics: Set<string> }
+type TrackedWebSocket = WebSocket & { topics: Set<string>; isPublicOnly?: boolean }
+
+const isPublicTopic = (topic: string): boolean => topic.startsWith('public:')
 
 const isRealtimeCommand = (value: unknown): value is RealtimeCommand => {
   if (!value || typeof value !== 'object') {
@@ -87,6 +89,8 @@ export default async function registerRealtime(server: FastifyInstance) {
     ].filter(Boolean) as string[]
 
     let verified = false
+    let publicOnly = false
+
     if (token) {
       const tokenStr = String(token)
       for (const secret of secretCandidates) {
@@ -98,6 +102,10 @@ export default async function registerRealtime(server: FastifyInstance) {
           // try next secret
         }
       }
+    } else {
+      // отсутствует токен — разрешаем подключение только к публичным топикам
+      verified = true
+      publicOnly = true
     }
 
     if (!verified) {
@@ -106,6 +114,7 @@ export default async function registerRealtime(server: FastifyInstance) {
     }
 
     socket.topics = new Set<string>()
+    socket.isPublicOnly = publicOnly
 
     socket.on('message', async (raw: RawData) => {
       let parsed: unknown
@@ -122,6 +131,10 @@ export default async function registerRealtime(server: FastifyInstance) {
         return
       }
       const topicName = topic
+      if (socket.isPublicOnly && !isPublicTopic(topicName)) {
+        socket.send(JSON.stringify({ type: 'error', topic: topicName, error: 'forbidden' }))
+        return
+      }
       if (action === 'subscribe') {
         let set = topicMap.get(topicName)
         if (!set) {

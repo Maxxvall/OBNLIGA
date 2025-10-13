@@ -159,28 +159,81 @@
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
-.score-input,
-.status-hint {
+.score-field {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 }
 
-.club-caption {
-  font-size: 0.85rem;
-  opacity: 0.75;
+.score-field-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
 
-.score-input input,
-.score-form select,
-.event-form input,
-.event-form select {
+.status-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.form-control {
   width: 100%;
-  padding: 0.4rem 0.5rem;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.05);
+  padding: 0.55rem 0.65rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(8, 14, 28, 0.72);
   color: inherit;
+  backdrop-filter: blur(6px);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+.form-control:focus {
+  outline: none;
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 0 1px rgba(0, 240, 255, 0.25);
+  background: rgba(12, 20, 36, 0.82);
+}
+
+.form-control:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.form-select {
+  appearance: none;
+  padding-right: 2.2rem;
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(255, 255, 255, 0.6) 50%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.6) 50%, transparent 50%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+  background-position:
+    calc(100% - 1rem) calc(50% - 3px),
+    calc(100% - 0.7rem) calc(50% - 3px),
+    right 0.25rem center;
+  background-size: 8px 6px, 8px 6px, 38px 100%;
+  background-repeat: no-repeat;
+}
+
+.form-select:focus {
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(0, 240, 255, 0.8) 50%),
+    linear-gradient(135deg, rgba(0, 240, 255, 0.8) 50%, transparent 50%),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.18), rgba(0, 240, 255, 0.05));
+}
+
+.score-form .form-control,
+.event-form .form-control {
+  min-height: 44px;
+}
+
+.event-inline .form-control {
+  min-height: 40px;
 }
 
 .penalty-toggle {

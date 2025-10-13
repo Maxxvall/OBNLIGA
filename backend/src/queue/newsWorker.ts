@@ -1,6 +1,6 @@
 import { FastifyBaseLogger } from 'fastify'
 import { Job, QueueEvents, Worker } from 'bullmq'
-import TelegramBot from 'node-telegram-bot-api'
+import { Bot, GrammyError } from 'grammy'
 import prisma from '../db'
 import {
   NEWS_QUEUE_NAME,
@@ -16,19 +16,7 @@ const FLOOD_RETRY_FALLBACK_MS = 5_000
 const PER_RECIPIENT_DELAY_MS = Number(process.env.TELEGRAM_BROADCAST_DELAY_MS ?? '60')
 const MAX_FLOOD_RETRIES = 3
 
-type TelegramApiError = {
-  code?: string
-  response?: {
-    statusCode?: number
-    body?: {
-      parameters?: {
-        retry_after?: number
-      }
-    }
-  }
-}
-
-let bot: TelegramBot | null = null
+let bot: Bot | null = null
 let worker: Worker<TelegramNewsJobPayload> | null = null
 let pollTimer: NodeJS.Timeout | null = null
 let workerRunning = false
@@ -43,27 +31,24 @@ const escapeHtml = (value: string): string =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
 
-const ensureBot = (logger: FastifyBaseLogger): TelegramBot | null => {
+const ensureBot = (logger: FastifyBaseLogger): Bot | null => {
   if (bot) return bot
   const token = process.env.TELEGRAM_BOT_TOKEN
   if (!token) {
     logger.warn('news worker: telegram token missing — notifications disabled')
     return null
   }
-  bot = new TelegramBot(token, { polling: false })
+  bot = new Bot(token)
   return bot
 }
 
-const isFloodError = (err: unknown): boolean => {
-  if (!err || typeof err !== 'object') return false
-  const error = err as TelegramApiError
-  return error.code === 'ETELEGRAM' && error.response?.statusCode === 429
+const isFloodError = (err: unknown): err is GrammyError => {
+  return err instanceof GrammyError && err.error_code === 429
 }
 
 const resolveFloodRetryDelay = (err: unknown): number => {
-  if (!err || typeof err !== 'object') return FLOOD_RETRY_FALLBACK_MS
-  const error = err as TelegramApiError
-  const retry = Number(error.response?.body?.parameters?.retry_after ?? 0)
+  if (!isFloodError(err)) return FLOOD_RETRY_FALLBACK_MS
+  const retry = Number(err.parameters?.retry_after ?? 0)
   if (Number.isFinite(retry) && retry > 0) {
     return retry * 1000
   }
@@ -131,12 +116,12 @@ const performTelegramSend = async (
     while (attempt < MAX_FLOOD_RETRIES && !delivered) {
       try {
         if (coverUrl) {
-          await client.sendPhoto(chatId, coverUrl, {
+          await client.api.sendPhoto(chatId, coverUrl, {
             caption: message,
             parse_mode: 'HTML',
           })
         } else {
-          await client.sendMessage(chatId, message, {
+          await client.api.sendMessage(chatId, message, {
             parse_mode: 'HTML',
             disable_web_page_preview: false,
           })

@@ -5,7 +5,7 @@ import {
   parse as parseInitData,
   validate as validateInitData,
   validate3rd as validateInitDataSignature,
-} from '@telegram-apps/init-data-node'
+} from '@tma.js/init-data-node'
 import { serializePrisma, isSerializedAppUserPayload } from '../utils/serialization'
 import { defaultCache } from '../cache'
 
@@ -144,24 +144,22 @@ export default async function (server: FastifyInstance) {
           verificationMethod = 'signature'
         }
 
-        const parsed = parseInitData(trimmedInitData, true)
+        const parsed = parseInitData(trimmedInitData)
         const parsedUser = parsed?.user
         if (parsedUser?.id != null) {
           userId = String(parsedUser.id)
         }
         if (parsedUser) {
-          username = parsedUser.username
-          firstName = parsedUser.firstName
-          photoUrl = parsedUser.photoUrl || photoUrl
+          username = typeof parsedUser.username === 'string' ? parsedUser.username : undefined
+          firstName = typeof parsedUser.first_name === 'string' ? parsedUser.first_name : undefined
+          const parsedPhoto = parsedUser.photo_url
+          if (typeof parsedPhoto === 'string' && parsedPhoto.length) {
+            photoUrl = parsedPhoto
+          }
         }
-        const parsedAuth = parsed?.authDate
+        const parsedAuth = parsed?.auth_date
         if (parsedAuth instanceof Date) {
           authDateSec = Math.floor(parsedAuth.getTime() / 1000)
-        } else if (typeof parsedAuth === 'number') {
-          authDateSec = parsedAuth
-        } else if (typeof parsedAuth === 'string') {
-          const parsedNumber = Number(parsedAuth)
-          if (!Number.isNaN(parsedNumber)) authDateSec = parsedNumber
         }
 
         server.log.info(

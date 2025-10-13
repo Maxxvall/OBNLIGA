@@ -1,5 +1,3 @@
-version: 1
-
 services:
   - type: web
     name: futbol-league-backend
@@ -34,16 +32,13 @@ services:
       - key: VITE_BACKEND_URL
         value: "https://futbol-league-backend.onrender.com"
 
-jobs:
-  - name: run-migrations
-    type: job
+databases:
+  - name: obnliga-db
     plan: free
-    region: Frankfurt
-    # Set DATABASE_URL in the Dashboard for this job (do not commit secrets to repo).
-    envVars:
-      - key: DATABASE_URL
-        value: "postgresql://<user>:<pass>@<host>/<db>?sslmode=require"
-        sync: false
-    buildCommand: "cd backend && npm install"
-    runCommand: "cd backend && npx prisma generate --schema ../prisma/schema.prisma && npx prisma migrate deploy --schema ../prisma/schema.prisma"
-    # This job can be manually triggered from Render or wired into deploy pipeline.
+    region: frankfurt
+    type: postgres
+
+  - name: obnliga-redis
+    plan: free
+    region: frankfurt
+    type: redis

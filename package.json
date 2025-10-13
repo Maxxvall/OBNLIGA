@@ -1,0 +1,19 @@
+{
+  "devDependencies": {
+    "prisma": "^5.22.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0"
+  },
+  "scripts": {
+    "lint": "npm run lint --workspace=admin && npm run lint --workspace=frontend && npm run lint --workspace=backend",
+    "lint:fix": "npm run lint:fix --workspace=admin && npm run lint:fix --workspace=frontend && npm run lint:fix --workspace=backend",
+    "format": "npm run format --workspace=admin && npm run format --workspace=frontend && npm run format --workspace=backend",
+    "format:check": "npm run format:check --workspace=admin && npm run format:check --workspace=frontend && npm run format:check --workspace=backend"
+  },
+  "workspaces": [
+    "admin",
+    "frontend",
+    "backend"
+ ]
+}

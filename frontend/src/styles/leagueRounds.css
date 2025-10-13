@@ -1,0 +1,254 @@
+.league-rounds {
+  background: rgba(12, 20, 36, 0.82);
+  border-radius: 16px;
+  border: 1px solid rgba(0, 240, 255, 0.16);
+  box-shadow: 0 18px 40px rgba(3, 8, 18, 0.7);
+  padding: 20px 22px 24px;
+  width: 100%;
+  max-width: 920px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.league-rounds-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.league-rounds-header-primary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.league-rounds-header h2 {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.league-rounds-header p {
+  margin: 0;
+  color: rgba(230, 247, 255, 0.78);
+}
+
+.league-rounds-header .muted {
+  font-size: 12px;
+  letter-spacing: 0.4px;
+}
+
+.league-rounds-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.league-round-card {
+  border-radius: 14px;
+  border: 1px solid rgba(0, 240, 255, 0.16);
+  background: rgba(0, 240, 255, 0.05);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: center;
+  text-align: center;
+}
+
+.league-round-card-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.league-round-card-header h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.league-round-chip {
+  border: 1px solid rgba(255, 77, 130, 0.55);
+  color: rgba(255, 206, 229, 0.96);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.8px;
+}
+
+.league-round-card-body {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.league-match-card {
+  border-radius: 14px;
+  border: 1px solid rgba(0, 240, 255, 0.12);
+  background: rgba(5, 14, 24, 0.94);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.league-match-card.live {
+  border-color: rgba(255, 77, 130, 0.6);
+  box-shadow: 0 0 20px rgba(255, 77, 130, 0.2);
+}
+
+.league-match-card.postponed {
+  border-style: dashed;
+  opacity: 0.86;
+}
+
+.league-match-top {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.match-datetime {
+  font-size: 14px;
+  letter-spacing: 0.6px;
+}
+
+.match-badge {
+  padding: 4px 10px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid rgba(0, 240, 255, 0.32);
+  background: rgba(0, 240, 255, 0.18);
+  color: rgba(10, 25, 42, 0.92);
+}
+
+.match-badge.live {
+  border-color: rgba(255, 77, 130, 0.55);
+  background: rgba(255, 77, 130, 0.24);
+  color: rgba(255, 213, 232, 0.98);
+}
+
+.match-badge.postponed {
+  border-color: rgba(255, 184, 76, 0.6);
+  background: rgba(255, 184, 76, 0.16);
+  color: rgba(255, 220, 170, 0.94);
+}
+
+.league-match-main {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  align-items: end;
+}
+
+.league-match-team {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.league-match-team .club-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  object-fit: contain;
+}
+
+.league-match-team .team-name {
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.league-match-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.league-match-score .score-main {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+}
+
+.league-match-score .score-detail {
+  font-size: 12px;
+  color: rgba(255, 206, 229, 0.9);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.league-match-location {
+  text-align: center;
+  font-size: 13px;
+  color: rgba(200, 222, 255, 0.78);
+  letter-spacing: 0.4px;
+}
+
+.league-rounds-placeholder {
+  background: rgba(12, 20, 36, 0.82);
+  border-radius: 16px;
+  border: 1px solid rgba(0, 240, 255, 0.16);
+  box-shadow: 0 18px 40px rgba(3, 8, 18, 0.7);
+  padding: 16px;
+}
+
+@media (max-width: 900px) {
+  .league-match-main {
+    gap: 14px;
+  }
+}
+
+@media (max-width: 720px) {
+  .league-rounds {
+    padding: 18px 16px 22px;
+  }
+
+  .league-rounds-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .league-match-main {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .league-match-team .team-name {
+    max-width: 220px;
+  }
+}
+
+@media (max-width: 480px) {
+  .league-match-team .club-logo {
+    width: 40px;
+    height: 40px;
+  }
+
+  .league-match-card {
+    padding: 14px 16px;
+  }
+}

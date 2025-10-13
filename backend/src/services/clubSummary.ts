@@ -116,6 +116,15 @@ type ClubSummarySnapshot = {
       name: string
     }
   }>
+  squad: Array<{
+    playerId: number
+    playerName: string
+    matches: number
+    yellowCards: number
+    redCards: number
+    assists: number
+    goals: number
+  }>
   achievements: Array<{
     id: string
     title: string
@@ -193,7 +202,7 @@ export const buildClubSummary = async (clubId: number): Promise<ClubSummarySnaps
     return null
   }
 
-  const [participants, matches, yellowCards, redCards] = await Promise.all([
+  const [participants, matches, yellowCards, redCards, squadData] = await Promise.all([
     prisma.seasonParticipant.findMany({
       where: { clubId },
       select: { seasonId: true },
@@ -222,6 +231,19 @@ export const buildClubSummary = async (clubId: number): Promise<ClubSummarySnaps
         teamId: clubId,
         eventType: MatchEventType.RED_CARD,
         match: { status: MatchStatus.FINISHED },
+      },
+    }),
+    prisma.playerClubCareerStats.findMany({
+      where: { clubId },
+      orderBy: { totalMatches: 'desc' },
+      include: {
+        person: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
       },
     }),
   ])
@@ -261,6 +283,16 @@ export const buildClubSummary = async (clubId: number): Promise<ClubSummarySnaps
   const tournaments = seasonIds.size
   const matchesPlayed = matches.length
 
+  const squad = squadData.map((player) => ({
+    playerId: player.personId,
+    playerName: `${player.person.firstName} ${player.person.lastName}`,
+    matches: player.totalMatches,
+    yellowCards: player.yellowCards,
+    redCards: player.redCards,
+    assists: player.totalAssists,
+    goals: player.totalGoals,
+  }))
+
   const summary: ClubSummarySnapshot = {
     club: {
       id: club.id,
@@ -281,6 +313,7 @@ export const buildClubSummary = async (clubId: number): Promise<ClubSummarySnaps
       cleanSheets,
     },
     form: matches.slice(0, CLUB_FORM_LIMIT).map(match => buildFormEntry(match, clubId)),
+    squad,
     achievements: [],
     generatedAt: new Date().toISOString(),
   }

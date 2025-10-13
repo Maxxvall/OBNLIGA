@@ -187,6 +187,16 @@ export interface ClubSummaryAchievement {
   subtitle?: string | null
 }
 
+export interface ClubSquadPlayer {
+  playerId: number
+  playerName: string
+  matches: number
+  yellowCards: number
+  redCards: number
+  assists: number
+  goals: number
+}
+
 export interface ClubSummaryResponse {
   club: {
     id: number
@@ -197,5 +207,6 @@ export interface ClubSummaryResponse {
   statistics: ClubSummaryStatistics
   form: ClubSummaryFormEntry[]
   achievements: ClubSummaryAchievement[]
+  squad?: ClubSquadPlayer[]
   generatedAt: string
 }

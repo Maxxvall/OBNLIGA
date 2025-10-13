@@ -44,9 +44,9 @@ const STAT_LABELS: Array<{
 ]
 
 const FORM_LABEL: Record<ClubSummaryResponse['form'][number]['result'], string> = {
-  WIN: 'Победа',
-  DRAW: 'Ничья',
-  LOSS: 'Поражение',
+  WIN: 'В',
+  DRAW: 'Н',
+  LOSS: 'П',
 }
 
 const FORM_TONE: Record<ClubSummaryResponse['form'][number]['result'], string> = {
@@ -134,26 +134,29 @@ const renderForm = (summary: ClubSummaryResponse) => {
     <div className="team-form-compact">
       {summary.form.map(entry => {
         const tone = FORM_TONE[entry.result]
+        const resultLabel = FORM_LABEL[entry.result]
         const formattedDate = formatDateTime(entry.matchDateTime).split(' ').slice(0, 1).join(' ')
         return (
           <div key={entry.matchId} className="team-form-item">
             <span className="team-form-date-compact">{formattedDate}</span>
-            {entry.opponent.logoUrl ? (
-              <img
-                src={entry.opponent.logoUrl}
-                alt=""
-                aria-hidden="true"
-                className="team-form-logo"
-              />
-            ) : (
-              <span className="team-form-logo fallback" aria-hidden="true">
-                {entry.opponent.shortName.slice(0, 2).toUpperCase()}
-              </span>
-            )}
+            <div className="team-form-match">
+              {entry.opponent.logoUrl ? (
+                <img
+                  src={entry.opponent.logoUrl}
+                  alt=""
+                  aria-hidden="true"
+                  className="team-form-logo"
+                />
+              ) : (
+                <span className="team-form-logo fallback" aria-hidden="true">
+                  {entry.opponent.shortName.slice(0, 2).toUpperCase()}
+                </span>
+              )}
+              <span className={`team-form-result-badge tone-${tone}`}>{resultLabel}</span>
+            </div>
             <span className="team-form-score-compact">
               {entry.score.home}-{entry.score.away}
             </span>
-            <span className={`team-form-badge tone-${tone}`}>{entry.result.charAt(0)}</span>
           </div>
         )
       })}
@@ -161,8 +164,93 @@ const renderForm = (summary: ClubSummaryResponse) => {
   )
 }
 
+const renderSquad = (summary: ClubSummaryResponse) => {
+  if (!summary.squad || summary.squad.length === 0) {
+    return (
+      <div className="team-view-feedback" role="status">
+        Информация о составе команды пока недоступна.
+      </div>
+    )
+  }
+
+  return (
+    <div className="team-squad-table-wrapper">
+      <div role="table" className="team-squad-table">
+        <div role="row" className="team-squad-row head">
+          <span role="columnheader" className="col-num">#</span>
+          <span role="columnheader" className="col-player">Игрок</span>
+          <span role="columnheader" className="col-stat">И</span>
+          <span role="columnheader" className="col-stat">ЖК</span>
+          <span role="columnheader" className="col-stat">КК</span>
+          <span role="columnheader" className="col-stat">П</span>
+          <span role="columnheader" className="col-stat">Г</span>
+        </div>
+        {summary.squad.map((player, index) => (
+          <div role="row" className="team-squad-row" key={player.playerId}>
+            <span role="cell" className="col-num">{index + 1}</span>
+            <span role="cell" className="col-player">{player.playerName}</span>
+            <span role="cell" className="col-stat">{player.matches}</span>
+            <span role="cell" className="col-stat">{player.yellowCards}</span>
+            <span role="cell" className="col-stat">{player.redCards}</span>
+            <span role="cell" className="col-stat">{player.assists}</span>
+            <span role="cell" className="col-stat">{player.goals}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 const renderOverview = (summary: ClubSummaryResponse) => {
   const stats = summary.statistics
+  
+  // Вычисляем процент каждого результата для полукруга
+  const total = stats.wins + stats.draws + stats.losses
+  const winPercent = total > 0 ? (stats.wins / total) * 100 : 0
+  const drawPercent = total > 0 ? (stats.draws / total) * 100 : 0
+  const lossPercent = total > 0 ? (stats.losses / total) * 100 : 0
+  
+  // Генерируем градиент с отступами между сегментами
+  const generateArcGradient = () => {
+    if (total === 0) return undefined
+    
+    const segments: string[] = []
+    let currentPos = 0
+    const gap = 1 // 1% отступ между сегментами
+    
+    // Победы (зелёный)
+    if (stats.wins > 0) {
+      segments.push(`rgba(0, 255, 128, 0.6) ${currentPos}%`)
+      currentPos += winPercent
+      segments.push(`rgba(0, 255, 128, 0.6) ${currentPos}%`)
+      if (stats.draws > 0 || stats.losses > 0) {
+        segments.push(`transparent ${currentPos}%`)
+        currentPos += gap
+        segments.push(`transparent ${currentPos}%`)
+      }
+    }
+    
+    // Ничьи (серый)
+    if (stats.draws > 0) {
+      segments.push(`rgba(255, 255, 255, 0.4) ${currentPos}%`)
+      currentPos += drawPercent
+      segments.push(`rgba(255, 255, 255, 0.4) ${currentPos}%`)
+      if (stats.losses > 0) {
+        segments.push(`transparent ${currentPos}%`)
+        currentPos += gap
+        segments.push(`transparent ${currentPos}%`)
+      }
+    }
+    
+    // Поражения (красный)
+    if (stats.losses > 0) {
+      segments.push(`rgba(255, 0, 100, 0.6) ${currentPos}%`)
+      segments.push(`rgba(255, 0, 100, 0.6) 100%`)
+    }
+    
+    return `linear-gradient(to right, ${segments.join(', ')})`
+  }
+  
   return (
     <>
       <section className="team-section">
@@ -170,18 +258,78 @@ const renderOverview = (summary: ClubSummaryResponse) => {
         {renderForm(summary)}
       </section>
 
+      <div className="team-divider"></div>
+
       <section className="team-section">
         <h3 className="team-section-title">Статистика</h3>
-        <div className="team-overview-grid">
-          {STAT_LABELS.map(item => (
-            <div key={item.key} className="team-overview-card">
-              <span className="team-overview-value">{stats[item.key]}</span>
-              <span className="team-overview-label">{item.label}</span>
-              {item.hint && <span className="team-overview-hint">{item.hint}</span>}
+        
+        {/* Широкий блок с матчами и В/Н/П */}
+        <div className="team-stats-wide-block">
+          <div className="team-stats-matches">
+            <div className="team-stats-arc" style={{
+              background: generateArcGradient()
+            }}></div>
+            <span className="team-stats-matches-value">{stats.matchesPlayed}</span>
+            <span className="team-stats-matches-label">матча</span>
+          </div>
+          <div className="team-stats-wdl">
+            <div className="team-stats-wdl-item">
+              <span className="team-stats-wdl-bullet">•</span>
+              <span className="team-stats-wdl-label">Победы</span>
+              <span className="team-stats-wdl-value">{stats.wins}</span>
             </div>
-          ))}
+            <div className="team-stats-wdl-item">
+              <span className="team-stats-wdl-bullet">•</span>
+              <span className="team-stats-wdl-label">Ничьи</span>
+              <span className="team-stats-wdl-value">{stats.draws}</span>
+            </div>
+            <div className="team-stats-wdl-item">
+              <span className="team-stats-wdl-bullet">•</span>
+              <span className="team-stats-wdl-label">Поражения</span>
+              <span className="team-stats-wdl-value">{stats.losses}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Нижняя статистика: 2 ряда по 3 блока */}
+        <div className="team-stats-grid">
+          {/* Первый ряд */}
+          <div className="team-stats-card">
+            <span className="team-stats-card-icon">🏆</span>
+            <span className="team-stats-card-value">{stats.tournaments}</span>
+            <span className="team-stats-card-label">Турниры</span>
+          </div>
+          <div className="team-stats-card">
+            <span className="team-stats-card-icon">⚽</span>
+            <span className="team-stats-card-value">{stats.goalsFor}</span>
+            <span className="team-stats-card-label">Забито</span>
+          </div>
+          <div className="team-stats-card">
+            <span className="team-stats-card-icon">⚽</span>
+            <span className="team-stats-card-value">{stats.goalsAgainst}</span>
+            <span className="team-stats-card-label">Пропущено</span>
+          </div>
+          
+          {/* Второй ряд */}
+          <div className="team-stats-card">
+            <span className="team-stats-card-icon">🟨</span>
+            <span className="team-stats-card-value">{stats.yellowCards}</span>
+            <span className="team-stats-card-label">Жёлтых</span>
+          </div>
+          <div className="team-stats-card">
+            <span className="team-stats-card-icon">🟥</span>
+            <span className="team-stats-card-value">{stats.redCards}</span>
+            <span className="team-stats-card-label">Красных</span>
+          </div>
+          <div className="team-stats-card">
+            <span className="team-stats-card-icon">🛡️</span>
+            <span className="team-stats-card-value">{stats.cleanSheets}</span>
+            <span className="team-stats-card-label">На «0»</span>
+          </div>
         </div>
       </section>
+
+      <div className="team-divider"></div>
 
       <section className="team-section">
         <h3 className="team-section-title">Достижения</h3>
@@ -274,7 +422,11 @@ export const TeamView: React.FC = () => {
       )
     }
 
-    if (activeTab === 'matches' || activeTab === 'squad') {
+    if (activeTab === 'squad') {
+      return renderSquad(summary)
+    }
+
+    if (activeTab === 'matches') {
       return (
         <div className="team-view-feedback" role="status">
           Раздел в разработке — данные появятся позже.
@@ -298,41 +450,27 @@ export const TeamView: React.FC = () => {
         onClick={event => event.stopPropagation()}
       >
         <header className="team-view-header">
-          <div className="team-view-title-block">
-            {header?.club.logoUrl ? (
-              <img
-                src={header.club.logoUrl}
-                alt={`Логотип клуба ${header.club.name}`}
-                className="team-view-logo"
-              />
-            ) : (
-              <span className="team-view-logo fallback" aria-hidden>
-                {header?.club.shortName.slice(0, 2).toUpperCase() ?? '??'}
-              </span>
-            )}
-            <div className="team-view-heading">
-              <h2 id="team-view-title">{header?.club.name ?? 'Клуб'}</h2>
-              <span className="team-view-meta">{updatedAt ? `Обновлено ${updatedAt}` : 'Актуальные данные'}</span>
-            </div>
-          </div>
-          <div className="team-view-actions">
-            <button
-              type="button"
-              className="button-secondary"
-              onClick={handleRetry}
-              disabled={isLoading}
-            >
-              Обновить
-            </button>
-            <button
-              type="button"
-              className="button-primary"
-              onClick={close}
-              ref={closeButtonRef}
-            >
-              Закрыть
-            </button>
-          </div>
+          {header?.club.logoUrl ? (
+            <img
+              src={header.club.logoUrl}
+              alt={`Логотип клуба ${header.club.name}`}
+              className="team-view-logo"
+            />
+          ) : (
+            <span className="team-view-logo fallback" aria-hidden>
+              {header?.club.shortName.slice(0, 2).toUpperCase() ?? '??'}
+            </span>
+          )}
+          <h2 id="team-view-title" className="sr-only">{header?.club.name ?? 'Клуб'}</h2>
+          <button
+            type="button"
+            className="team-view-close"
+            onClick={close}
+            ref={closeButtonRef}
+            aria-label="Закрыть"
+          >
+            ✕
+          </button>
         </header>
 
         <nav className="team-view-tabs" aria-label="Разделы клуба">

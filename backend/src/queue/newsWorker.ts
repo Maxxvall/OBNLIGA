@@ -123,7 +123,6 @@ const performTelegramSend = async (
         } else {
           await client.api.sendMessage(chatId, message, {
             parse_mode: 'HTML',
-            disable_web_page_preview: false,
           })
         }
         sentCount += 1

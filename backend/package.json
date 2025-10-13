@@ -33,16 +33,16 @@
     "bullmq": "^5.61.0",
     "dotenv": "^17.2.2",
     "fastify": "^4.0.0",
-  "grammy": "^1.38.2",
-  "ioredis": "^5.8.0",
-  "jsonwebtoken": "^9.0.2",
+    "grammy": "^1.38.2",
+    "ioredis": "^5.8.0",
+    "jsonwebtoken": "^9.0.2",
     "prisma": "^5.22.0",
     "quick-lru": "^7.2.0",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "@types/node": "^20.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^8.45.0",
-    "@types/node": "^20.0.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "eslint": "^8.45.0",

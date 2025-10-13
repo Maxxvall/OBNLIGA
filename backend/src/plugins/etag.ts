@@ -13,7 +13,9 @@ const etagPlugin: FastifyPluginAsync = async fastify => {
           ? payload
           : Buffer.isBuffer(payload)
             ? payload.toString('utf8')
-            : JSON.stringify(payload)
+            : typeof payload === 'object' && payload !== null
+              ? JSON.stringify(payload)
+              : String(payload)
 
       const etag = crypto.createHash('sha1').update(bodyStr).digest('hex')
       const ifNoneMatch = request.headers['if-none-match']

@@ -4,6 +4,18 @@ import cors from '@fastify/cors'
 
 const server = Fastify({ logger: true })
 
+// validate required env in production: fail fast if critical secrets are missing
+const validateRequiredEnv = (required: string[]) => {
+  const missing = required.filter(k => !process.env[k])
+  if (missing.length) {
+    server.log.error({ missing }, 'Missing required environment variables')
+    // In production we should fail fast. In development just warn.
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(`Missing required environment variables: ${missing.join(', ')}`)
+    }
+  }
+}
+
 // Register CORS to allow frontend requests from different origin
 server.register(cors, {
   origin: true, // Allow all origins in development, configure specifically for production
@@ -87,6 +99,8 @@ server.addHook('onClose', async () => {
 
 const start = async () => {
   try {
+    // Required in most deployments: set ADMIN creds and JWT secret explicitly
+    validateRequiredEnv(['JWT_SECRET', 'LOGIN_ADMIN', 'PASSWORD_ADMIN'])
     // register cookie & websocket plugins and realtime module
     await server.register(cookiePlugin)
     await server.register(websocketPlugin)

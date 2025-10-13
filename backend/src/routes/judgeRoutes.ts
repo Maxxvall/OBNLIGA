@@ -60,15 +60,11 @@ declare module 'fastify' {
   }
 }
 
-const getJudgeSecret = () =>
-  process.env.JUDGE_JWT_SECRET ||
-  process.env.JWT_SECRET ||
-  process.env.TELEGRAM_BOT_TOKEN ||
-  'judge-portal-secret'
+const getJudgeSecret = () => process.env.JUDGE_JWT_SECRET || process.env.JWT_SECRET || process.env.TELEGRAM_BOT_TOKEN
 
 const getJudgeCredentials = () => ({
-  login: process.env.SUDIA_LOGIN || process.env.JUDGE_LOGIN || 'SUDIA',
-  password: process.env.SUDIA_PASSWORD || process.env.JUDGE_PASSWORD || 'SUDIA',
+  login: process.env.SUDIA_LOGIN || process.env.JUDGE_LOGIN,
+  password: process.env.SUDIA_PASSWORD || process.env.JUDGE_PASSWORD,
 })
 
 const issueJudgeToken = (payload: JudgeJwtPayload) =>
@@ -124,6 +120,10 @@ export default async function judgeRoutes(server: FastifyInstance) {
     }
 
     const expected = getJudgeCredentials()
+    if (!expected.login || !expected.password) {
+      request.log.error('SUDIA_LOGIN or SUDIA_PASSWORD env variables are not configured')
+      return reply.status(503).send({ ok: false, error: 'judge_auth_unavailable' })
+    }
     const loginMatches = secureEquals(login, expected.login)
     const passwordMatches = secureEquals(password, expected.password)
 
@@ -132,7 +132,7 @@ export default async function judgeRoutes(server: FastifyInstance) {
       return reply.status(401).send({ ok: false, error: 'invalid_credentials' })
     }
 
-    const token = issueJudgeToken({ sub: expected.login, role: 'judge' })
+  const token = issueJudgeToken({ sub: expected.login as string, role: 'judge' })
     return reply.send({ ok: true, token, expiresIn: 12 * 60 * 60 })
   })
 

@@ -71,15 +71,11 @@ declare module 'fastify' {
   }
 }
 
-const getAssistantSecret = () =>
-  process.env.ASSISTANT_JWT_SECRET ||
-  process.env.JWT_SECRET ||
-  process.env.TELEGRAM_BOT_TOKEN ||
-  'assistant-portal-secret'
+const getAssistantSecret = () => process.env.ASSISTANT_JWT_SECRET || process.env.JWT_SECRET || process.env.TELEGRAM_BOT_TOKEN
 
 const getAssistantCredentials = () => ({
-  login: process.env.POMOSH_LOGIN || 'POMOSH',
-  password: process.env.POMOSH_PASSWORD || 'POMOSH',
+  login: process.env.POMOSH_LOGIN,
+  password: process.env.POMOSH_PASSWORD,
 })
 
 const issueAssistantToken = (payload: AssistantJwtPayload) =>
@@ -141,6 +137,10 @@ export default async function assistantRoutes(server: FastifyInstance) {
     }
 
     const expected = getAssistantCredentials()
+    if (!expected.login || !expected.password) {
+      request.log.error('POMOSH_LOGIN or POMOSH_PASSWORD env variables are not configured')
+      return reply.status(503).send({ ok: false, error: 'assistant_auth_unavailable' })
+    }
     const loginMatches = secureEquals(login, expected.login)
     const passwordMatches = secureEquals(password, expected.password)
 
@@ -149,7 +149,7 @@ export default async function assistantRoutes(server: FastifyInstance) {
       return reply.status(401).send({ ok: false, error: 'invalid_credentials' })
     }
 
-    const token = issueAssistantToken({ sub: expected.login, role: 'assistant' })
+  const token = issueAssistantToken({ sub: expected.login as string, role: 'assistant' })
     return reply.send({ ok: true, token, expiresIn: 12 * 60 * 60 })
   })
 

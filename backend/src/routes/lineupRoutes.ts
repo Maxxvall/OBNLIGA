@@ -28,22 +28,18 @@ interface LineupRosterBody {
   numbers?: Array<{ personId?: number; shirtNumber?: number }>
 }
 
-type CredentialsGetter = () => { login: string; password: string }
+type CredentialsGetter = () => { login?: string; password?: string }
 
-const getLineupSecret = () =>
-  process.env.LINEUP_JWT_SECRET ||
-  process.env.JWT_SECRET ||
-  process.env.TELEGRAM_BOT_TOKEN ||
-  'lineup-portal-secret'
+const getLineupSecret = () => process.env.LINEUP_JWT_SECRET || process.env.JWT_SECRET || process.env.TELEGRAM_BOT_TOKEN
 
 const getLineupCredentials = () => ({
-  login: process.env.LINEUP_LOGIN || 'captain',
-  password: process.env.LINEUP_PASSWORD || 'captain',
+  login: process.env.LINEUP_LOGIN,
+  password: process.env.LINEUP_PASSWORD,
 })
 
 const getLineupPortalCredentials = () => ({
-  login: process.env.LINEUP_PORTAL_LOGIN || process.env.LINEUP_LOGIN || 'portal',
-  password: process.env.LINEUP_PORTAL_PASSWORD || process.env.LINEUP_PASSWORD || 'portal',
+  login: process.env.LINEUP_PORTAL_LOGIN || process.env.LINEUP_LOGIN,
+  password: process.env.LINEUP_PORTAL_PASSWORD || process.env.LINEUP_PASSWORD,
 })
 
 const verifyLineupToken = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -181,6 +177,11 @@ const registerLineupRouteGroup = (
 
     if (!body?.login || !body?.password) {
       return reply.status(400).send({ ok: false, error: 'login_required' })
+    }
+
+    if (!login || !password) {
+      request.log.error('LINEUP_LOGIN/PASSWORD or LINEUP_PORTAL_LOGIN/PASSWORD environment variables are not configured')
+      return reply.status(503).send({ ok: false, error: 'lineup_auth_unavailable' })
     }
 
     if (body.login !== login || body.password !== password) {

@@ -14,7 +14,7 @@ import { wsClient } from '../wsClient'
 
 export type UITab = 'home' | 'league' | 'predictions' | 'leaderboard' | 'shop' | 'profile'
 export type LeagueSubTab = 'table' | 'schedule' | 'results' | 'stats'
-export type TeamSubTab = 'overview' | 'form' | 'achievements'
+export type TeamSubTab = 'overview' | 'matches' | 'squad'
 
 type TeamViewState = {
   open: boolean

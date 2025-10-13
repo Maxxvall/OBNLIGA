@@ -6,8 +6,8 @@ import '../../styles/teamView.css'
 
 const TAB_CONFIG: Array<{ key: TeamSubTab; label: string }> = [
   { key: 'overview', label: 'Обзор' },
-  { key: 'form', label: 'Последние матчи' },
-  { key: 'achievements', label: 'Достижения' },
+  { key: 'matches', label: 'Матчи' },
+  { key: 'squad', label: 'Состав' },
 ]
 
 const formatDateTime = (value?: string) => {
@@ -131,32 +131,30 @@ const renderForm = (summary: ClubSummaryResponse) => {
     )
   }
   return (
-    <div className="team-form-grid">
+    <div className="team-form-compact">
       {summary.form.map(entry => {
-        const label = FORM_LABEL[entry.result]
         const tone = FORM_TONE[entry.result]
+        const formattedDate = formatDateTime(entry.matchDateTime).split(' ').slice(0, 1).join(' ')
         return (
-          <article key={entry.matchId} className={`team-form-card tone-${tone}`}>
-            <header className="team-form-header">
-              <span className="team-form-date">{formatDateTime(entry.matchDateTime)}</span>
-              <span className={`team-form-result tone-${tone}`}>{label}</span>
-            </header>
-            <div className="team-form-main">
-              <span className="team-form-score">
-                {entry.score.home} : {entry.score.away}
+          <div key={entry.matchId} className="team-form-item">
+            <span className="team-form-date-compact">{formattedDate}</span>
+            {entry.opponent.logoUrl ? (
+              <img
+                src={entry.opponent.logoUrl}
+                alt=""
+                aria-hidden="true"
+                className="team-form-logo"
+              />
+            ) : (
+              <span className="team-form-logo fallback" aria-hidden="true">
+                {entry.opponent.shortName.slice(0, 2).toUpperCase()}
               </span>
-              {entry.score.penaltyHome !== null && entry.score.penaltyAway !== null && (
-                <span className="team-form-penalty">
-                  Пенальти {entry.score.penaltyHome}:{entry.score.penaltyAway}
-                </span>
-              )}
-            </div>
-            <div className="team-form-opponent">{formatOpponent(entry)}</div>
-            <footer className="team-form-footer">
-              <span>{entry.competition.name}</span>
-              <span>{entry.season.name}</span>
-            </footer>
-          </article>
+            )}
+            <span className="team-form-score-compact">
+              {entry.score.home}-{entry.score.away}
+            </span>
+            <span className={`team-form-badge tone-${tone}`}>{entry.result.charAt(0)}</span>
+          </div>
         )
       })}
     </div>
@@ -166,15 +164,30 @@ const renderForm = (summary: ClubSummaryResponse) => {
 const renderOverview = (summary: ClubSummaryResponse) => {
   const stats = summary.statistics
   return (
-    <div className="team-overview-grid">
-      {STAT_LABELS.map(item => (
-        <div key={item.key} className="team-overview-card">
-          <span className="team-overview-value">{stats[item.key]}</span>
-          <span className="team-overview-label">{item.label}</span>
-          {item.hint && <span className="team-overview-hint">{item.hint}</span>}
+    <>
+      <section className="team-section">
+        <h3 className="team-section-title">Форма</h3>
+        {renderForm(summary)}
+      </section>
+
+      <section className="team-section">
+        <h3 className="team-section-title">Статистика</h3>
+        <div className="team-overview-grid">
+          {STAT_LABELS.map(item => (
+            <div key={item.key} className="team-overview-card">
+              <span className="team-overview-value">{stats[item.key]}</span>
+              <span className="team-overview-label">{item.label}</span>
+              {item.hint && <span className="team-overview-hint">{item.hint}</span>}
+            </div>
+          ))}
         </div>
-      ))}
-    </div>
+      </section>
+
+      <section className="team-section">
+        <h3 className="team-section-title">Достижения</h3>
+        {renderAchievements(summary)}
+      </section>
+    </>
   )
 }
 
@@ -248,23 +261,28 @@ export const TeamView: React.FC = () => {
       return null
     }
 
-    const section =
-      activeTab === 'overview'
-        ? renderOverview(summary)
-        : activeTab === 'form'
-          ? renderForm(summary)
-          : renderAchievements(summary)
+    if (activeTab === 'overview') {
+      return (
+        <>
+          {error && (
+            <div className="team-view-feedback warning" role="status">
+              Показаны сохранённые данные. Последний запрос завершился с ошибкой: {error}
+            </div>
+          )}
+          {renderOverview(summary)}
+        </>
+      )
+    }
 
-    return (
-      <>
-        {error && (
-          <div className="team-view-feedback warning" role="status">
-            Показаны сохранённые данные. Последний запрос завершился с ошибкой: {error}
-          </div>
-        )}
-        {section}
-      </>
-    )
+    if (activeTab === 'matches' || activeTab === 'squad') {
+      return (
+        <div className="team-view-feedback" role="status">
+          Раздел в разработке — данные появятся позже.
+        </div>
+      )
+    }
+
+    return null
   }
 
   const header = summary ?? null

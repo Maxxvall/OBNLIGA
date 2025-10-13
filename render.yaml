@@ -1,30 +1,41 @@
 services:
   - type: web
-    name: OBNBEK
-    runtime: node
+    name: futbol-league-backend
     plan: free
     region: frankfurt
-    buildCommand: "cd backend && npm install && npm run build && npx prisma generate --schema ../prisma/schema.prisma && npx prisma migrate deploy --schema ../prisma/schema.prisma"
-    autoDeployTrigger: commit
+    buildCommand: npm ci --omit=dev && npm run build
+    startCommand: npm run start
+    autoDeploy: true
     branch: main
+    rootDirectory: backend
     envVars:
       - key: DATABASE_URL
-        value: "postgresql://football_obn_ztbb_user:zSGQTTZlgi0GCL05Zto5FENhdaSqrdXP@dpg-d3ckliq4d50c73cl4eeg-a.frankfurt-postgres.render.com/football_obn_ztbb?sslmode=require"
+        sync: false
       - key: REDIS_URL
         sync: false
       - key: TELEGRAM_BOT_TOKEN
         sync: false
-    startCommand: "cd backend && npx prisma generate --schema ../prisma/schema.prisma && npm run start"
 
-  - type: web
-    name: OBNFRONT
-    runtime: static
+  - type: static
+    name: futbol-league-frontend
     plan: free
     region: frankfurt
-    buildCommand: "cd frontend && npm install && npm run build"
-    staticPublishPath: "frontend/dist"
-    autoDeployTrigger: commit
+    buildCommand: npm ci --omit=dev && npm run build
+    publishPath: dist
+    autoDeploy: true
     branch: main
-    envVars:
+    rootDirectory: frontend
+    env:
       - key: VITE_BACKEND_URL
-        value: "https://OBNBEK.onrender.com"
+        value: "https://futbol-league-backend.onrender.com"
+
+databases:
+  - name: obnliga-db
+    plan: free
+    region: frankfurt
+    type: postgres
+
+  - name: obnliga-redis
+    plan: free
+    region: frankfurt
+    type: redis

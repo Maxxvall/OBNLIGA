@@ -32,7 +32,7 @@ services:
       - key: VITE_BACKEND_URL
         value: "https://futbol-league-backend.onrender.com"
 
-jobs:
+    jobs:
   - name: run-migrations
     type: job
     plan: free

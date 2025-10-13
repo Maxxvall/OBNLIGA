@@ -5,6 +5,7 @@
 - Переписали `newsWorker` на использование клиента `grammy`, убрав зависимость `node-telegram-bot-api` и связанные уязвимости.
 - Сгенерировали `package-lock.json` для корня, backend, admin и frontend с обновлёнными зависимостями.
 - Перенесли `@types/node` в runtime-зависимости и подключили типы Node.js в `tsconfig`, чтобы бэкенд собирался на Render при `npm ci --omit=dev`.
+- Зафиксировали совместимую с Fastify v4 версию `@fastify/cookie` (`^9.3.1`), чтобы production-старт не падал на проверке плагинов.
 
 ## Влияние на инфраструктуру
 - Убраны transitively уязвимые версии `form-data` и `tough-cookie` (входит через `node-telegram-bot-api`).

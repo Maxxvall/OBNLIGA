@@ -23,7 +23,7 @@
     "schema": "../prisma/schema.prisma"
   },
   "dependencies": {
-    "@fastify/cookie": "^11.0.2",
+  "@fastify/cookie": "^9.3.1",
     "@fastify/cors": "^8.5.0",
     "@fastify/websocket": "^8.3.1",
     "@prisma/client": "^5.22.0",

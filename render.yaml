@@ -1,0 +1,47 @@
+services:
+  - type: web
+    name: futbol-league-backend
+    runtime: node
+    plan: free
+    region: Frankfurt
+  # Use migrate deploy instead of db push to safely apply enum changes and data migrations
+    buildCommand: "cd backend && npm install && npm run build && npx prisma generate --schema ../prisma/schema.prisma && npx prisma migrate deploy --schema ../prisma/schema.prisma"
+    autoDeployTrigger: commit
+    branch: main
+    envVars:
+      # Для production на Render установите ваше реальное значение через Dashboard (не коммитите секреты).
+      - key: DATABASE_URL
+        # Пример External Database URL (замените реальным значением в Dashboard):
+        value: "postgresql://football_obn_ztbb_user:zSGQTTZlgi0GCL05Zto5FENhdaSqrdXP@dpg-d3ckliq4d50c73cl4eeg-a.frankfurt-postgres.render.com/football_obn_ztbb?sslmode=require"
+        # NOTE: рекомендуется задать это значение в Render Dashboard как secret и снять его из репозитория.
+      - key: REDIS_URL
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+  # Start the app; migrations are executed via the `run-migrations` job defined below.
+    startCommand: "cd backend && npx prisma generate --schema ../prisma/schema.prisma && npm run start"
+
+  - type: web
+    name: futbol-league-frontend
+    runtime: static
+    buildCommand: "cd frontend && npm install && npm run build"
+    staticPublishPath: "frontend/dist"
+    autoDeployTrigger: commit
+    branch: main
+    envVars:
+      - key: VITE_BACKEND_URL
+        value: "https://futbol-league-backend.onrender.com"
+
+jobs:
+  - name: run-migrations
+    type: job
+    plan: free
+    region: Frankfurt
+    # Set DATABASE_URL in the Dashboard for this job (do not commit secrets to repo).
+    envVars:
+      - key: DATABASE_URL
+        value: "postgresql://<user>:<pass>@<host>/<db>?sslmode=require"
+        sync: false
+    buildCommand: "cd backend && npm install"
+    runCommand: "cd backend && npx prisma generate --schema ../prisma/schema.prisma && npx prisma migrate deploy --schema ../prisma/schema.prisma"
+    # This job can be manually triggered from Render or wired into deploy pipeline.

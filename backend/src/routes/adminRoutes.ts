@@ -1147,17 +1147,35 @@ export default async function (server: FastifyInstance) {
 
       admin.post('/clubs', async (request, reply) => {
         const body = request.body as { name?: string; shortName?: string; logoUrl?: string }
-        if (!body?.name || !body?.shortName) {
+        const name = body?.name?.trim()
+        const shortName = body?.shortName?.trim()
+        const logoUrl = body?.logoUrl?.trim()
+
+        if (!name || !shortName) {
           return reply.status(400).send({ ok: false, error: 'name_and_short_name_required' })
         }
-        const club = await prisma.club.create({
-          data: {
-            name: body.name.trim(),
-            shortName: body.shortName.trim(),
-            logoUrl: body.logoUrl?.trim() || null,
-          },
-        })
-        return reply.send({ ok: true, data: club })
+
+        try {
+          const club = await prisma.club.create({
+            data: {
+              name,
+              shortName,
+              logoUrl: logoUrl || null,
+            },
+          })
+          return reply.send({ ok: true, data: club })
+        } catch (err) {
+          if (err instanceof Prisma.PrismaClientKnownRequestError) {
+            if (err.code === 'P2002') {
+              return reply.status(409).send({ ok: false, error: 'club_duplicate' })
+            }
+            if (err.code === 'P2000') {
+              return reply.status(400).send({ ok: false, error: 'club_field_too_long' })
+            }
+          }
+          request.server.log.error({ err }, 'club create failed')
+          return reply.status(500).send({ ok: false, error: 'create_failed' })
+        }
       })
 
       admin.put('/clubs/:clubId', async (request, reply) => {

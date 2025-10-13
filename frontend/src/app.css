@@ -50,7 +50,7 @@ body {
 
 /* layout space for bottom nav */
 .content-wrapper {
-  padding: 20px 18px 88px;
+  padding: 20px 6px 88px;
   max-width: 980px;
   margin: 0 auto;
   width: 100%;
@@ -182,7 +182,7 @@ body {
   gap: 20px;
   margin: 0 auto;
   width: min(960px, 100%);
-  padding: 0 16px 32px;
+  padding: 0 6px 32px;
   box-sizing: border-box;
 }
 
@@ -278,7 +278,6 @@ body {
   background: rgba(12, 20, 36, 0.85);
   border: 1px solid rgba(0, 240, 255, 0.2);
   box-shadow: 0 16px 32px rgba(3, 8, 18, 0.62);
-  width: 100%;
   max-width: 520px;
 }
 

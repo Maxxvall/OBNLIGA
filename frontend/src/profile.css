@@ -1,6 +1,6 @@
 /* Modern professional profile styles */
 .profile-container {
-  min-height: 100vh;
+  min-height: 70vh;
   background: linear-gradient(135deg, #0a0e1a 0%, #1a1a2e 50%, #16213e 100%);
   color: #e6f7ff;
   position: relative;

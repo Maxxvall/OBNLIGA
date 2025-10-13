@@ -6,9 +6,9 @@ import type { LeagueSeasonSummary } from '@shared/types'
 
 const subTabLabels: Record<LeagueSubTab, string> = {
   table: 'Таблица',
+  stats: 'Статистика',
   schedule: 'Календарь',
   results: 'Результаты',
-  stats: 'Статистика',
 }
 
 const SUBTAB_ORDER: LeagueSubTab[] = ['table', 'schedule', 'results', 'stats']

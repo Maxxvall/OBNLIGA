@@ -138,3 +138,64 @@ export interface LeagueStatsResponse {
   generatedAt: string
   leaderboards: LeagueStatsLeaderboards
 }
+
+export type ClubMatchResult = 'WIN' | 'DRAW' | 'LOSS'
+
+export interface ClubSummaryFormEntry {
+  matchId: string
+  matchDateTime: string
+  isHome: boolean
+  result: ClubMatchResult
+  opponent: {
+    id: number
+    name: string
+    shortName: string
+    logoUrl: string | null
+  }
+  score: {
+    home: number
+    away: number
+    penaltyHome: number | null
+    penaltyAway: number | null
+  }
+  competition: {
+    id: number
+    name: string
+  }
+  season: {
+    id: number
+    name: string
+  }
+}
+
+export interface ClubSummaryStatistics {
+  tournaments: number
+  matchesPlayed: number
+  wins: number
+  draws: number
+  losses: number
+  goalsFor: number
+  goalsAgainst: number
+  yellowCards: number
+  redCards: number
+  cleanSheets: number
+}
+
+export interface ClubSummaryAchievement {
+  id: string
+  title: string
+  subtitle?: string | null
+}
+
+export interface ClubSummaryResponse {
+  club: {
+    id: number
+    name: string
+    shortName: string
+    logoUrl: string | null
+  }
+  statistics: ClubSummaryStatistics
+  form: ClubSummaryFormEntry[]
+  achievements: ClubSummaryAchievement[]
+  generatedAt: string
+}

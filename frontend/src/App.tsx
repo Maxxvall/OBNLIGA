@@ -5,6 +5,7 @@ import Profile from './Profile'
 import { wsClient } from './wsClient'
 import { NewsSection } from './components/NewsSection'
 import LeaguePage from './pages/LeaguePage'
+import { TeamView } from './components/team/TeamView'
 import { useAppStore } from './store/appStore'
 
 export default function App() {
@@ -145,6 +146,7 @@ export default function App() {
           </button>
         </nav>
       )}
+      <TeamView />
     </div>
   )
 }

@@ -6,19 +6,52 @@ import type {
   LeagueStatsResponse,
   LeagueStatsCategory,
   LeaguePlayerLeaderboardEntry,
+  ClubSummaryResponse,
 } from '@shared/types'
 import { leagueApi } from '../api/leagueApi'
+import { clubApi } from '../api/clubApi'
 import { wsClient } from '../wsClient'
 
 export type UITab = 'home' | 'league' | 'predictions' | 'leaderboard' | 'shop' | 'profile'
 export type LeagueSubTab = 'table' | 'schedule' | 'results' | 'stats'
+export type TeamSubTab = 'overview' | 'form' | 'achievements'
+
+type TeamViewState = {
+  open: boolean
+  clubId?: number
+  activeTab: TeamSubTab
+}
+
+const INITIAL_TEAM_VIEW: TeamViewState = {
+  open: false,
+  clubId: undefined,
+  activeTab: 'overview',
+}
 
 const SEASONS_TTL_MS = 55_000
 const TABLE_TTL_MS = 240_000
 const SCHEDULE_TTL_MS = 7_500
 const RESULTS_TTL_MS = 14_000
 const STATS_TTL_MS = 300_000
+const CLUB_SUMMARY_TTL_MS = 1_200_000
 const DOUBLE_TAP_THRESHOLD_MS = 280
+
+const clubSummaryTopic = (clubId: number) => `public:club:${clubId}:summary`
+
+let teamRealtimeCleanup: (() => void) | null = null
+let teamRealtimeTopic: string | null = null
+let teamRealtimeUnloadRegistered = false
+
+const detachTeamRealtime = () => {
+  if (teamRealtimeCleanup) {
+    teamRealtimeCleanup()
+    teamRealtimeCleanup = null
+  }
+  if (teamRealtimeTopic) {
+    wsClient.unsubscribe(teamRealtimeTopic)
+    teamRealtimeTopic = null
+  }
+}
 
 type FetchResult = { ok: boolean }
 
@@ -63,6 +96,13 @@ interface AppState {
   errors: ErrorState
   lastLeagueTapAt: number
   realtimeAttached: boolean
+  teamView: TeamViewState
+  teamSummaries: Record<number, ClubSummaryResponse>
+  teamSummaryFetchedAt: Record<number, number>
+  teamSummaryLoadingId: number | null
+  teamSummaryErrors: Record<number, string | undefined>
+  teamRealtimeAttached: boolean
+  teamRealtimeClubId?: number
   setTab: (tab: UITab) => void
   setLeagueSubTab: (tab: LeagueSubTab) => void
   toggleLeagueMenu: (force?: boolean) => void
@@ -84,6 +124,12 @@ interface AppState {
     generatedAt?: string
   }) => void
   ensureRealtime: () => void
+  openTeamView: (clubId: number) => void
+  closeTeamView: () => void
+  setTeamSubTab: (tab: TeamSubTab) => void
+  fetchClubSummary: (clubId: number, options?: { force?: boolean }) => Promise<FetchResult>
+  applyRealtimeClubSummary: (summary: ClubSummaryResponse) => void
+  ensureTeamRealtime: () => void
 }
 
 const orderSeasons = (items: LeagueSeasonSummary[]) =>
@@ -176,6 +222,109 @@ const isStatsPayload = (payload: unknown): payload is {
   return candidate.entries.every(isLeaderboardEntry)
 }
 
+const isClubSummaryStatistics = (
+  value: unknown
+): value is ClubSummaryResponse['statistics'] => {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const stats = value as Record<string, unknown>
+  return (
+    typeof stats.tournaments === 'number' &&
+    typeof stats.matchesPlayed === 'number' &&
+    typeof stats.wins === 'number' &&
+    typeof stats.draws === 'number' &&
+    typeof stats.losses === 'number' &&
+    typeof stats.goalsFor === 'number' &&
+    typeof stats.goalsAgainst === 'number' &&
+    typeof stats.yellowCards === 'number' &&
+    typeof stats.redCards === 'number' &&
+    typeof stats.cleanSheets === 'number'
+  )
+}
+
+const isClubSummaryFormEntry = (
+  value: unknown
+): value is ClubSummaryResponse['form'][number] => {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const entry = value as Record<string, unknown>
+  const opponent = entry.opponent as Record<string, unknown> | undefined
+  const score = entry.score as Record<string, unknown> | undefined
+  const competition = entry.competition as Record<string, unknown> | undefined
+  const season = entry.season as Record<string, unknown> | undefined
+  const result = entry.result
+
+  return (
+    typeof entry.matchId === 'string' &&
+    typeof entry.matchDateTime === 'string' &&
+    typeof entry.isHome === 'boolean' &&
+    (result === 'WIN' || result === 'DRAW' || result === 'LOSS') &&
+    opponent != null &&
+    typeof opponent.id === 'number' &&
+    typeof opponent.name === 'string' &&
+    typeof opponent.shortName === 'string' &&
+    (opponent.logoUrl === null || typeof opponent.logoUrl === 'string') &&
+    score != null &&
+    typeof score.home === 'number' &&
+    typeof score.away === 'number' &&
+    (score.penaltyHome === null || typeof score.penaltyHome === 'number') &&
+    (score.penaltyAway === null || typeof score.penaltyAway === 'number') &&
+    competition != null &&
+    typeof competition.id === 'number' &&
+    typeof competition.name === 'string' &&
+    season != null &&
+    typeof season.id === 'number' &&
+    typeof season.name === 'string'
+  )
+}
+
+const isClubSummaryAchievement = (
+  value: unknown
+): value is ClubSummaryResponse['achievements'][number] => {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const achievement = value as Record<string, unknown>
+  return (
+    typeof achievement.id === 'string' &&
+    typeof achievement.title === 'string' &&
+    (achievement.subtitle === undefined || achievement.subtitle === null || typeof achievement.subtitle === 'string')
+  )
+}
+
+const isClubSummaryResponsePayload = (
+  payload: unknown
+): payload is ClubSummaryResponse => {
+  if (!payload || typeof payload !== 'object') {
+    return false
+  }
+  const candidate = payload as Record<string, unknown>
+  const club = candidate.club as Record<string, unknown> | undefined
+  if (
+    !club ||
+    typeof club.id !== 'number' ||
+    typeof club.name !== 'string' ||
+    typeof club.shortName !== 'string' ||
+    !(club.logoUrl === null || typeof club.logoUrl === 'string')
+  ) {
+    return false
+  }
+  if (!isClubSummaryStatistics(candidate.statistics)) {
+    return false
+  }
+  const form = candidate.form
+  if (!Array.isArray(form) || !form.every(isClubSummaryFormEntry)) {
+    return false
+  }
+  const achievements = candidate.achievements
+  if (!Array.isArray(achievements) || !achievements.every(isClubSummaryAchievement)) {
+    return false
+  }
+  return typeof candidate.generatedAt === 'string'
+}
+
 const emptyLeaderboards = (): LeagueStatsResponse['leaderboards'] => ({
   goalContribution: [],
   scorers: [],
@@ -207,6 +356,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   errors: {},
   lastLeagueTapAt: 0,
   realtimeAttached: false,
+  teamView: { ...INITIAL_TEAM_VIEW },
+  teamSummaries: {},
+  teamSummaryFetchedAt: {},
+  teamSummaryLoadingId: null,
+  teamSummaryErrors: {},
+  teamRealtimeAttached: false,
+  teamRealtimeClubId: undefined,
   setTab: tab => {
     set(state => ({
       currentTab: tab,
@@ -571,6 +727,132 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     set({ realtimeAttached: true })
+  },
+  openTeamView: clubId => {
+    set(prev => ({
+      teamView: {
+        open: true,
+        clubId,
+        activeTab: prev.teamView.clubId === clubId ? prev.teamView.activeTab : 'overview',
+      },
+      teamSummaryErrors: { ...prev.teamSummaryErrors, [clubId]: undefined },
+    }))
+    get().ensureTeamRealtime()
+    void get().fetchClubSummary(clubId)
+  },
+  closeTeamView: () => {
+    const state = get()
+    detachTeamRealtime()
+    const shouldClearLoading =
+      state.teamSummaryLoadingId !== null && state.teamSummaryLoadingId === state.teamView.clubId
+    set(prev => ({
+      teamView: { ...INITIAL_TEAM_VIEW },
+      teamRealtimeAttached: false,
+      teamRealtimeClubId: undefined,
+      teamSummaryLoadingId: shouldClearLoading ? null : prev.teamSummaryLoadingId,
+    }))
+  },
+  setTeamSubTab: tab => {
+    set(prev => ({
+      teamView: prev.teamView.open ? { ...prev.teamView, activeTab: tab } : prev.teamView,
+    }))
+  },
+  fetchClubSummary: async (clubId, options) => {
+    const state = get()
+    const now = Date.now()
+    const lastFetched = state.teamSummaryFetchedAt[clubId] ?? 0
+    const hasFreshData = now - lastFetched < CLUB_SUMMARY_TTL_MS
+    if (!options?.force && state.teamSummaries[clubId] && hasFreshData) {
+      get().ensureTeamRealtime()
+      return { ok: true }
+    }
+    if (state.teamSummaryLoadingId === clubId && !options?.force) {
+      return { ok: true }
+    }
+    set(prev => ({
+      teamSummaryLoadingId: clubId,
+      teamSummaryErrors: { ...prev.teamSummaryErrors, [clubId]: undefined },
+    }))
+
+    const response = await clubApi.fetchSummary(clubId)
+    if (!response.ok) {
+      set(prev => ({
+        teamSummaryLoadingId:
+          prev.teamSummaryLoadingId === clubId ? null : prev.teamSummaryLoadingId,
+        teamSummaryErrors: { ...prev.teamSummaryErrors, [clubId]: response.error },
+      }))
+      return { ok: false }
+    }
+
+    const payload = response.data as unknown
+    if (!isClubSummaryResponsePayload(payload)) {
+      set(prev => ({
+        teamSummaryLoadingId:
+          prev.teamSummaryLoadingId === clubId ? null : prev.teamSummaryLoadingId,
+        teamSummaryErrors: { ...prev.teamSummaryErrors, [clubId]: 'invalid_payload' },
+      }))
+      return { ok: false }
+    }
+
+    const fetchedAt = Date.now()
+    set(prev => ({
+      teamSummaries: { ...prev.teamSummaries, [clubId]: payload },
+      teamSummaryFetchedAt: { ...prev.teamSummaryFetchedAt, [clubId]: fetchedAt },
+      teamSummaryLoadingId: prev.teamSummaryLoadingId === clubId ? null : prev.teamSummaryLoadingId,
+      teamSummaryErrors: { ...prev.teamSummaryErrors, [clubId]: undefined },
+    }))
+    get().ensureTeamRealtime()
+    return { ok: true }
+  },
+  applyRealtimeClubSummary: summary => {
+    const clubId = summary.club.id
+    set(prev => ({
+      teamSummaries: { ...prev.teamSummaries, [clubId]: summary },
+      teamSummaryFetchedAt: { ...prev.teamSummaryFetchedAt, [clubId]: Date.now() },
+      teamSummaryErrors: { ...prev.teamSummaryErrors, [clubId]: undefined },
+    }))
+  },
+  ensureTeamRealtime: () => {
+    const state = get()
+    const clubId = state.teamView.clubId
+    if (!clubId) {
+      return
+    }
+    if (state.teamRealtimeAttached && state.teamRealtimeClubId === clubId) {
+      return
+    }
+
+    detachTeamRealtime()
+
+    const topic = clubSummaryTopic(clubId)
+    const unsubscribe = wsClient.on('club.summary', message => {
+      if (typeof message.clubId !== 'number' || message.clubId !== clubId) {
+        return
+      }
+      if (!isClubSummaryResponsePayload(message.payload)) {
+        return
+      }
+      get().applyRealtimeClubSummary(message.payload)
+    })
+    teamRealtimeCleanup = () => {
+      unsubscribe()
+      teamRealtimeCleanup = null
+    }
+    teamRealtimeTopic = topic
+    wsClient.subscribe(topic)
+
+    if (!teamRealtimeUnloadRegistered && typeof window !== 'undefined') {
+      window.addEventListener(
+        'beforeunload',
+        () => {
+          detachTeamRealtime()
+        },
+        { once: true }
+      )
+      teamRealtimeUnloadRegistered = true
+    }
+
+    set({ teamRealtimeAttached: true, teamRealtimeClubId: clubId })
   },
 }))
 

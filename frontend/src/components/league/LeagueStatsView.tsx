@@ -5,6 +5,7 @@ import type {
   LeagueStatsResponse,
 } from '@shared/types'
 import './league-stats.css'
+import { useAppStore } from '../../store/appStore'
 
 type LeagueStatsViewProps = {
   stats?: LeagueStatsResponse
@@ -149,6 +150,7 @@ export const LeagueStatsView: React.FC<LeagueStatsViewProps> = ({
   lastUpdated,
 }) => {
   const [activeIndex, setActiveIndex] = useState(0)
+  const openTeamView = useAppStore(state => state.openTeamView)
 
   const categories = CATEGORY_ORDER
   const activeCategory = categories[activeIndex]
@@ -280,17 +282,25 @@ export const LeagueStatsView: React.FC<LeagueStatsViewProps> = ({
                 <span className="player-name">{formatPlayerName(entry)}</span>
               </span>
               <span className="col-club" role="cell">
-                {entry.clubLogoUrl ? (
-                  <img
-                    src={entry.clubLogoUrl}
-                    alt={`Логотип клуба ${entry.clubName}`}
-                    className="club-logo"
-                  />
-                ) : (
-                  <span className="club-logo fallback" aria-hidden>
-                    {entry.clubShortName.slice(0, 2).toUpperCase()}
-                  </span>
-                )}
+                <button
+                  type="button"
+                  className="club-logo-button club-logo-button--compact"
+                  onClick={() => openTeamView(entry.clubId)}
+                  aria-label={`Открыть страницу клуба ${entry.clubName}`}
+                >
+                  {entry.clubLogoUrl ? (
+                    <img
+                      src={entry.clubLogoUrl}
+                      alt=""
+                      aria-hidden="true"
+                      className="club-logo"
+                    />
+                  ) : (
+                    <span className="club-logo fallback" aria-hidden="true">
+                      {entry.clubShortName.slice(0, 2).toUpperCase()}
+                    </span>
+                  )}
+                </button>
                 <span className="club-name">{entry.clubName}</span>
               </span>
               {config.columns.map(column => (

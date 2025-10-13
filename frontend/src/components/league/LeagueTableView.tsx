@@ -1,5 +1,6 @@
 import React from 'react'
 import type { LeagueTableResponse } from '@shared/types'
+import { useAppStore } from '../../store/appStore'
 
 type LeagueTableViewProps = {
   table?: LeagueTableResponse
@@ -25,6 +26,8 @@ export const LeagueTableView: React.FC<LeagueTableViewProps> = ({
   onRetry,
   lastUpdated,
 }) => {
+  const openTeamView = useAppStore(state => state.openTeamView)
+
   if (loading) {
     return (
       <div className="league-table-placeholder" aria-live="polite" aria-busy="true">
@@ -105,17 +108,25 @@ export const LeagueTableView: React.FC<LeagueTableViewProps> = ({
                   {entry.position}
                 </span>
                 <span role="cell" className="col-logo">
-                  {entry.clubLogoUrl ? (
-                    <img
-                      src={entry.clubLogoUrl}
-                      alt={`Логотип клуба ${entry.clubName}`}
-                      className="club-logo"
-                    />
-                  ) : (
-                    <span className="club-logo fallback" aria-hidden>
-                      {entry.clubShortName.slice(0, 2).toUpperCase()}
-                    </span>
-                  )}
+                  <button
+                    type="button"
+                    className="club-logo-button"
+                    onClick={() => openTeamView(entry.clubId)}
+                    aria-label={`Открыть страницу клуба ${entry.clubName}`}
+                  >
+                    {entry.clubLogoUrl ? (
+                      <img
+                        src={entry.clubLogoUrl}
+                        alt=""
+                        aria-hidden="true"
+                        className="club-logo"
+                      />
+                    ) : (
+                      <span className="club-logo fallback" aria-hidden="true">
+                        {entry.clubShortName.slice(0, 2).toUpperCase()}
+                      </span>
+                    )}
+                  </button>
                 </span>
                 <span role="cell" className="col-club">
                   <span className="club-name">

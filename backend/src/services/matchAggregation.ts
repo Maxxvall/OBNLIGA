@@ -29,6 +29,7 @@ import {
   PUBLIC_LEAGUE_GOAL_CONTRIBUTORS_KEY,
   refreshLeagueStats,
 } from './leagueStats'
+import { publicClubSummaryKey, refreshClubSummary } from './clubSummary'
 import {
   addDays,
   applyTimeToDate,
@@ -142,6 +143,7 @@ export async function handleMatchFinalization(
     'league:player-career',
     `match:${matchId.toString()}`,
     ...Array.from(impactedClubIds).map(clubId => `club:${clubId}:player-career`),
+  ...Array.from(impactedClubIds).map(clubId => publicClubSummaryKey(clubId)),
     PUBLIC_LEAGUE_TABLE_KEY,
     `${PUBLIC_LEAGUE_TABLE_KEY}:${seasonId}`,
     PUBLIC_LEAGUE_STATS_KEY,
@@ -188,6 +190,21 @@ export async function handleMatchFinalization(
     }
   } catch (err) {
     logger.warn({ err, matchId: matchId.toString() }, 'failed to refresh league table cache')
+  }
+
+  if (impactedClubIds.size) {
+    const refreshOptions = options?.publishTopic
+      ? { publishTopic: options.publishTopic }
+      : undefined
+
+    await Promise.all(
+      Array.from(impactedClubIds).map(clubId =>
+        refreshClubSummary(clubId, refreshOptions).catch(err => {
+          logger.warn({ err, clubId }, 'failed to refresh club summary')
+          return null
+        })
+      )
+    )
   }
 }
 

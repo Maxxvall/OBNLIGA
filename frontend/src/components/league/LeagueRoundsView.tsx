@@ -1,5 +1,6 @@
 import React from 'react'
 import type { LeagueMatchView, LeagueRoundCollection } from '@shared/types'
+import { useAppStore } from '../../store/appStore'
 import '../../styles/leagueRounds.css'
 
 type LeagueRoundsViewProps = {
@@ -122,6 +123,8 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
   onRetry,
   lastUpdated,
 }) => {
+  const openTeamView = useAppStore(state => state.openTeamView)
+
   if (loading) {
     return (
       <div className="league-rounds-placeholder" aria-live="polite" aria-busy="true">
@@ -199,17 +202,25 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
                         </div>
                         <div className="league-match-main">
                           <div className="league-match-team">
-                            {match.homeClub.logoUrl ? (
-                              <img
-                                src={match.homeClub.logoUrl}
-                                alt={`Логотип клуба ${match.homeClub.name}`}
-                                className="club-logo"
-                              />
-                            ) : (
-                              <span className="club-logo fallback" aria-hidden>
-                                {homeName.slice(0, 2).toUpperCase()}
-                              </span>
-                            )}
+                            <button
+                              type="button"
+                              className="club-logo-button"
+                              onClick={() => openTeamView(match.homeClub.id)}
+                              aria-label={`Открыть страницу клуба ${match.homeClub.name}`}
+                            >
+                              {match.homeClub.logoUrl ? (
+                                <img
+                                  src={match.homeClub.logoUrl}
+                                  alt=""
+                                  aria-hidden="true"
+                                  className="club-logo"
+                                />
+                              ) : (
+                                <span className="club-logo fallback" aria-hidden="true">
+                                  {homeName.slice(0, 2).toUpperCase()}
+                                </span>
+                              )}
+                            </button>
                             <span className="team-name">{homeName}</span>
                           </div>
                           <div className="league-match-score">
@@ -219,17 +230,25 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
                             )}
                           </div>
                           <div className="league-match-team">
-                            {match.awayClub.logoUrl ? (
-                              <img
-                                src={match.awayClub.logoUrl}
-                                alt={`Логотип клуба ${match.awayClub.name}`}
-                                className="club-logo"
-                              />
-                            ) : (
-                              <span className="club-logo fallback" aria-hidden>
-                                {awayName.slice(0, 2).toUpperCase()}
-                              </span>
-                            )}
+                            <button
+                              type="button"
+                              className="club-logo-button"
+                              onClick={() => openTeamView(match.awayClub.id)}
+                              aria-label={`Открыть страницу клуба ${match.awayClub.name}`}
+                            >
+                              {match.awayClub.logoUrl ? (
+                                <img
+                                  src={match.awayClub.logoUrl}
+                                  alt=""
+                                  aria-hidden="true"
+                                  className="club-logo"
+                                />
+                              ) : (
+                                <span className="club-logo fallback" aria-hidden="true">
+                                  {awayName.slice(0, 2).toUpperCase()}
+                                </span>
+                              )}
+                            </button>
                             <span className="team-name">{awayName}</span>
                           </div>
                         </div>

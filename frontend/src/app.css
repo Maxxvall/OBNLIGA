@@ -108,6 +108,43 @@ body {
   cursor: wait;
 }
 
+.button-primary {
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.24), rgba(120, 31, 143, 0.36));
+  color: #0b0f1a;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding: 11px 20px;
+  font-size: 12px;
+  cursor: pointer;
+  font-weight: 700;
+  box-shadow: 0 14px 32px rgba(0, 240, 255, 0.18);
+  transition:
+    transform 140ms ease,
+    box-shadow 160ms ease,
+    filter 160ms ease;
+}
+
+.button-primary:hover,
+.button-primary:focus-visible {
+  transform: translateY(-1px) scale(1.01);
+  box-shadow: 0 22px 44px rgba(120, 31, 143, 0.26);
+  filter: brightness(1.08);
+  outline: none;
+}
+
+.button-primary:active {
+  transform: scale(0.99);
+}
+
+.button-primary:disabled {
+  opacity: 0.6;
+  cursor: wait;
+  box-shadow: none;
+  transform: none;
+}
+
 .inline-feedback {
   border-radius: 14px;
   padding: 14px 16px;
@@ -565,6 +602,40 @@ body {
   justify-content: center;
   font-size: 12px;
   font-weight: 600;
+}
+
+.club-logo-button {
+  appearance: none;
+  border: none;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition:
+    transform 120ms ease,
+    box-shadow 160ms ease;
+}
+
+.club-logo-button:hover,
+.club-logo-button:focus-visible {
+  transform: translateY(-1px) scale(1.05);
+  box-shadow: 0 12px 22px rgba(0, 240, 255, 0.26);
+  outline: none;
+}
+
+.club-logo-button:active {
+  transform: scale(0.96);
+}
+
+.club-logo-button--compact {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: rgba(0, 240, 255, 0.12);
+  box-shadow: 0 12px 24px rgba(0, 240, 255, 0.14);
 }
 
 

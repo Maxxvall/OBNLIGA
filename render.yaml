@@ -1,7 +1,8 @@
+version: 1
+
 services:
   - type: web
     name: futbol-league-backend
-    runtime: node
     plan: free
     region: frankfurt
     buildCommand: "cd backend && npm install && npm run build && npx prisma generate --schema ../prisma/schema.prisma && npx prisma migrate deploy --schema ../prisma/schema.prisma"
@@ -25,10 +26,10 @@ services:
     plan: free
     region: frankfurt
     buildCommand: "cd frontend && npm install && npm run build"
-    staticPublishPath: "frontend/dist"
+    publishPath: "frontend/dist"
     autoDeployTrigger: commit
     branch: main
-    envVars:
+    env:
       - key: VITE_BACKEND_URL
         value: "https://futbol-league-backend.onrender.com"
 

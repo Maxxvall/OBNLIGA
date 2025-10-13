@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
-    "build": "prisma generate --schema ../prisma/schema.prisma && tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
-    "postinstall": "prisma generate --schema ../prisma/schema.prisma",
+    "postinstall": "prisma generate --no-hints --schema ../prisma/schema.prisma && prisma migrate deploy --no-hints --schema ../prisma/schema.prisma",
     "prisma:generate": "prisma generate --schema ../prisma/schema.prisma",
     "prisma:migrate:dev": "prisma migrate dev --schema ../prisma/schema.prisma --name init",
     "prisma:migrate:deploy": "prisma migrate deploy --schema ../prisma/schema.prisma",
@@ -26,7 +26,7 @@
     "@fastify/cookie": "^7.4.0",
     "@fastify/cors": "^8.5.0",
     "@fastify/websocket": "^8.3.1",
-    "@prisma/client": "^5.0.0",
+    "@prisma/client": "^5.22.0",
     "@telegram-apps/init-data-node": "^2.0.10",
     "bullmq": "^5.61.0",
     "dotenv": "^17.2.2",
@@ -35,7 +35,7 @@
     "ioredis": "^5.8.0",
     "jsonwebtoken": "^9.0.2",
     "node-telegram-bot-api": "^0.66.0",
-    "prisma": "^5.0.0",
+    "prisma": "^5.22.0",
     "quick-lru": "^7.2.0"
   },
   "devDependencies": {

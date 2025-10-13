@@ -14,50 +14,108 @@ type LeagueStatsViewProps = {
   lastUpdated?: number
 }
 
-type ColumnKey = 'total' | 'goals' | 'assists' | 'matches' | 'penalties'
-
 type ColumnConfig = {
-  key: ColumnKey
+  key: string
   label: string
   highlight?: boolean
+  align?: 'left' | 'center' | 'right'
+  render: (entry: LeaguePlayerLeaderboardEntry) => React.ReactNode
 }
 
 type CategoryConfig = {
   title: string
-  description: string
   columns: ColumnConfig[]
 }
 
 const CATEGORY_ORDER: LeagueStatsCategory[] = ['goalContribution', 'scorers', 'assists']
 
+const formatGoals = (goals: number, penaltyGoals?: number) => {
+  if (penaltyGoals && penaltyGoals > 0) {
+    return `${goals}(${penaltyGoals})`
+  }
+  return goals
+}
+
+const formatEfficiency = (goals: number, matches: number) => {
+  if (!matches) {
+    return '0.00'
+  }
+  return (goals / matches).toFixed(2)
+}
+
 const CATEGORY_CONFIG: Record<LeagueStatsCategory, CategoryConfig> = {
   goalContribution: {
     title: 'Голы + Пасы',
-    description: 'Суммарный вклад игроков в результативные действия.',
     columns: [
-      { key: 'total', label: 'Г + П', highlight: true },
-      { key: 'goals', label: 'Голы', highlight: true },
-      { key: 'assists', label: 'Пасы', highlight: true },
-      { key: 'matches', label: 'Матчи' },
+      {
+        key: 'matches',
+        label: 'Матчи',
+        align: 'center',
+        render: entry => entry.matchesPlayed,
+      },
+      {
+        key: 'goals',
+        label: 'Голы',
+        highlight: true,
+        align: 'center',
+        render: entry => formatGoals(entry.goals, entry.penaltyGoals),
+      },
+      {
+        key: 'assists',
+        label: 'Передачи',
+        highlight: true,
+        align: 'center',
+        render: entry => entry.assists,
+      },
+      {
+        key: 'total',
+        label: 'Гол+Пасс',
+        highlight: true,
+        align: 'center',
+        render: entry => entry.goals + entry.assists,
+      },
     ],
   },
   scorers: {
     title: 'Бомбардиры',
-    description: 'Игроки с наибольшим количеством забитых мячей.',
     columns: [
-      { key: 'goals', label: 'Голы', highlight: true },
-      { key: 'penalties', label: 'Пенальти' },
-      { key: 'assists', label: 'Пасы' },
-      { key: 'matches', label: 'Матчи' },
+      {
+        key: 'matches',
+        label: 'Матчи',
+        align: 'center',
+        render: entry => entry.matchesPlayed,
+      },
+      {
+        key: 'efficiency',
+        label: 'Кф.эфф',
+        align: 'center',
+        render: entry => formatEfficiency(entry.goals, entry.matchesPlayed),
+      },
+      {
+        key: 'goals',
+        label: 'Голы',
+        highlight: true,
+        align: 'center',
+        render: entry => formatGoals(entry.goals, entry.penaltyGoals),
+      },
     ],
   },
   assists: {
     title: 'Ассистенты',
-    description: 'Лучшие по голевым передачам.',
     columns: [
-      { key: 'assists', label: 'Пасы', highlight: true },
-      { key: 'goals', label: 'Голы' },
-      { key: 'matches', label: 'Матчи' },
+      {
+        key: 'matches',
+        label: 'Матчи',
+        align: 'center',
+        render: entry => entry.matchesPlayed,
+      },
+      {
+        key: 'assists',
+        label: 'Передачи',
+        highlight: true,
+        align: 'center',
+        render: entry => entry.assists,
+      },
     ],
   },
 }
@@ -78,23 +136,6 @@ const formatUpdatedAt = (generatedAt?: string, fallback?: number): string => {
   return ''
 }
 
-const getColumnValue = (entry: LeaguePlayerLeaderboardEntry, key: ColumnKey): number => {
-  switch (key) {
-  case 'total':
-    return entry.goals + entry.assists
-  case 'goals':
-    return entry.goals
-  case 'assists':
-    return entry.assists
-  case 'matches':
-    return entry.matchesPlayed
-  case 'penalties':
-    return entry.penaltyGoals
-  default:
-    return 0
-  }
-}
-
 const formatPlayerName = (entry: LeaguePlayerLeaderboardEntry): string => {
   const prime = `${entry.lastName} ${entry.firstName}`.trim()
   return prime || entry.firstName || entry.lastName
@@ -112,6 +153,7 @@ export const LeagueStatsView: React.FC<LeagueStatsViewProps> = ({
   const categories = CATEGORY_ORDER
   const activeCategory = categories[activeIndex]
   const config = CATEGORY_CONFIG[activeCategory]
+  const metricsClass = `metrics-${config.columns.length}`
 
   const rows = useMemo(() => {
     if (!stats) {
@@ -184,7 +226,6 @@ export const LeagueStatsView: React.FC<LeagueStatsViewProps> = ({
           </button>
           <div className="stats-context">
             <span className="stats-title">{config.title}</span>
-            <span className="stats-description">{config.description}</span>
           </div>
           <button
             type="button"
@@ -198,8 +239,8 @@ export const LeagueStatsView: React.FC<LeagueStatsViewProps> = ({
         <span className="muted stats-updated">{updatedLabel}</span>
       </header>
 
-      <div className="stats-table" role="table">
-        <div className="stats-row head" role="row">
+      <div className={`stats-table ${metricsClass}`} role="table">
+        <div className={`stats-row head ${metricsClass}`} role="row">
           <span className="col-rank" role="columnheader">
             №
           </span>
@@ -212,7 +253,7 @@ export const LeagueStatsView: React.FC<LeagueStatsViewProps> = ({
           {config.columns.map(column => (
             <span
               key={column.key}
-              className={`col-metric${column.highlight ? ' highlight' : ''}`}
+              className={`col-metric${column.highlight ? ' highlight' : ''} align-${column.align ?? 'center'}`}
               role="columnheader"
             >
               {column.label}
@@ -220,20 +261,23 @@ export const LeagueStatsView: React.FC<LeagueStatsViewProps> = ({
           ))}
         </div>
         {rows.length === 0 ? (
-          <div className="stats-row empty" role="row">
+          <div className={`stats-row empty ${metricsClass}`} role="row">
             <span role="cell" className="col-empty">
               Нет сыгранных матчей.
             </span>
           </div>
         ) : (
           rows.map((entry, index) => (
-            <div className="stats-row" role="row" key={`${activeCategory}-${entry.personId}`}>
+            <div
+              className={`stats-row ${metricsClass}`}
+              role="row"
+              key={`${activeCategory}-${entry.personId}`}
+            >
               <span className="col-rank" role="cell">
                 {index + 1}
               </span>
               <span className="col-player" role="cell">
                 <span className="player-name">{formatPlayerName(entry)}</span>
-                <span className="player-meta">#{entry.personId}</span>
               </span>
               <span className="col-club" role="cell">
                 {entry.clubLogoUrl ? (
@@ -252,10 +296,10 @@ export const LeagueStatsView: React.FC<LeagueStatsViewProps> = ({
               {config.columns.map(column => (
                 <span
                   key={column.key}
-                  className={`col-metric${column.highlight ? ' highlight' : ''}`}
+                  className={`col-metric${column.highlight ? ' highlight' : ''} align-${column.align ?? 'center'}`}
                   role="cell"
                 >
-                  {getColumnValue(entry, column.key)}
+                  {column.render(entry)}
                 </span>
               ))}
             </div>

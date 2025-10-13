@@ -81,37 +81,50 @@ const sortByGoalContribution = (entries: LeaguePlayerLeaderboardEntry[]) =>
     const leftTotal = left.goals + left.assists
     const rightTotal = right.goals + right.assists
     if (rightTotal !== leftTotal) return rightTotal - leftTotal
-    if (left.matchesPlayed !== right.matchesPlayed) return left.matchesPlayed - right.matchesPlayed
     if (right.goals !== left.goals) return right.goals - left.goals
+    const leftCleanGoals = left.goals - (left.penaltyGoals ?? 0)
+    const rightCleanGoals = right.goals - (right.penaltyGoals ?? 0)
+    if (rightCleanGoals !== leftCleanGoals) return rightCleanGoals - leftCleanGoals
     if (right.assists !== left.assists) return right.assists - left.assists
-    return left.lastName.localeCompare(right.lastName, 'ru')
+    if (left.matchesPlayed !== right.matchesPlayed) return left.matchesPlayed - right.matchesPlayed
+    const leftName = `${left.lastName} ${left.firstName}`
+    const rightName = `${right.lastName} ${right.firstName}`
+    return leftName.localeCompare(rightName, 'ru')
   })
 
 const sortByScorers = (entries: LeaguePlayerLeaderboardEntry[]) =>
   [...entries].sort((left, right) => {
     if (right.goals !== left.goals) return right.goals - left.goals
     if (left.matchesPlayed !== right.matchesPlayed) return left.matchesPlayed - right.matchesPlayed
-    if (right.assists !== left.assists) return right.assists - left.assists
-    return left.lastName.localeCompare(right.lastName, 'ru')
+    const leftName = `${left.lastName} ${left.firstName}`
+    const rightName = `${right.lastName} ${right.firstName}`
+    return leftName.localeCompare(rightName, 'ru')
   })
 
 const sortByAssists = (entries: LeaguePlayerLeaderboardEntry[]) =>
   [...entries].sort((left, right) => {
     if (right.assists !== left.assists) return right.assists - left.assists
     if (left.matchesPlayed !== right.matchesPlayed) return left.matchesPlayed - right.matchesPlayed
-    if (right.goals !== left.goals) return right.goals - left.goals
-    return left.lastName.localeCompare(right.lastName, 'ru')
+    const leftName = `${left.lastName} ${left.firstName}`
+    const rightName = `${right.lastName} ${right.firstName}`
+    return leftName.localeCompare(rightName, 'ru')
   })
-
-const clampLeaderboard = (entries: LeaguePlayerLeaderboardEntry[]) =>
-  entries.filter(entry => entry.matchesPlayed > 0 && (entry.goals > 0 || entry.assists > 0)).slice(0, LEADERBOARD_LIMIT)
 
 const buildLeaderboards = (rows: RawSeasonStat[]): LeaderboardMap => {
   const entries = rows.map(toEntry)
+  const goalContribution = sortByGoalContribution(entries)
+    .filter(entry => entry.matchesPlayed > 0 && entry.goals + entry.assists > 0)
+    .slice(0, LEADERBOARD_LIMIT)
+  const scorers = sortByScorers(entries)
+    .filter(entry => entry.matchesPlayed > 0 && entry.goals > 0)
+    .slice(0, LEADERBOARD_LIMIT)
+  const assists = sortByAssists(entries)
+    .filter(entry => entry.matchesPlayed > 0 && entry.assists > 0)
+    .slice(0, LEADERBOARD_LIMIT)
   return {
-    goalContribution: clampLeaderboard(sortByGoalContribution(entries)),
-    scorers: clampLeaderboard(sortByScorers(entries)),
-    assists: clampLeaderboard(sortByAssists(entries)),
+    goalContribution,
+    scorers,
+    assists,
   }
 }
 

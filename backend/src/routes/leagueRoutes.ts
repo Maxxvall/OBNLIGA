@@ -17,6 +17,11 @@ import {
   buildLeagueResults,
   buildLeagueSchedule,
 } from '../services/leagueSchedule'
+import {
+  PUBLIC_LEAGUE_STATS_KEY,
+  PUBLIC_LEAGUE_STATS_TTL_SECONDS,
+  buildLeagueStats,
+} from '../services/leagueStats'
 
 const SEASONS_CACHE_KEY = 'public:league:seasons'
 const SEASONS_TTL_SECONDS = 60
@@ -136,6 +141,30 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
       cacheKey,
       () => buildLeagueResults(season),
       PUBLIC_LEAGUE_RESULTS_TTL_SECONDS
+    )
+
+    reply.header('X-Resource-Version', version)
+    return reply.send({ ok: true, data: value, meta: { version } })
+  })
+
+  fastify.get<{ Querystring: { seasonId?: string } }>('/api/league/stats', async (request, reply) => {
+    const seasonResolution = await resolveSeason(request.query.seasonId)
+
+    if (!seasonResolution.ok) {
+      return reply
+        .status(seasonResolution.status)
+        .send({ ok: false, error: seasonResolution.error })
+    }
+
+    const { season, requestedSeasonId } = seasonResolution
+
+    const cacheKey = requestedSeasonId
+      ? `${PUBLIC_LEAGUE_STATS_KEY}:${season.id}`
+      : PUBLIC_LEAGUE_STATS_KEY
+    const { value, version } = await defaultCache.getWithMeta(
+      cacheKey,
+      () => buildLeagueStats(season),
+      PUBLIC_LEAGUE_STATS_TTL_SECONDS
     )
 
     reply.header('X-Resource-Version', version)

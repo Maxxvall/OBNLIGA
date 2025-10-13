@@ -110,3 +110,31 @@ export interface LeagueRoundCollection {
   rounds: LeagueRoundMatches[]
   generatedAt: string
 }
+
+export type LeagueStatsCategory = 'goalContribution' | 'scorers' | 'assists'
+
+export interface LeaguePlayerLeaderboardEntry {
+  personId: number
+  firstName: string
+  lastName: string
+  clubId: number
+  clubName: string
+  clubShortName: string
+  clubLogoUrl: string | null
+  matchesPlayed: number
+  goals: number
+  assists: number
+  penaltyGoals: number
+}
+
+export interface LeagueStatsLeaderboards {
+  goalContribution: LeaguePlayerLeaderboardEntry[]
+  scorers: LeaguePlayerLeaderboardEntry[]
+  assists: LeaguePlayerLeaderboardEntry[]
+}
+
+export interface LeagueStatsResponse {
+  season: LeagueSeasonSummary
+  generatedAt: string
+  leaderboards: LeagueStatsLeaderboards
+}

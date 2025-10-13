@@ -23,6 +23,13 @@ import {
   refreshLeagueMatchAggregates,
 } from './leagueSchedule'
 import {
+  PUBLIC_LEAGUE_STATS_KEY,
+  PUBLIC_LEAGUE_SCORERS_KEY,
+  PUBLIC_LEAGUE_ASSISTS_KEY,
+  PUBLIC_LEAGUE_GOAL_CONTRIBUTORS_KEY,
+  refreshLeagueStats,
+} from './leagueStats'
+import {
   addDays,
   applyTimeToDate,
   createInitialPlayoffPlans,
@@ -137,6 +144,14 @@ export async function handleMatchFinalization(
     ...Array.from(impactedClubIds).map(clubId => `club:${clubId}:player-career`),
     PUBLIC_LEAGUE_TABLE_KEY,
     `${PUBLIC_LEAGUE_TABLE_KEY}:${seasonId}`,
+    PUBLIC_LEAGUE_STATS_KEY,
+    `${PUBLIC_LEAGUE_STATS_KEY}:${seasonId}`,
+    PUBLIC_LEAGUE_SCORERS_KEY,
+    `${PUBLIC_LEAGUE_SCORERS_KEY}:${seasonId}`,
+    PUBLIC_LEAGUE_ASSISTS_KEY,
+    `${PUBLIC_LEAGUE_ASSISTS_KEY}:${seasonId}`,
+    PUBLIC_LEAGUE_GOAL_CONTRIBUTORS_KEY,
+    `${PUBLIC_LEAGUE_GOAL_CONTRIBUTORS_KEY}:${seasonId}`,
     PUBLIC_LEAGUE_SCHEDULE_KEY,
     `${PUBLIC_LEAGUE_SCHEDULE_KEY}:${seasonId}`,
     PUBLIC_LEAGUE_RESULTS_KEY,
@@ -158,6 +173,9 @@ export async function handleMatchFinalization(
         PUBLIC_LEAGUE_TABLE_TTL_SECONDS
       )
       await refreshLeagueMatchAggregates(refreshedSeason.id, {
+        publishTopic: options?.publishTopic,
+      })
+      await refreshLeagueStats(refreshedSeason.id, {
         publishTopic: options?.publishTopic,
       })
       if (options?.publishTopic) {

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { LeagueTableView } from '../components/league/LeagueTableView'
 import { LeagueRoundsView } from '../components/league/LeagueRoundsView'
+import { LeagueStatsView } from '../components/league/LeagueStatsView'
 import { LeagueSubTab, useAppStore } from '../store/appStore'
 import type { LeagueSeasonSummary } from '@shared/types'
 
@@ -34,10 +35,6 @@ const formatSeasonRange = (season: LeagueSeasonSummary): string => {
   return `${SEASON_RANGE_FORMATTER.format(start)} — ${SEASON_RANGE_FORMATTER.format(end)}`
 }
 
-const EMPTY_PLACEHOLDER: Pick<Record<LeagueSubTab, string>, 'stats'> = {
-  stats: 'Мы собираем расширенную аналитику по сезонам и клубам — следите за обновлением.',
-}
-
 const Placeholder: React.FC<{ message: string }> = ({ message }) => (
   <div className="placeholder">
     <div className="placeholder-card">
@@ -53,6 +50,7 @@ const LeaguePage: React.FC = () => {
   const fetchTable = useAppStore(state => state.fetchLeagueTable)
   const fetchSchedule = useAppStore(state => state.fetchLeagueSchedule)
   const fetchResults = useAppStore(state => state.fetchLeagueResults)
+  const fetchStats = useAppStore(state => state.fetchLeagueStats)
   const ensureRealtime = useAppStore(state => state.ensureRealtime)
   const setSelectedSeason = useAppStore(state => state.setSelectedSeason)
   const selectedSeasonId = useAppStore(state => state.selectedSeasonId)
@@ -63,17 +61,21 @@ const LeaguePage: React.FC = () => {
   const loadingTable = useAppStore(state => state.loading.table)
   const loadingSchedule = useAppStore(state => state.loading.schedule)
   const loadingResults = useAppStore(state => state.loading.results)
+  const loadingStats = useAppStore(state => state.loading.stats)
   const tableErrors = useAppStore(state => state.errors.table)
   const scheduleErrors = useAppStore(state => state.errors.schedule)
   const resultsErrors = useAppStore(state => state.errors.results)
+  const statsErrors = useAppStore(state => state.errors.stats)
   const leagueMenuOpen = useAppStore(state => state.leagueMenuOpen)
   const closeLeagueMenu = useAppStore(state => state.closeLeagueMenu)
   const tableFetchedAt = useAppStore(state => state.tableFetchedAt)
   const scheduleFetchedAt = useAppStore(state => state.scheduleFetchedAt)
   const resultsFetchedAt = useAppStore(state => state.resultsFetchedAt)
+  const statsFetchedAt = useAppStore(state => state.statsFetchedAt)
   const tables = useAppStore(state => state.tables)
   const schedules = useAppStore(state => state.schedules)
   const results = useAppStore(state => state.results)
+  const stats = useAppStore(state => state.stats)
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(() => new Set())
 
   const selectedSeason = useMemo(
@@ -113,6 +115,8 @@ const LeaguePage: React.FC = () => {
   const scheduleUpdatedAt = selectedSeasonId ? scheduleFetchedAt[selectedSeasonId] : undefined
   const resultsData = selectedSeasonId ? results[selectedSeasonId] : undefined
   const resultsUpdatedAt = selectedSeasonId ? resultsFetchedAt[selectedSeasonId] : undefined
+  const statsData = selectedSeasonId ? stats[selectedSeasonId] : undefined
+  const statsUpdatedAt = selectedSeasonId ? statsFetchedAt[selectedSeasonId] : undefined
 
   useEffect(() => {
     setExpandedGroups(prev => {
@@ -161,8 +165,9 @@ const LeaguePage: React.FC = () => {
   useEffect(() => {
     if (selectedSeasonId) {
       void fetchTable({ seasonId: selectedSeasonId })
+      void fetchStats({ seasonId: selectedSeasonId })
     }
-  }, [selectedSeasonId, fetchTable])
+  }, [selectedSeasonId, fetchTable, fetchStats])
 
   useEffect(() => {
     if (!selectedSeasonId) {
@@ -174,7 +179,10 @@ const LeaguePage: React.FC = () => {
     if (leagueSubTab === 'results') {
       void fetchResults({ seasonId: selectedSeasonId })
     }
-  }, [leagueSubTab, selectedSeasonId, fetchSchedule, fetchResults])
+    if (leagueSubTab === 'stats') {
+      void fetchStats({ seasonId: selectedSeasonId })
+    }
+  }, [leagueSubTab, selectedSeasonId, fetchSchedule, fetchResults, fetchStats])
 
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
@@ -222,6 +230,12 @@ const LeaguePage: React.FC = () => {
   const handleResultsReload = () => {
     if (selectedSeasonId) {
       void fetchResults({ seasonId: selectedSeasonId, force: true })
+    }
+  }
+
+  const handleStatsReload = () => {
+    if (selectedSeasonId) {
+      void fetchStats({ seasonId: selectedSeasonId, force: true })
     }
   }
 
@@ -345,8 +359,16 @@ const LeaguePage: React.FC = () => {
             onRetry={handleResultsReload}
             lastUpdated={resultsUpdatedAt}
           />
+        ) : leagueSubTab === 'stats' ? (
+          <LeagueStatsView
+            stats={statsData}
+            loading={loadingStats}
+            error={statsErrors}
+            onRetry={handleStatsReload}
+            lastUpdated={statsUpdatedAt}
+          />
         ) : (
-          <Placeholder message={EMPTY_PLACEHOLDER.stats} />
+          <Placeholder message="Раздел скоро появится." />
         )}
       </div>
     </div>

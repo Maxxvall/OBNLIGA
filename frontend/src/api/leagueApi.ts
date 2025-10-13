@@ -2,6 +2,7 @@ import type {
   LeagueRoundCollection,
   LeagueSeasonSummary,
   LeagueTableResponse,
+  LeagueStatsResponse,
 } from '@shared/types'
 
 const API_BASE = import.meta.env.VITE_BACKEND_URL ?? ''
@@ -129,6 +130,10 @@ export const leagueApi = {
   fetchResults(seasonId?: number, signal?: AbortSignal) {
     const query = seasonId ? `?seasonId=${encodeURIComponent(seasonId)}` : ''
     return request<LeagueRoundCollection>(`/api/league/results${query}`, { signal })
+  },
+  fetchStats(seasonId?: number, signal?: AbortSignal) {
+    const query = seasonId ? `?seasonId=${encodeURIComponent(seasonId)}` : ''
+    return request<LeagueStatsResponse>(`/api/league/stats${query}`, { signal })
   },
 }
 

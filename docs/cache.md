@@ -51,7 +51,10 @@
 ### 9. Public Aggregates (HTTP + WS)
 - `public:league:seasons` — 60 c (SWR 30 c, обновляется при смене активного сезона)
 - `public:league:table` — 300 c (SWR 45 c, WS topic `league:table`)
+- `public:league:stats` — 30 c (SWR 45 c, WS topics `league.goalContribution` | `league.scorers` | `league.assists`)
 - `public:league:top-scorers` — 300 c (SWR 60 c, WS topic `league:scorers`)
+- `public:league:top-assists` — 300 c (SWR 60 c, WS topic `league:assists`)
+- `public:league:goal-contributors` — 300 c (SWR 60 c, WS topic `league:goalContribution`)
 - `public:league:form:{seasonId}` — 600 c (SWR 120 c, WS topic `league:form`)
 - `public:matches:live` — 5 c (SWR 15 c, WS topic `matches:live`)
 - `public:club:{clubId}:summary` — 1200 c (SWR 300 c, WS topic `club:{clubId}:summary`)
@@ -78,7 +81,7 @@
 
 ### Event-driven (По событиям)
 - WS события `data_patch` → инвалидация соответствующих ключей
-- `match_results_update` → `league:table`, `league:stats`
+- `match_results_update` → `league:table`, `league:stats`, `public:league:stats`, `public:league:goal-contributors`, `public:league:top-scorers`, `public:league:top-assists`
 - `match_stats_update` (публикуется `broadcastMatchStatistics`) → `md:stats:{matchId}`
 - `schedule_update` → `league:schedule`
 - `bracket_update` → `league:bracket`

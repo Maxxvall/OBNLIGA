@@ -352,20 +352,17 @@
 .team-form-logo {
   width: 56px;
   height: 56px;
-  border-radius: 50%;
   object-fit: cover;
 }
 
 .team-form-logo.fallback {
   width: 56px;
   height: 56px;
-  border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-size: 14px;
   font-weight: 600;
-  background: rgba(0, 240, 255, 0.12);
   color: var(--neon-cyan);
 }
 
@@ -467,14 +464,16 @@
 
 .team-squad-row {
   display: grid;
-  grid-template-columns: 40px 1fr 45px 45px 45px 45px 45px;
+  grid-template-columns: 10px 140px 15px 20px 20px 25px 25px;
   gap: 8px;
   align-items: center;
-  padding: 12px 16px;
+  padding: 6px 10px;
   border-radius: 14px;
   background: rgba(0, 240, 255, 0.06);
   border: 1px solid rgba(0, 240, 255, 0.12);
   transition: background 160ms ease;
+  margin: 0 auto;
+
 }
 
 .team-squad-row.head {
@@ -531,7 +530,6 @@
   }
 
   .team-stats-wide-block {
-    flex-direction: column;
     align-items: stretch;
     gap: 16px;
   }

@@ -179,7 +179,6 @@
 }
 
 .col-metric.highlight {
-  color: var(--accent);
   font-weight: 600;
 }
 

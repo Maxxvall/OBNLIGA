@@ -50,27 +50,27 @@ const CATEGORY_CONFIG: Record<LeagueStatsCategory, CategoryConfig> = {
     columns: [
       {
         key: 'matches',
-        label: 'Матчи',
+        label: 'И',
         align: 'center',
         render: entry => entry.matchesPlayed,
       },
       {
-        key: 'goals',
-        label: 'Голы',
-        highlight: true,
-        align: 'center',
-        render: entry => formatGoals(entry.goals, entry.penaltyGoals),
-      },
-      {
         key: 'assists',
-        label: 'Передачи',
+        label: 'П',
         highlight: true,
         align: 'center',
         render: entry => entry.assists,
       },
       {
+        key: 'goals',
+        label: 'Г',
+        highlight: true,
+        align: 'center',
+        render: entry => formatGoals(entry.goals, entry.penaltyGoals),
+      },
+      {
         key: 'total',
-        label: 'Гол+Пасс',
+        label: 'Г+П',
         highlight: true,
         align: 'center',
         render: entry => entry.goals + entry.assists,
@@ -82,19 +82,19 @@ const CATEGORY_CONFIG: Record<LeagueStatsCategory, CategoryConfig> = {
     columns: [
       {
         key: 'matches',
-        label: 'Матчи',
+        label: 'И',
         align: 'center',
         render: entry => entry.matchesPlayed,
       },
       {
         key: 'efficiency',
-        label: 'Кф.эфф',
+        label: 'Эфф',
         align: 'center',
         render: entry => formatEfficiency(entry.goals, entry.matchesPlayed),
       },
       {
         key: 'goals',
-        label: 'Голы',
+        label: 'Г',
         highlight: true,
         align: 'center',
         render: entry => formatGoals(entry.goals, entry.penaltyGoals),
@@ -106,13 +106,13 @@ const CATEGORY_CONFIG: Record<LeagueStatsCategory, CategoryConfig> = {
     columns: [
       {
         key: 'matches',
-        label: 'Матчи',
+        label: 'И',
         align: 'center',
         render: entry => entry.matchesPlayed,
       },
       {
         key: 'assists',
-        label: 'Передачи',
+        label: 'П',
         highlight: true,
         align: 'center',
         render: entry => entry.assists,

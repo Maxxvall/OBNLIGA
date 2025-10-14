@@ -356,7 +356,7 @@
 
 @media (max-width: 425px) {
   .news-column {
-    width: min(92vw, 360px);
+    width: min(92vw, 270px);
     padding: 20px 18px 24px;
   }
 

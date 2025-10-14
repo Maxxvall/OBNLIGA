@@ -53,27 +53,16 @@ export default function App() {
   if (showSplash) {
     return (
       <div className={'app-root splash' + (isExiting ? ' exiting' : '')}>
-        <div className="accent-shape left" aria-hidden />
-        <div className="accent-shape right" aria-hidden />
         <div className="splash-inner">
           {/* use league logo from public/ so it's served at /logo_liga.png */}
           <img src="/logo_liga.png" alt="Логотип Лиги" className="logo animate heartbeat" />
           <h2 className="neon-title">Футбольная Лига</h2>
           <p className="neon-sub">Загружаем...</p>
-          <div
-            style={{
-              marginTop: 14,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-            }}
-          >
+          <div className="splash-progress">
             <div className="progress" aria-hidden>
               <div className="progress-fill" style={{ width: `${progress}%` }} />
             </div>
-            <div style={{ marginTop: 8, fontSize: 12, opacity: 0.9, color: '#bfefff' }}>
-              {progress}%
-            </div>
+            <span className="progress-percent">{progress}%</span>
           </div>
         </div>
       </div>

@@ -183,9 +183,9 @@
 }
 
 .news-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
+  width: 20px;
+  height: 8px;
+  border-radius: 4px;
   border: 1px solid rgba(0, 240, 255, 0.48);
   background: rgba(4, 12, 24, 0.6);
   padding: 0;
@@ -349,8 +349,8 @@
   }
 
   .news-dot {
-    width: 10px;
-    height: 10px;
+    width: 20px;
+    height: 8px;
   }
 }
 

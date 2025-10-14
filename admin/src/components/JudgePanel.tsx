@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { useAdminStore } from '../store/adminStore'
 import { useJudgeStore } from '../store/judgeStore'
 import type { JudgeMatchSummary, MatchEventEntry, MatchLineupEntry } from '../types'
@@ -107,6 +107,11 @@ export const JudgePanel = () => {
   const [editingEventId, setEditingEventId] = useState<string | null>(null)
   const [editingDraft, setEditingDraft] = useState<EventDraft | null>(null)
 
+  const homeScoreValue = parseNumber(scoreForm.homeScore)
+  const awayScoreValue = parseNumber(scoreForm.awayScore)
+  const penaltyEligible = homeScoreValue === awayScoreValue
+  const penaltyToggleDisabled = !penaltyEligible
+
   const lineupByClub = useMemo(() => {
     const map = new Map<number, MatchLineupEntry[]>()
     for (const entry of lineup) {
@@ -155,17 +160,44 @@ export const JudgePanel = () => {
     return lineupByClub.get(selectedMatch.awayClub.id) || []
   }, [lineupByClub, selectedMatch])
 
-  const homeListId = selectedMatch ? `judge-home-${selectedMatch.id}` : 'judge-home'
-  const awayListId = selectedMatch ? `judge-away-${selectedMatch.id}` : 'judge-away'
   const allPlayers = useMemo(() => [...homePlayers, ...awayPlayers], [homePlayers, awayPlayers])
-  const allListId = selectedMatch ? `judge-all-${selectedMatch.id}` : 'judge-all'
 
-  const resolveListId = (teamId: string) => {
-    if (!selectedMatch) return undefined
-    if (teamId === String(selectedMatch.homeClub.id)) return homeListId
-    if (teamId === String(selectedMatch.awayClub.id)) return awayListId
-    return undefined
-  }
+  const buildPlayerOptions = useCallback(
+    (teamId: string, currentPlayerId?: string): MatchLineupEntry[] => {
+      const numeric = Number(teamId)
+      const base = numeric ? lineupByClub.get(numeric) || [] : []
+      const options = base.length ? [...base] : []
+      if (currentPlayerId) {
+        const exists = options.some(player => String(player.personId) === currentPlayerId)
+        if (!exists) {
+          const fallback = allPlayers.find(
+            player => String(player.personId) === currentPlayerId
+          )
+          if (fallback) {
+            options.push(fallback)
+          }
+        }
+      }
+      return options
+    },
+    [lineupByClub, allPlayers]
+  )
+
+  const assistAvailable = newEventForm.eventType === 'GOAL'
+  const editingAssistAvailable = editingDraft?.eventType === 'GOAL'
+  const penaltyHintVisible = !penaltyEligible
+
+  const homeScoreId = selectedMatch ? `judge-score-home-${selectedMatch.id}` : 'judge-score-home'
+  const awayScoreId = selectedMatch ? `judge-score-away-${selectedMatch.id}` : 'judge-score-away'
+  const penaltyHomeId = selectedMatch
+    ? `judge-penalty-home-${selectedMatch.id}`
+    : 'judge-penalty-home'
+  const penaltyAwayId = selectedMatch
+    ? `judge-penalty-away-${selectedMatch.id}`
+    : 'judge-penalty-away'
+
+  const newEventPlayers = buildPlayerOptions(newEventForm.teamId, newEventForm.playerId)
+  const isTeamSelected = Number(newEventForm.teamId) > 0
 
   useEffect(() => {
     if (!judgeToken) {
@@ -219,6 +251,37 @@ export const JudgePanel = () => {
       return { ...prev, playerId: String(options[0].personId) }
     })
   }, [editingDraft, selectedMatch, lineupByClub])
+
+  useEffect(() => {
+    if (penaltyEligible || !scoreForm.hasPenaltyShootout) {
+      return
+    }
+    setScoreForm(prev => ({
+      ...prev,
+      hasPenaltyShootout: false,
+      penaltyHomeScore: '0',
+      penaltyAwayScore: '0',
+    }))
+  }, [penaltyEligible, scoreForm.hasPenaltyShootout])
+
+  useEffect(() => {
+    if (assistAvailable || !newEventForm.relatedPlayerId) {
+      return
+    }
+    setNewEventForm(prev => (prev.relatedPlayerId ? { ...prev, relatedPlayerId: '' } : prev))
+  }, [assistAvailable, newEventForm.relatedPlayerId])
+
+  useEffect(() => {
+    if (editingAssistAvailable) {
+      return
+    }
+    setEditingDraft(prev => {
+      if (!prev || !prev.relatedPlayerId) {
+        return prev
+      }
+      return { ...prev, relatedPlayerId: '' }
+    })
+  }, [editingAssistAvailable])
 
   const handleScoreChange = (field: keyof ScoreFormState, value: string | boolean) => {
     setScoreForm(prev => ({
@@ -382,36 +445,35 @@ export const JudgePanel = () => {
                 <h2>Изменение счёта</h2>
                 <form className="score-form" onSubmit={handleScoreSubmit}>
                   <div className="score-grid">
-                    <div>
-                      <label>Хозяева</label>
-                      <div className="score-input">
-                        <span className="club-caption">{selectedMatch.homeClub.name}</span>
-                        <input
-                          type="number"
-                          min={0}
-                          value={scoreForm.homeScore}
-                          onChange={event => handleScoreChange('homeScore', event.target.value)}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label>Гости</label>
-                      <div className="score-input">
-                        <span className="club-caption">{selectedMatch.awayClub.name}</span>
-                        <input
-                          type="number"
-                          min={0}
-                          value={scoreForm.awayScore}
-                          onChange={event => handleScoreChange('awayScore', event.target.value)}
-                        />
-                      </div>
-                    </div>
+                    <label className="score-field" htmlFor={homeScoreId}>
+                      <span className="score-field-title">{selectedMatch.homeClub.name}</span>
+                      <input
+                        id={homeScoreId}
+                        className="form-control"
+                        type="number"
+                        min={0}
+                        value={scoreForm.homeScore}
+                        onChange={event => handleScoreChange('homeScore', event.target.value)}
+                      />
+                    </label>
+                    <label className="score-field" htmlFor={awayScoreId}>
+                      <span className="score-field-title">{selectedMatch.awayClub.name}</span>
+                      <input
+                        id={awayScoreId}
+                        className="form-control"
+                        type="number"
+                        min={0}
+                        value={scoreForm.awayScore}
+                        onChange={event => handleScoreChange('awayScore', event.target.value)}
+                      />
+                    </label>
                   </div>
 
-                  <label className="penalty-toggle">
+                  <label className={penaltyToggleDisabled ? 'penalty-toggle disabled' : 'penalty-toggle'}>
                     <input
                       type="checkbox"
                       checked={scoreForm.hasPenaltyShootout}
+                      disabled={penaltyToggleDisabled}
                       onChange={event =>
                         handleScoreChange('hasPenaltyShootout', event.target.checked)
                       }
@@ -419,11 +481,19 @@ export const JudgePanel = () => {
                     Пенальти
                   </label>
 
+                  {penaltyHintVisible ? (
+                    <p className="penalty-hint">Пенальти доступны только при ничейном счёте.</p>
+                  ) : null}
+
                   {scoreForm.hasPenaltyShootout ? (
                     <div className="score-grid">
-                      <div>
-                        <label>Пенальти хозяев</label>
+                      <label className="score-field" htmlFor={penaltyHomeId}>
+                        <span className="score-field-title">
+                          Пенальти {selectedMatch.homeClub.name}
+                        </span>
                         <input
+                          id={penaltyHomeId}
+                          className="form-control"
                           type="number"
                           min={0}
                           value={scoreForm.penaltyHomeScore}
@@ -431,10 +501,14 @@ export const JudgePanel = () => {
                             handleScoreChange('penaltyHomeScore', event.target.value)
                           }
                         />
-                      </div>
-                      <div>
-                        <label>Пенальти гостей</label>
+                      </label>
+                      <label className="score-field" htmlFor={penaltyAwayId}>
+                        <span className="score-field-title">
+                          Пенальти {selectedMatch.awayClub.name}
+                        </span>
                         <input
+                          id={penaltyAwayId}
+                          className="form-control"
                           type="number"
                           min={0}
                           value={scoreForm.penaltyAwayScore}
@@ -442,7 +516,7 @@ export const JudgePanel = () => {
                             handleScoreChange('penaltyAwayScore', event.target.value)
                           }
                         />
-                      </div>
+                      </label>
                     </div>
                   ) : null}
 
@@ -454,43 +528,13 @@ export const JudgePanel = () => {
 
               <article className="judge-card">
                 <h2>События матча</h2>
-                {selectedMatch ? (
-                  <>
-                    <datalist id={homeListId}>
-                      {homePlayers.map(entry => (
-                        <option
-                          key={`home-${entry.personId}`}
-                          value={String(entry.personId)}
-                          label={formatPlayerLabel(entry)}
-                        />
-                      ))}
-                    </datalist>
-                    <datalist id={awayListId}>
-                      {awayPlayers.map(entry => (
-                        <option
-                          key={`away-${entry.personId}`}
-                          value={String(entry.personId)}
-                          label={formatPlayerLabel(entry)}
-                        />
-                      ))}
-                    </datalist>
-                    <datalist id={allListId}>
-                      {allPlayers.map(entry => (
-                        <option
-                          key={`all-${entry.personId}`}
-                          value={String(entry.personId)}
-                          label={formatPlayerLabel(entry)}
-                        />
-                      ))}
-                    </datalist>
-                  </>
-                ) : null}
                 {isEventsLoading ? <p className="judge-placeholder">Загружаем события…</p> : null}
                 <form className="event-form" onSubmit={handleCreateEvent}>
                   <div className="event-grid">
                     <label>
                       Минута
                       <input
+                        className="form-control"
                         type="number"
                         min={1}
                         value={newEventForm.minute}
@@ -503,6 +547,7 @@ export const JudgePanel = () => {
                     <label>
                       Тип события
                       <select
+                        className="form-control form-select"
                         value={newEventForm.eventType}
                         onChange={event =>
                           setNewEventForm(prev => ({
@@ -521,67 +566,85 @@ export const JudgePanel = () => {
                     <label>
                       Команда
                       <select
+                        className="form-control form-select"
                         value={newEventForm.teamId}
                         onChange={event =>
                           setNewEventForm(prev => ({ ...prev, teamId: event.target.value }))
                         }
                         required
                       >
-                        <option value="">Выберите команду</option>
-                        <option value={selectedMatch.homeClub.id}>
+                        <option value="">—</option>
+                        <option value={String(selectedMatch.homeClub.id)}>
                           {selectedMatch.homeClub.name}
                         </option>
-                        <option value={selectedMatch.awayClub.id}>
+                        <option value={String(selectedMatch.awayClub.id)}>
                           {selectedMatch.awayClub.name}
                         </option>
                       </select>
                     </label>
                     <label>
                       Игрок
-                      <input
-                        type="number"
-                        min={1}
+                      <select
+                        className="form-control form-select"
                         value={newEventForm.playerId}
-                        list={resolveListId(newEventForm.teamId)}
                         onChange={event =>
                           setNewEventForm(prev => ({ ...prev, playerId: event.target.value }))
                         }
+                        disabled={!isTeamSelected || newEventPlayers.length === 0}
                         required
-                      />
+                      >
+                        <option value="">—</option>
+                        {newEventPlayers.map(player => (
+                          <option key={player.personId} value={String(player.personId)}>
+                            {formatPlayerLabel(player)}
+                          </option>
+                        ))}
+                      </select>
                     </label>
                     <label>
                       Связанный игрок
-                      <input
-                        type="number"
-                        min={1}
+                      <select
+                        className="form-control form-select"
                         value={newEventForm.relatedPlayerId}
-                        list={resolveListId(newEventForm.teamId) || allListId}
                         onChange={event =>
                           setNewEventForm(prev => ({
                             ...prev,
                             relatedPlayerId: event.target.value,
                           }))
                         }
-                        placeholder="Опционально"
-                      />
+                        disabled={!assistAvailable}
+                      >
+                        <option value="">—</option>
+                        {allPlayers.map(player => (
+                          <option key={`assist-${player.personId}`} value={String(player.personId)}>
+                            {formatPlayerLabel(player)}
+                          </option>
+                        ))}
+                      </select>
                     </label>
                   </div>
                   <button className="button-secondary" type="submit" disabled={isActionBusy}>
                     Добавить событие
                   </button>
                   <p className="judge-meta">
-                    Выберите игрока из заявки или введите идентификатор вручную при необходимости.
+                    Выберите игрока из заявки нужной команды. Второй игрок доступен только для гола.
                   </p>
                 </form>
 
                 <ul className="event-list">
                   {events.map(entry => {
                     const isEditing = editingEventId === entry.id
-                    return (
-                      <li key={entry.id} className="event-item">
-                        {isEditing && editingDraft ? (
+                    if (isEditing && editingDraft) {
+                      const editingPlayers = buildPlayerOptions(
+                        editingDraft.teamId,
+                        editingDraft.playerId
+                      )
+                      const editingTeamSelected = Number(editingDraft.teamId) > 0
+                      return (
+                        <li key={entry.id} className="event-item">
                           <form className="event-inline" onSubmit={handleUpdateEvent}>
                             <input
+                              className="form-control"
                               type="number"
                               min={1}
                               value={editingDraft.minute}
@@ -593,6 +656,7 @@ export const JudgePanel = () => {
                               required
                             />
                             <select
+                              className="form-control form-select"
                               value={editingDraft.eventType}
                               onChange={event =>
                                 setEditingDraft(prev =>
@@ -613,6 +677,7 @@ export const JudgePanel = () => {
                               ))}
                             </select>
                             <select
+                              className="form-control form-select"
                               value={editingDraft.teamId}
                               onChange={event =>
                                 setEditingDraft(prev =>
@@ -621,37 +686,54 @@ export const JudgePanel = () => {
                               }
                               required
                             >
-                              <option value={selectedMatch.homeClub.id}>
+                              <option value={String(selectedMatch.homeClub.id)}>
                                 {selectedMatch.homeClub.shortName || selectedMatch.homeClub.name}
                               </option>
-                              <option value={selectedMatch.awayClub.id}>
+                              <option value={String(selectedMatch.awayClub.id)}>
                                 {selectedMatch.awayClub.shortName || selectedMatch.awayClub.name}
                               </option>
                             </select>
-                            <input
-                              type="number"
-                              min={1}
+                            <select
+                              className="form-control form-select"
                               value={editingDraft.playerId}
-                              list={resolveListId(editingDraft.teamId)}
                               onChange={event =>
                                 setEditingDraft(prev =>
                                   prev ? { ...prev, playerId: event.target.value } : prev
                                 )
                               }
+                              disabled={!editingTeamSelected || editingPlayers.length === 0}
                               required
-                            />
-                            <input
-                              type="number"
-                              min={1}
+                            >
+                              <option value="">—</option>
+                              {editingPlayers.map(player => (
+                                <option
+                                  key={`edit-player-${player.personId}`}
+                                  value={String(player.personId)}
+                                >
+                                  {formatPlayerLabel(player)}
+                                </option>
+                              ))}
+                            </select>
+                            <select
+                              className="form-control form-select"
                               value={editingDraft.relatedPlayerId}
-                              list={resolveListId(editingDraft.teamId) || allListId}
                               onChange={event =>
                                 setEditingDraft(prev =>
                                   prev ? { ...prev, relatedPlayerId: event.target.value } : prev
                                 )
                               }
-                              placeholder="Опционально"
-                            />
+                              disabled={!editingAssistAvailable}
+                            >
+                              <option value="">—</option>
+                              {allPlayers.map(player => (
+                                <option
+                                  key={`edit-assist-${player.personId}`}
+                                  value={String(player.personId)}
+                                >
+                                  {formatPlayerLabel(player)}
+                                </option>
+                              ))}
+                            </select>
                             <div className="event-buttons">
                               <button
                                 className="button-primary"
@@ -665,42 +747,46 @@ export const JudgePanel = () => {
                               </button>
                             </div>
                           </form>
-                        ) : (
-                          <div className="event-row">
-                            <div className="event-minute">{entry.minute}&apos;</div>
-                            <div className="event-type">
-                              {EVENT_OPTIONS.find(option => option.value === entry.eventType)
-                                ?.label ?? entry.eventType}
-                            </div>
-                            <div className="event-team">
-                              {entry.teamId === selectedMatch.homeClub.id
-                                ? selectedMatch.homeClub.shortName || selectedMatch.homeClub.name
-                                : selectedMatch.awayClub.shortName || selectedMatch.awayClub.name}
-                            </div>
-                            <div className="event-player">
-                              {entry.player
-                                ? `${entry.player.shirtNumber ? `#${entry.player.shirtNumber}` : '—'} ${`${entry.player.lastName ?? ''} ${entry.player.firstName ?? ''}`.trim()}`.trim()
-                                : `ID ${entry.playerId}`}
-                            </div>
-                            <div className="event-controls">
-                              <button
-                                className="button-ghost"
-                                type="button"
-                                onClick={() => beginEditEvent(entry)}
-                              >
-                                Править
-                              </button>
-                              <button
-                                className="button-danger"
-                                type="button"
-                                onClick={() => handleDeleteEvent(entry.id)}
-                                disabled={isActionBusy}
-                              >
-                                Удалить
-                              </button>
-                            </div>
+                        </li>
+                      )
+                    }
+
+                    return (
+                      <li key={entry.id} className="event-item">
+                        <div className="event-row">
+                          <div className="event-minute">{entry.minute}&apos;</div>
+                          <div className="event-type">
+                            {EVENT_OPTIONS.find(option => option.value === entry.eventType)
+                              ?.label ?? entry.eventType}
                           </div>
-                        )}
+                          <div className="event-team">
+                            {entry.teamId === selectedMatch.homeClub.id
+                              ? selectedMatch.homeClub.shortName || selectedMatch.homeClub.name
+                              : selectedMatch.awayClub.shortName || selectedMatch.awayClub.name}
+                          </div>
+                          <div className="event-player">
+                            {entry.player
+                              ? `${entry.player.shirtNumber ? `#${entry.player.shirtNumber}` : '—'} ${`${entry.player.lastName ?? ''} ${entry.player.firstName ?? ''}`.trim()}`.trim()
+                              : `ID ${entry.playerId}`}
+                          </div>
+                          <div className="event-controls">
+                            <button
+                              className="button-ghost"
+                              type="button"
+                              onClick={() => beginEditEvent(entry)}
+                            >
+                              Править
+                            </button>
+                            <button
+                              className="button-danger"
+                              type="button"
+                              onClick={() => handleDeleteEvent(entry.id)}
+                              disabled={isActionBusy}
+                            >
+                              Удалить
+                            </button>
+                          </div>
+                        </div>
                       </li>
                     )
                   })}

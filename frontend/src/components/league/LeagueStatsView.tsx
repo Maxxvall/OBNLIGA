@@ -121,7 +121,7 @@ const CATEGORY_CONFIG: Record<LeagueStatsCategory, CategoryConfig> = {
   },
 }
 
-const formatUpdatedAt = (generatedAt?: string, fallback?: number): string => {
+const formatUpdatedAt = (generatedAt?: string, fallback?: number): string | undefined => {
   if (generatedAt) {
     const stamp = new Date(generatedAt)
     if (!Number.isNaN(stamp.getTime())) {
@@ -134,12 +134,23 @@ const formatUpdatedAt = (generatedAt?: string, fallback?: number): string => {
       return stamp.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
     }
   }
-  return ''
+  return undefined
 }
 
 const formatPlayerName = (entry: LeaguePlayerLeaderboardEntry): string => {
-  const prime = `${entry.lastName} ${entry.firstName}`.trim()
-  return prime || entry.firstName || entry.lastName
+  const last = entry.lastName?.trim() ?? ''
+  const first = entry.firstName?.trim() ?? ''
+  const initial = first ? `${first[0]?.toUpperCase()}.` : ''
+  if (last && initial) {
+    return `${last} ${initial}`
+  }
+  if (last) {
+    return last
+  }
+  if (first) {
+    return first
+  }
+  return `ID ${entry.personId}`
 }
 
 export const LeagueStatsView: React.FC<LeagueStatsViewProps> = ({
@@ -164,13 +175,10 @@ export const LeagueStatsView: React.FC<LeagueStatsViewProps> = ({
     return stats.leaderboards[activeCategory] ?? []
   }, [stats, activeCategory])
 
-  const updatedLabel = useMemo(() => {
-    const timeLabel = formatUpdatedAt(stats?.generatedAt, lastUpdated)
-    if (!timeLabel) {
-      return 'Актуальные данные'
-    }
-    return `Обновлено в ${timeLabel}`
-  }, [stats?.generatedAt, lastUpdated])
+  const updatedLabel = useMemo(
+    () => formatUpdatedAt(stats?.generatedAt, lastUpdated),
+    [stats?.generatedAt, lastUpdated]
+  )
 
   const handlePrev = () => {
     setActiveIndex(prev => (prev - 1 + categories.length) % categories.length)
@@ -238,7 +246,9 @@ export const LeagueStatsView: React.FC<LeagueStatsViewProps> = ({
             &gt;
           </button>
         </div>
-        <span className="muted stats-updated">{updatedLabel}</span>
+        {updatedLabel ? (
+          <span className="muted stats-updated">{updatedLabel}</span>
+        ) : null}
       </header>
 
       <div className={`stats-table ${metricsClass}`} role="table">
@@ -301,7 +311,6 @@ export const LeagueStatsView: React.FC<LeagueStatsViewProps> = ({
                     </span>
                   )}
                 </button>
-                <span className="club-name">{entry.clubName}</span>
               </span>
               {config.columns.map(column => (
                 <span

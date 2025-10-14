@@ -119,15 +119,15 @@
 }
 
 .stats-row.metrics-4 {
-  grid-template-columns: 32px minmax(0, 1.25fr) minmax(0, 1.1fr) repeat(4, minmax(0, 0.65fr));
+  grid-template-columns: 32px minmax(0, 1.35fr) minmax(64px, 0.7fr) repeat(4, minmax(0, 0.65fr));
 }
 
 .stats-row.metrics-3 {
-  grid-template-columns: 32px minmax(0, 1.3fr) minmax(0, 1.1fr) repeat(3, minmax(0, 0.8fr));
+  grid-template-columns: 32px minmax(0, 1.35fr) minmax(64px, 0.7fr) repeat(3, minmax(0, 0.8fr));
 }
 
 .stats-row.metrics-2 {
-  grid-template-columns: 32px minmax(0, 1.4fr) minmax(0, 1.2fr) repeat(2, minmax(0, 1fr));
+  grid-template-columns: 32px minmax(0, 1.45fr) minmax(64px, 0.75fr) repeat(2, minmax(0, 1fr));
 }
 
 .col-rank {
@@ -151,6 +151,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  justify-content: center;
 }
 
 .club-logo {
@@ -166,10 +167,6 @@
   background: rgba(0, 240, 255, 0.12);
   color: var(--neon-cyan);
   font-weight: 600;
-}
-
-.club-name {
-  font-size: 14px;
 }
 
 .col-metric {
@@ -260,15 +257,15 @@
   }
 
   .stats-row.metrics-4 {
-    grid-template-columns: 28px minmax(0, 1.25fr) minmax(0, 1fr) repeat(4, minmax(0, 0.6fr));
+    grid-template-columns: 28px minmax(0, 1.35fr) minmax(56px, 0.7fr) repeat(4, minmax(0, 0.55fr));
   }
 
   .stats-row.metrics-3 {
-    grid-template-columns: 28px minmax(0, 1.3fr) minmax(0, 1.05fr) repeat(3, minmax(0, 0.75fr));
+    grid-template-columns: 28px minmax(0, 1.35fr) minmax(56px, 0.7fr) repeat(3, minmax(0, 0.7fr));
   }
 
   .stats-row.metrics-2 {
-    grid-template-columns: 28px minmax(0, 1.35fr) minmax(0, 1.1fr) repeat(2, minmax(0, 0.9fr));
+    grid-template-columns: 28px minmax(0, 1.4fr) minmax(56px, 0.75fr) repeat(2, minmax(0, 0.85fr));
   }
 
   .club-name {
@@ -286,14 +283,14 @@
   }
 
   .stats-row.metrics-4 {
-    grid-template-columns: 28px minmax(0, 1.2fr) minmax(0, 1fr) repeat(4, minmax(0, 0.55fr));
+    grid-template-columns: 28px minmax(0, 1.3fr) minmax(56px, 0.7fr) repeat(4, minmax(0, 0.5fr));
   }
 
   .stats-row.metrics-3 {
-    grid-template-columns: 28px minmax(0, 1.25fr) minmax(0, 1.05fr) repeat(3, minmax(0, 0.7fr));
+    grid-template-columns: 28px minmax(0, 1.3fr) minmax(56px, 0.7fr) repeat(3, minmax(0, 0.65fr));
   }
 
   .stats-row.metrics-2 {
-    grid-template-columns: 28px minmax(0, 1.3fr) minmax(0, 1.05fr) repeat(2, minmax(0, 0.85fr));
+    grid-template-columns: 28px minmax(0, 1.35fr) minmax(56px, 0.75fr) repeat(2, minmax(0, 0.8fr));
   }
 }

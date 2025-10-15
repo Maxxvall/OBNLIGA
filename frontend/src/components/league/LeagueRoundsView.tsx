@@ -146,6 +146,185 @@ const getEmptyMessage = (mode: 'schedule' | 'results'): string => {
   return 'Результаты матчей появятся сразу после завершения игр.'
 }
 
+const LIVE_HIGHLIGHT_DURATION = 2200
+const SCORE_HIGHLIGHT_DURATION = 1400
+
+type MatchSnapshot = {
+  status: LeagueMatchView['status']
+  homeScore: number | null
+  awayScore: number | null
+}
+
+const useMatchAnimations = (collection?: LeagueRoundCollection) => {
+  const snapshotsRef = React.useRef<Map<string, MatchSnapshot>>(new Map())
+  const liveTimersRef = React.useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  const scoreTimersRef = React.useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  const [liveHighlightIds, setLiveHighlightIds] = React.useState<Set<string>>(new Set())
+  const [scoreHighlightIds, setScoreHighlightIds] = React.useState<Set<string>>(new Set())
+
+  React.useEffect(() => {
+    if (!collection) {
+      snapshotsRef.current.clear()
+      liveTimersRef.current.forEach(clearTimeout)
+      liveTimersRef.current.clear()
+      scoreTimersRef.current.forEach(clearTimeout)
+      scoreTimersRef.current.clear()
+      setLiveHighlightIds(prev => (prev.size ? new Set<string>() : prev))
+      setScoreHighlightIds(prev => (prev.size ? new Set<string>() : prev))
+      return
+    }
+
+    const previous = snapshotsRef.current
+    const next = new Map<string, MatchSnapshot>()
+    const seenIds = new Set<string>()
+    const liveActivated: Set<string> = new Set()
+    const scoreChanged: Set<string> = new Set()
+
+    const roundsList = collection.rounds ?? []
+    for (const round of roundsList) {
+      for (const match of round.matches) {
+        seenIds.add(match.id)
+        const prevSnapshot = previous.get(match.id)
+        const current: MatchSnapshot = {
+          status: match.status,
+          homeScore: match.homeScore ?? null,
+          awayScore: match.awayScore ?? null,
+        }
+
+        if (prevSnapshot) {
+          if (current.status === 'LIVE' && prevSnapshot.status !== 'LIVE') {
+            liveActivated.add(match.id)
+          }
+          if (
+            prevSnapshot.homeScore !== current.homeScore ||
+            prevSnapshot.awayScore !== current.awayScore
+          ) {
+            scoreChanged.add(match.id)
+          }
+        }
+
+        next.set(match.id, current)
+      }
+    }
+
+    const removedIds: string[] = []
+    previous.forEach((_, id) => {
+      if (!seenIds.has(id)) {
+        removedIds.push(id)
+      }
+    })
+
+    snapshotsRef.current = next
+
+    if (removedIds.length) {
+      setLiveHighlightIds(prev => {
+        if (!removedIds.some(id => prev.has(id))) {
+          return prev
+        }
+        const updated = new Set(prev)
+        removedIds.forEach(id => updated.delete(id))
+        return updated
+      })
+      setScoreHighlightIds(prev => {
+        if (!removedIds.some(id => prev.has(id))) {
+          return prev
+        }
+        const updated = new Set(prev)
+        removedIds.forEach(id => updated.delete(id))
+        return updated
+      })
+      removedIds.forEach(id => {
+        const liveTimer = liveTimersRef.current.get(id)
+        if (liveTimer) {
+          clearTimeout(liveTimer)
+          liveTimersRef.current.delete(id)
+        }
+        const scoreTimer = scoreTimersRef.current.get(id)
+        if (scoreTimer) {
+          clearTimeout(scoreTimer)
+          scoreTimersRef.current.delete(id)
+        }
+      })
+    }
+
+    if (liveActivated.size) {
+      const ids = Array.from(liveActivated)
+      setLiveHighlightIds(prev => {
+        let changed = false
+        const updated = new Set(prev)
+        ids.forEach(id => {
+          if (!updated.has(id)) {
+            updated.add(id)
+            changed = true
+          }
+        })
+        return changed ? updated : prev
+      })
+      ids.forEach(id => {
+        const existing = liveTimersRef.current.get(id)
+        if (existing) {
+          clearTimeout(existing)
+        }
+        const timeout = setTimeout(() => {
+          setLiveHighlightIds(prev => {
+            if (!prev.has(id)) {
+              return prev
+            }
+            const trimmed = new Set(prev)
+            trimmed.delete(id)
+            return trimmed
+          })
+          liveTimersRef.current.delete(id)
+        }, LIVE_HIGHLIGHT_DURATION)
+        liveTimersRef.current.set(id, timeout)
+      })
+    }
+
+    if (scoreChanged.size) {
+      const ids = Array.from(scoreChanged)
+      setScoreHighlightIds(prev => {
+        let changed = false
+        const updated = new Set(prev)
+        ids.forEach(id => {
+          if (!updated.has(id)) {
+            updated.add(id)
+            changed = true
+          }
+        })
+        return changed ? updated : prev
+      })
+      ids.forEach(id => {
+        const existing = scoreTimersRef.current.get(id)
+        if (existing) {
+          clearTimeout(existing)
+        }
+        const timeout = setTimeout(() => {
+          setScoreHighlightIds(prev => {
+            if (!prev.has(id)) {
+              return prev
+            }
+            const trimmed = new Set(prev)
+            trimmed.delete(id)
+            return trimmed
+          })
+          scoreTimersRef.current.delete(id)
+        }, SCORE_HIGHLIGHT_DURATION)
+        scoreTimersRef.current.set(id, timeout)
+      })
+    }
+  }, [collection])
+
+  React.useEffect(
+    () => () => {
+      liveTimersRef.current.forEach(clearTimeout)
+      scoreTimersRef.current.forEach(clearTimeout)
+    },
+    []
+  )
+
+  return { liveHighlightIds, scoreHighlightIds }
+}
+
 export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
   mode,
   data,
@@ -157,6 +336,7 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
   const openTeamView = useAppStore(state => state.openTeamView)
   const tablesBySeason = useAppStore(state => state.tables)
   const resultsBySeason = useAppStore(state => state.results)
+  const { liveHighlightIds, scoreHighlightIds } = useMatchAnimations(data)
   const seasonId = data?.season.id ?? null
   const seasonTable = seasonId ? tablesBySeason[seasonId] : undefined
   const seasonResults = seasonId ? resultsBySeason[seasonId] : undefined
@@ -318,7 +498,7 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
           <h2>{headerTitle}</h2>
           <p>{season.name}</p>
         </div>
-        <span className="muted">{isRefreshing ? 'Обновляем…' : updatedLabel}</span>
+        <span className="muted">{updatedLabel}</span>
       </header>
 
       {rounds.length === 0 ? (
@@ -401,11 +581,18 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
                     const homeName = match.homeClub.name
                     const awayName = match.awayClub.name
                     const location = buildLocationLabel(match)
+                    const isLiveActivated = liveHighlightIds.has(match.id)
+                    const isScoreUpdated = scoreHighlightIds.has(match.id)
+                    const cardClasses = ['league-match-card']
+                    if (descriptor.modifier) {
+                      cardClasses.push(descriptor.modifier)
+                    }
+                    if (isLiveActivated) {
+                      cardClasses.push('live-activated')
+                    }
+                    const scoreClassName = `league-match-score${isScoreUpdated ? ' score-updated' : ''}`
                     return (
-                      <div
-                        className={`league-match-card${descriptor.modifier ? ` ${descriptor.modifier}` : ''}`}
-                        key={match.id}
-                      >
+                      <div className={cardClasses.join(' ')} key={match.id}>
                         <div className="league-match-top">
                           <span className="match-datetime">{descriptor.dateTime}</span>
                           {descriptor.badge && (
@@ -435,7 +622,7 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
                             </button>
                             <span className="team-name">{homeName}</span>
                           </div>
-                          <div className="league-match-score">
+                          <div className={scoreClassName}>
                             <span className="score-main">{descriptor.score}</span>
                             {descriptor.detail && (
                               <span className="score-detail">{descriptor.detail}</span>

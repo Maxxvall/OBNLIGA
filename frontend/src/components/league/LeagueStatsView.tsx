@@ -254,9 +254,7 @@ export const LeagueStatsView: React.FC<LeagueStatsViewProps> = ({
           </button>
         </div>
         <span className="muted stats-updated">
-          {isRefreshing
-            ? 'Обновляем…'
-            : updatedLabel ?? 'Актуальные данные'}
+          {updatedLabel ?? 'Актуальные данные'}
         </span>
       </header>
 

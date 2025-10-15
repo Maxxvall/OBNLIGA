@@ -70,7 +70,7 @@ export const LeagueTableView: React.FC<LeagueTableViewProps> = ({
           <h2>{season.name}</h2>
           <p>{season.competition.name}</p>
         </div>
-        <span className="muted">{isRefreshing ? 'Обновляем…' : updatedLabel}</span>
+        <span className="muted">{updatedLabel}</span>
       </header>
       <div className="league-table-scroll">
         <div role="table" className="league-table-grid">

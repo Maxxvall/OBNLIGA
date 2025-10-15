@@ -1,9 +1,13 @@
 import { create } from 'zustand'
 import type {
   LeagueRoundCollection,
+  LeagueRoundMatches,
+  LeagueMatchView,
   LeagueSeasonSummary,
   LeagueTableResponse,
   LeagueStatsResponse,
+  LeagueStatsCategory,
+  LeaguePlayerLeaderboardEntry,
   ClubSummaryResponse,
 } from '@shared/types'
 import { leagueApi } from '../api/leagueApi'
@@ -36,6 +40,320 @@ const DOUBLE_TAP_THRESHOLD_MS = 280
 const LEAGUE_POLL_INTERVAL_MS = 10_000
 const TEAM_POLL_INTERVAL_MS = 20_000
 const hasWindow = typeof window !== 'undefined'
+
+const areCompetitionsEqual = (
+  left: LeagueSeasonSummary['competition'],
+  right: LeagueSeasonSummary['competition']
+): boolean =>
+  left.id === right.id && left.name === right.name && left.type === right.type
+
+const areSeasonsEqual = (left: LeagueSeasonSummary, right: LeagueSeasonSummary): boolean =>
+  left.id === right.id &&
+  left.name === right.name &&
+  left.startDate === right.startDate &&
+  left.endDate === right.endDate &&
+  left.isActive === right.isActive &&
+  left.city === right.city &&
+  areCompetitionsEqual(left.competition, right.competition)
+
+const reuseSeason = (
+  previous: LeagueSeasonSummary | undefined,
+  incoming: LeagueSeasonSummary
+): LeagueSeasonSummary => {
+  if (!previous) {
+    return incoming
+  }
+  return areSeasonsEqual(previous, incoming) ? previous : incoming
+}
+
+const areTableEntriesEqual = (left: LeagueTableResponse['standings'][number], right: LeagueTableResponse['standings'][number]): boolean =>
+  left.position === right.position &&
+  left.clubId === right.clubId &&
+  left.clubName === right.clubName &&
+  left.clubShortName === right.clubShortName &&
+  left.clubLogoUrl === right.clubLogoUrl &&
+  left.matchesPlayed === right.matchesPlayed &&
+  left.wins === right.wins &&
+  left.draws === right.draws &&
+  left.losses === right.losses &&
+  left.goalsFor === right.goalsFor &&
+  left.goalsAgainst === right.goalsAgainst &&
+  left.goalDifference === right.goalDifference &&
+  left.points === right.points
+
+const mergeLeagueTable = (
+  previous: LeagueTableResponse | undefined,
+  incoming: LeagueTableResponse
+): LeagueTableResponse => {
+  if (!previous || previous.season.id !== incoming.season.id) {
+    return incoming
+  }
+
+  const season = reuseSeason(previous.season, incoming.season)
+
+  const previousEntries = new Map<number, LeagueTableResponse['standings'][number]>()
+  previous.standings.forEach(entry => {
+    previousEntries.set(entry.clubId, entry)
+  })
+
+  const nextStandings = incoming.standings.map(entry => {
+    const existing = previousEntries.get(entry.clubId)
+    if (existing && areTableEntriesEqual(existing, entry)) {
+      return existing
+    }
+    return entry
+  })
+
+  const unchanged =
+    season === previous.season &&
+    nextStandings.length === previous.standings.length &&
+    nextStandings.every((entry, index) => entry === previous.standings[index])
+
+  if (unchanged) {
+    return previous
+  }
+
+  return {
+    season,
+    standings: nextStandings,
+  }
+}
+
+const areClubsEqual = (
+  left: LeagueMatchView['homeClub'],
+  right: LeagueMatchView['homeClub']
+): boolean =>
+  left.id === right.id &&
+  left.name === right.name &&
+  left.shortName === right.shortName &&
+  left.logoUrl === right.logoUrl
+
+const areLocationsEqual = (
+  left: LeagueMatchView['location'],
+  right: LeagueMatchView['location']
+): boolean => {
+  if (!left && !right) {
+    return true
+  }
+  if (!left || !right) {
+    return false
+  }
+  return (
+    left.stadiumId === right.stadiumId &&
+    left.stadiumName === right.stadiumName &&
+    left.city === right.city
+  )
+}
+
+const areSeriesEqual = (
+  left: NonNullable<LeagueMatchView['series']>,
+  right: NonNullable<LeagueMatchView['series']>
+): boolean =>
+  left.id === right.id &&
+  left.stageName === right.stageName &&
+  left.status === right.status &&
+  left.matchNumber === right.matchNumber &&
+  left.totalMatches === right.totalMatches &&
+  left.requiredWins === right.requiredWins &&
+  left.homeWinsBefore === right.homeWinsBefore &&
+  left.awayWinsBefore === right.awayWinsBefore &&
+  left.homeWinsAfter === right.homeWinsAfter &&
+  left.awayWinsAfter === right.awayWinsAfter &&
+  left.homeWinsTotal === right.homeWinsTotal &&
+  left.awayWinsTotal === right.awayWinsTotal &&
+  left.winnerClubId === right.winnerClubId &&
+  left.homeClubId === right.homeClubId &&
+  left.awayClubId === right.awayClubId &&
+  areClubsEqual(left.homeClub, right.homeClub) &&
+  areClubsEqual(left.awayClub, right.awayClub)
+
+const areMatchesEqual = (left: LeagueMatchView, right: LeagueMatchView): boolean =>
+  left.id === right.id &&
+  left.matchDateTime === right.matchDateTime &&
+  left.status === right.status &&
+  left.homeScore === right.homeScore &&
+  left.awayScore === right.awayScore &&
+  left.hasPenaltyShootout === right.hasPenaltyShootout &&
+  left.penaltyHomeScore === right.penaltyHomeScore &&
+  left.penaltyAwayScore === right.penaltyAwayScore &&
+  areClubsEqual(left.homeClub, right.homeClub) &&
+  areClubsEqual(left.awayClub, right.awayClub) &&
+  areLocationsEqual(left.location, right.location) &&
+  (left.series === right.series ||
+    (left.series && right.series ? areSeriesEqual(left.series, right.series) : false))
+
+const mergeRoundMatches = (
+  previous: LeagueRoundMatches | undefined,
+  incoming: LeagueRoundMatches
+): LeagueRoundMatches => {
+  if (!previous) {
+    return incoming
+  }
+
+  const sameMeta =
+    previous.roundId === incoming.roundId &&
+    previous.roundNumber === incoming.roundNumber &&
+    previous.roundLabel === incoming.roundLabel &&
+    previous.roundType === incoming.roundType
+
+  const previousMatches = new Map<string, LeagueMatchView>()
+  previous.matches.forEach((match: LeagueMatchView) => {
+    previousMatches.set(match.id, match)
+  })
+
+  let changes = false
+  const mergedMatches = incoming.matches.map((match: LeagueMatchView) => {
+    const existing = previousMatches.get(match.id)
+    if (existing && areMatchesEqual(existing, match)) {
+      return existing
+    }
+    changes = true
+    return match
+  })
+
+  if (!changes) {
+    const sameOrder =
+      mergedMatches.length === previous.matches.length &&
+      mergedMatches.every((match: LeagueMatchView, index: number) => match === previous.matches[index])
+    if (sameMeta && sameOrder) {
+      return previous
+    }
+  }
+
+  if (!changes && sameMeta) {
+    return previous
+  }
+
+  return {
+    ...incoming,
+    matches: mergedMatches,
+  }
+}
+
+const mergeRoundCollection = (
+  previous: LeagueRoundCollection | undefined,
+  incoming: LeagueRoundCollection
+): LeagueRoundCollection => {
+  if (!previous || previous.season.id !== incoming.season.id) {
+    return incoming
+  }
+
+  const season = reuseSeason(previous.season, incoming.season)
+  const previousRounds = new Map<string, LeagueRoundMatches>()
+  previous.rounds.forEach(round => {
+    const key = round.roundId !== null ? String(round.roundId) : round.roundLabel
+    previousRounds.set(key, round)
+  })
+
+  let changed = season !== previous.season || incoming.generatedAt !== previous.generatedAt
+
+  const mergedRounds = incoming.rounds.map(round => {
+    const key = round.roundId !== null ? String(round.roundId) : round.roundLabel
+    const existing = previousRounds.get(key)
+    if (!existing) {
+      changed = true
+      return round
+    }
+    const merged = mergeRoundMatches(existing, round)
+    if (merged !== existing) {
+      changed = true
+    }
+    return merged
+  })
+
+  if (
+    !changed &&
+    mergedRounds.length === previous.rounds.length &&
+    mergedRounds.every((round: LeagueRoundMatches, index: number) => round === previous.rounds[index])
+  ) {
+    return previous
+  }
+
+  return {
+    season,
+    rounds: mergedRounds,
+    generatedAt: incoming.generatedAt,
+  }
+}
+
+const STAT_CATEGORIES: LeagueStatsCategory[] = ['goalContribution', 'scorers', 'assists']
+
+const areLeaderboardEntriesEqual = (
+  left: LeaguePlayerLeaderboardEntry,
+  right: LeaguePlayerLeaderboardEntry
+): boolean =>
+  left.personId === right.personId &&
+  left.firstName === right.firstName &&
+  left.lastName === right.lastName &&
+  left.clubId === right.clubId &&
+  left.clubName === right.clubName &&
+  left.clubShortName === right.clubShortName &&
+  left.clubLogoUrl === right.clubLogoUrl &&
+  left.matchesPlayed === right.matchesPlayed &&
+  left.goals === right.goals &&
+  left.assists === right.assists &&
+  left.penaltyGoals === right.penaltyGoals
+
+const mergeStatsResponse = (
+  previous: LeagueStatsResponse | undefined,
+  incoming: LeagueStatsResponse
+): LeagueStatsResponse => {
+  if (!previous || previous.season.id !== incoming.season.id) {
+    return incoming
+  }
+
+  const season = reuseSeason(previous.season, incoming.season)
+  let changed = season !== previous.season || incoming.generatedAt !== previous.generatedAt
+  const leaderboards: LeagueStatsResponse['leaderboards'] = {
+    goalContribution: [],
+    scorers: [],
+    assists: [],
+  }
+
+  STAT_CATEGORIES.forEach(category => {
+    const prevEntries = previous.leaderboards[category] ?? []
+    const nextEntries = incoming.leaderboards[category] ?? []
+    const prevByKey = new Map<string, LeaguePlayerLeaderboardEntry>()
+    prevEntries.forEach(entry => {
+      prevByKey.set(`${entry.personId}:${entry.clubId}`, entry)
+    })
+
+    let localChanged = prevEntries.length !== nextEntries.length
+    const mergedEntries = nextEntries.map(entry => {
+      const existing = prevByKey.get(`${entry.personId}:${entry.clubId}`)
+      if (existing && areLeaderboardEntriesEqual(existing, entry)) {
+        return existing
+      }
+      localChanged = true
+      return entry
+    })
+
+    const sameOrder =
+      !localChanged &&
+      mergedEntries.length === prevEntries.length &&
+      mergedEntries.every((entry, index) => entry === prevEntries[index])
+
+    if (sameOrder) {
+      leaderboards[category] = prevEntries
+    } else {
+      leaderboards[category] = mergedEntries
+    }
+
+    if (!sameOrder) {
+      changed = true
+    }
+  })
+
+  if (!changed) {
+    return previous
+  }
+
+  return {
+    season,
+    generatedAt: incoming.generatedAt,
+    leaderboards,
+  }
+}
 
 let leaguePollingTimer: number | null = null
 let teamPollingTimer: number | null = null
@@ -504,15 +822,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       }))
       return { ok: true }
     }
-    const payload = response.data
     const nextVersion = response.version ?? state.tableVersions[seasonId]
-    set(prev => ({
-      tables: { ...prev.tables, [seasonId]: payload },
-      tableVersions: { ...prev.tableVersions, [seasonId]: nextVersion },
-      tableFetchedAt: { ...prev.tableFetchedAt, [seasonId]: now },
-      loading: { ...prev.loading, table: false },
-      activeSeasonId: payload.season.isActive ? payload.season.id : prev.activeSeasonId,
-    }))
+    set(prev => {
+      const nextTable = mergeLeagueTable(prev.tables[seasonId], response.data)
+      return {
+        tables: { ...prev.tables, [seasonId]: nextTable },
+        tableVersions: { ...prev.tableVersions, [seasonId]: nextVersion },
+        tableFetchedAt: { ...prev.tableFetchedAt, [seasonId]: now },
+        loading: { ...prev.loading, table: false },
+        activeSeasonId: nextTable.season.isActive ? nextTable.season.id : prev.activeSeasonId,
+      }
+    })
     return { ok: true }
   },
   fetchLeagueSchedule: async options => {
@@ -557,15 +877,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       }))
       return { ok: true }
     }
-    const payload = response.data
     const nextVersion = response.version ?? state.scheduleVersions[seasonId]
-    set(prev => ({
-      schedules: { ...prev.schedules, [seasonId]: payload },
-      scheduleVersions: { ...prev.scheduleVersions, [seasonId]: nextVersion },
-      scheduleFetchedAt: { ...prev.scheduleFetchedAt, [seasonId]: now },
-      loading: { ...prev.loading, schedule: false },
-      activeSeasonId: payload.season.isActive ? payload.season.id : prev.activeSeasonId,
-    }))
+    set(prev => {
+      const nextSchedule = mergeRoundCollection(prev.schedules[seasonId], response.data)
+      return {
+        schedules: { ...prev.schedules, [seasonId]: nextSchedule },
+        scheduleVersions: { ...prev.scheduleVersions, [seasonId]: nextVersion },
+        scheduleFetchedAt: { ...prev.scheduleFetchedAt, [seasonId]: now },
+        loading: { ...prev.loading, schedule: false },
+        activeSeasonId: nextSchedule.season.isActive ? nextSchedule.season.id : prev.activeSeasonId,
+      }
+    })
     return { ok: true }
   },
   fetchLeagueResults: async options => {
@@ -610,15 +932,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       }))
       return { ok: true }
     }
-    const payload = response.data
     const nextVersion = response.version ?? state.resultsVersions[seasonId]
-    set(prev => ({
-      results: { ...prev.results, [seasonId]: payload },
-      resultsVersions: { ...prev.resultsVersions, [seasonId]: nextVersion },
-      resultsFetchedAt: { ...prev.resultsFetchedAt, [seasonId]: now },
-      loading: { ...prev.loading, results: false },
-      activeSeasonId: payload.season.isActive ? payload.season.id : prev.activeSeasonId,
-    }))
+    set(prev => {
+      const nextResults = mergeRoundCollection(prev.results[seasonId], response.data)
+      return {
+        results: { ...prev.results, [seasonId]: nextResults },
+        resultsVersions: { ...prev.resultsVersions, [seasonId]: nextVersion },
+        resultsFetchedAt: { ...prev.resultsFetchedAt, [seasonId]: now },
+        loading: { ...prev.loading, results: false },
+        activeSeasonId: nextResults.season.isActive ? nextResults.season.id : prev.activeSeasonId,
+      }
+    })
     return { ok: true }
   },
   fetchLeagueStats: async options => {
@@ -663,15 +987,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       }))
       return { ok: true }
     }
-    const payload = response.data
     const nextVersion = response.version ?? state.statsVersions[seasonId]
-    set(prev => ({
-      stats: { ...prev.stats, [seasonId]: payload },
-      statsVersions: { ...prev.statsVersions, [seasonId]: nextVersion },
-      statsFetchedAt: { ...prev.statsFetchedAt, [seasonId]: now },
-      loading: { ...prev.loading, stats: false },
-      activeSeasonId: payload.season.isActive ? payload.season.id : prev.activeSeasonId,
-    }))
+    set(prev => {
+      const nextStats = mergeStatsResponse(prev.stats[seasonId], response.data)
+      return {
+        stats: { ...prev.stats, [seasonId]: nextStats },
+        statsVersions: { ...prev.statsVersions, [seasonId]: nextVersion },
+        statsFetchedAt: { ...prev.statsFetchedAt, [seasonId]: now },
+        loading: { ...prev.loading, stats: false },
+        activeSeasonId: nextStats.season.isActive ? nextStats.season.id : prev.activeSeasonId,
+      }
+    })
     return { ok: true }
   },
   ensureLeaguePolling: () => {

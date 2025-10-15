@@ -151,6 +151,7 @@ Edge cases / Notes
   - `setTab(tab)` — переключает активную вкладку.
   - `clearError()` — сбрасывает сообщение об ошибке при фокусе формы.
   - `fetchSeasons()`, `fetchSeries(seasonId?)`, `fetchMatches(seasonId?)` — синхронизируют данные выбранного сезона.
+  - `deleteSeason(seasonId)` — удаляет сезон вместе с расписанием и статистикой, сбрасывает выбор и перезагружает справочные данные.
   - `fetchFriendlyMatches()` — загружает список товарищеских игр через `/api/admin/friendly-matches`.
   - Кэширование данных без фонового воркера: все fetch-* действия используют локальный TTL (SWR) поверх Zustand. TTL (мс): `dictionaries = 60000`, `seasons = 30000`, `series = 15000`, `matches = 10000`, `friendlyMatches = 45000`, `stats = 20000`, `users/predictions = 60000`, `achievements = 120000`, `disqualifications = 30000`. Ключи параметризуются сезон/турнир; сброс кеша происходит при `login/logout` и выборах, которые меняют параметры (сезон/турнир).
   - Версии ответов: сервер возвращает заголовок `X-Resource-Version` и `meta.version` для всех `/api/admin/stats/*`. Store планирует сохранять версии в `fetchTimestamps` для будущей сверки с WS-патчами.

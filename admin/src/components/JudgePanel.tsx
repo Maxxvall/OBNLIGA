@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { useAdminStore } from '../store/adminStore'
 import { useJudgeStore } from '../store/judgeStore'
 import type { JudgeMatchSummary, MatchEventEntry, MatchLineupEntry } from '../types'
+import { formatDateTime } from '../utils/date'
 import './judge.css'
 
 const EVENT_OPTIONS: Array<{ value: MatchEventEntry['eventType']; label: string }> = [
@@ -429,7 +430,7 @@ export const JudgePanel = () => {
                       {match.status === 'LIVE' ? 'Идёт' : 'Завершён'}
                     </span>
                     <span className="match-date">
-                      {new Date(match.matchDateTime).toLocaleString('ru-RU')}
+                      {formatDateTime(match.matchDateTime)}
                     </span>
                   </button>
                 </li>

@@ -8,6 +8,7 @@ import type {
   MatchStatisticEntry,
   MatchStatisticMetric,
 } from '../types'
+import { formatDateTime } from '../utils/date'
 import './assistant.css'
 
 const EVENT_OPTIONS: Array<{ value: MatchEventEntry['eventType']; label: string }> = [
@@ -525,7 +526,7 @@ export const AssistantPanel = () => {
                         {matchStatusLabel(match)}
                       </span>
                       <span className="match-date">
-                        {new Date(match.matchDateTime).toLocaleString('ru-RU')}
+                        {formatDateTime(match.matchDateTime)}
                       </span>
                     </div>
                   </button>

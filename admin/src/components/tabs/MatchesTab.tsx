@@ -1,4 +1,4 @@
-import React, { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import React, { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   adjustMatchStatistic,
   adminDelete,
@@ -28,6 +28,7 @@ import {
   SeriesFormat,
 } from '../../types'
 import { PlayoffBracket } from '../PlayoffBracket'
+import { formatDateTime } from '../../utils/date'
 
 type FeedbackLevel = 'info' | 'success' | 'error'
 
@@ -293,6 +294,7 @@ export const MatchesTab = () => {
     fetchFriendlyMatches,
     fetchDictionaries,
     activateSeason,
+    deleteSeason,
     loading,
     error,
   } = useAdminStore(state => ({
@@ -306,6 +308,7 @@ export const MatchesTab = () => {
     fetchFriendlyMatches: state.fetchFriendlyMatches,
     fetchDictionaries: state.fetchDictionaries,
     activateSeason: state.activateSeason,
+    deleteSeason: state.deleteSeason,
     loading: state.loading,
     error: state.error,
   }))
@@ -379,6 +382,7 @@ export const MatchesTab = () => {
 
   const isLoading = Boolean(loading.matches || loading.seasons)
   const activatingSeason = Boolean(loading.activateSeason)
+  const deletingSeason = Boolean(loading.deleteSeason)
 
   const selectedSeason = useMemo<Season | undefined>(() => {
     return data.seasons.find(season => season.id === selectedSeasonId)
@@ -388,9 +392,25 @@ export const MatchesTab = () => {
     return data.seasons.find(season => season.isActive)
   }, [data.seasons])
 
+  const seasonDeleteDisabled =
+    !selectedSeason || deletingSeason || !token || Boolean(selectedSeason?.isActive)
+  const seasonDeleteTitle =
+    !selectedSeason || !selectedSeason.isActive
+      ? undefined
+      : 'Сезон активен — сначала сделайте активным другой сезон.'
+
   const seasonParticipants = useMemo<SeasonParticipant[]>(() => {
     return selectedSeason?.participants ?? []
   }, [selectedSeason])
+
+  const handleSeasonDelete = useCallback(() => {
+    if (!selectedSeason || deletingSeason) return
+    const confirmed = window.confirm(
+      `Удалить сезон «${selectedSeason.name}» и все связанные данные?`
+    )
+    if (!confirmed) return
+    void deleteSeason(selectedSeason.id)
+  }, [deleteSeason, deletingSeason, selectedSeason])
 
   const clubsById = useMemo(() => {
     const map = new Map<number, Club>()
@@ -1491,7 +1511,7 @@ export const MatchesTab = () => {
   ])
 
   const formattedMatchDate = selectedMatch
-    ? new Date(selectedMatch.matchDateTime).toLocaleString('ru-RU', {
+    ? formatDateTime(selectedMatch.matchDateTime, {
         day: '2-digit',
         month: 'long',
         hour: '2-digit',
@@ -1989,16 +2009,27 @@ export const MatchesTab = () => {
                     : 'не выбран'}
                 </strong>
               </span>
-              <button
-                className="button-primary"
-                type="button"
-                onClick={() => selectedSeason && activateSeason(selectedSeason.id)}
-                disabled={
-                  !selectedSeason || activatingSeason || selectedSeason.isActive || !token
-                }
-              >
-                {activatingSeason ? 'Сохраняем…' : 'Сделать активным'}
-              </button>
+              <div className="season-actions">
+                <button
+                  className="button-primary"
+                  type="button"
+                  onClick={() => selectedSeason && activateSeason(selectedSeason.id)}
+                  disabled={
+                    !selectedSeason || activatingSeason || selectedSeason.isActive || !token
+                  }
+                >
+                  {activatingSeason ? 'Сохраняем…' : 'Сделать активным'}
+                </button>
+                <button
+                  className="button-danger"
+                  type="button"
+                  onClick={handleSeasonDelete}
+                  disabled={seasonDeleteDisabled}
+                  title={seasonDeleteTitle}
+                >
+                  {deletingSeason ? 'Удаляем…' : 'Удалить сезон'}
+                </button>
+              </div>
             </div>
             {selectedSeason ? (
               <div className="season-details">
@@ -2458,7 +2489,7 @@ export const MatchesTab = () => {
                               key={match.id}
                               className={selectedMatchId === match.id ? 'active-row' : undefined}
                             >
-                              <td>{new Date(match.matchDateTime).toLocaleString('ru-RU')}</td>
+                              <td>{formatDateTime(match.matchDateTime)}</td>
                               <td>
                                 <div className="match-cell">
                                   <span>
@@ -2550,7 +2581,7 @@ export const MatchesTab = () => {
                     </tr>
                   ) : (
                     friendlyMatchesSorted.map(match => {
-                      const matchDate = new Date(match.matchDateTime).toLocaleString('ru-RU', {
+                      const matchDate = formatDateTime(match.matchDateTime, {
                         day: '2-digit',
                         month: 'long',
                         year: 'numeric',

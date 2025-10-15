@@ -7,6 +7,7 @@ import {
   AdminApiError,
   lineupLogin,
   translateAdminError,
+  adminDelete,
 } from '../api/adminClient'
 import { assistantLogin } from '../api/assistantClient'
 import { judgeLogin } from '../api/judgeClient'
@@ -144,6 +145,7 @@ interface AdminState {
   setSelectedCompetition(competitionId?: number): void
   setSelectedSeason(seasonId?: number): void
   activateSeason(seasonId: number): Promise<void>
+  deleteSeason(seasonId: number): Promise<void>
   fetchDictionaries(options?: FetchOptions): Promise<void>
   fetchSeasons(options?: FetchOptions): Promise<void>
   fetchSeries(seasonId?: number, options?: FetchOptions): Promise<void>
@@ -573,6 +575,71 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
       } finally {
         set(state => ({
           loading: { ...state.loading, activateSeason: false },
+        }))
+      }
+    },
+    async deleteSeason(seasonId: number) {
+      if (get().mode !== 'admin') return
+      const targetId = Number(seasonId)
+      if (!Number.isFinite(targetId) || targetId <= 0) {
+        return
+      }
+
+      set(state => ({
+        loading: { ...state.loading, deleteSeason: true },
+        error: undefined,
+      }))
+
+      try {
+        const token = ensureToken()
+        await adminDelete(token, `/api/admin/seasons/${targetId}`)
+
+        resetFetchCache()
+
+        set(state => {
+          const remainingSeasons = state.data.seasons.filter(season => season.id !== targetId)
+          const selectedSeasonId =
+            state.selectedSeasonId === targetId ? undefined : state.selectedSeasonId
+
+          return {
+            data: {
+              ...state.data,
+              seasons: remainingSeasons,
+              matches: state.data.matches.filter(match => match.seasonId !== targetId),
+              series: state.data.series.filter(series => series.seasonId !== targetId),
+              clubStats: state.data.clubStats.filter(entry => entry.seasonId !== targetId),
+              playerStats: state.data.playerStats.filter(entry => entry.seasonId !== targetId),
+            },
+            selectedSeasonId,
+          }
+        })
+
+        await get().fetchSeasons({ force: true })
+
+        const stateAfterRefresh = get()
+        const requiresSelection = stateAfterRefresh.selectedSeasonId === undefined
+
+        if (requiresSelection && stateAfterRefresh.data.seasons.length) {
+          const fallbackSeason =
+            stateAfterRefresh.data.seasons.find(season => season.isActive) ??
+            stateAfterRefresh.data.seasons[0]
+
+          if (fallbackSeason) {
+            set({ selectedSeasonId: fallbackSeason.id })
+            await Promise.all([
+              get().fetchSeries(fallbackSeason.id, { force: true }),
+              get().fetchMatches(fallbackSeason.id, { force: true }),
+              get().fetchStats(fallbackSeason.id, fallbackSeason.competitionId),
+            ])
+          }
+        }
+      } catch (error) {
+        const message =
+          error instanceof AdminApiError ? error.message : translateAdminError('request_failed')
+        set({ error: message, status: 'error' })
+      } finally {
+        set(state => ({
+          loading: { ...state.loading, deleteSeason: false },
         }))
       }
     },

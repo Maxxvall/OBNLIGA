@@ -3,6 +3,7 @@ import { formatPlayersCount } from '@shared/utils/wordForms'
 import { lineupFetchMatches, lineupFetchRoster, lineupUpdateRoster } from '../api/adminClient'
 import { useAdminStore } from '../store/adminStore'
 import type { LineupPortalMatch, LineupPortalRosterEntry } from '../types'
+import { formatDateTime } from '../utils/date'
 import '../lineup.css'
 
 const statusLabels: Record<LineupPortalMatch['status'], string> = {
@@ -13,7 +14,7 @@ const statusLabels: Record<LineupPortalMatch['status'], string> = {
 }
 
 const formatKickoff = (iso: string) =>
-  new Date(iso).toLocaleString('ru-RU', {
+  formatDateTime(iso, {
     day: 'numeric',
     month: 'long',
     hour: '2-digit',

@@ -134,6 +134,8 @@ const ERROR_DICTIONARY: Record<string, string> = {
   season_dates_locked: 'Даты сезона заблокированы — сезон уже начался.',
   season_fields_required: 'Заполните поля сезона.',
   season_not_found: 'Сезон не найден.',
+  season_is_active: 'Нельзя удалить активный сезон. Сначала сделайте активным другой сезон.',
+  season_delete_failed: 'Не удалось удалить сезон. Попробуйте ещё раз.',
   series_already_exist: 'Серии уже созданы.',
   series_fields_required: 'Заполните поля серии.',
   series_format_locked: 'Формат серий изменить нельзя.',

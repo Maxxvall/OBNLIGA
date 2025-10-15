@@ -2213,6 +2213,76 @@ export default async function (server: FastifyInstance) {
         return reply.send({ ok: true, data: season })
       })
 
+      admin.delete('/seasons/:seasonId', async (request, reply) => {
+        const seasonId = parseNumericId((request.params as any).seasonId, 'seasonId')
+        let competitionId: number | null = null
+
+        try {
+          await prisma.$transaction(
+            async tx => {
+              const season = await tx.season.findUnique({
+                where: { id: seasonId },
+                include: {
+                  participants: { select: { clubId: true } },
+                },
+              })
+
+              if (!season) {
+                throw new RequestError(404, 'season_not_found')
+              }
+
+              if (season.isActive) {
+                throw new RequestError(409, 'season_is_active')
+              }
+
+              competitionId = season.competitionId
+              const clubIds = Array.from(new Set(season.participants.map(entry => entry.clubId)))
+
+              await tx.season.delete({ where: { id: seasonId } })
+
+              if (clubIds.length) {
+                await rebuildCareerStatsForClubs(clubIds, tx)
+              }
+            },
+            { timeout: 20000 }
+          )
+
+          const cacheKeys = new Set<string>([
+            `season:${seasonId}:club-stats`,
+            `season:${seasonId}:player-stats`,
+            `season:${seasonId}:player-career`,
+            leagueStatsCacheKey('club-career'),
+            leagueStatsCacheKey('player-career'),
+          ])
+
+          if (competitionId) {
+            cacheKeys.add(`competition:${competitionId}:club-stats`)
+            cacheKeys.add(`competition:${competitionId}:player-stats`)
+            cacheKeys.add(`competition:${competitionId}:player-career`)
+          }
+
+          await Promise.all(
+            Array.from(cacheKeys).map(key => defaultCache.invalidate(key).catch(() => undefined))
+          )
+
+          await defaultCache.invalidate(PUBLIC_LEAGUE_SEASONS_KEY)
+          await defaultCache.invalidate(PUBLIC_LEAGUE_TABLE_KEY)
+          await defaultCache.invalidate(`${PUBLIC_LEAGUE_TABLE_KEY}:${seasonId}`)
+          await defaultCache.invalidate(PUBLIC_LEAGUE_SCHEDULE_KEY)
+          await defaultCache.invalidate(`${PUBLIC_LEAGUE_SCHEDULE_KEY}:${seasonId}`)
+          await defaultCache.invalidate(PUBLIC_LEAGUE_RESULTS_KEY)
+          await defaultCache.invalidate(`${PUBLIC_LEAGUE_RESULTS_KEY}:${seasonId}`)
+
+          return reply.send({ ok: true })
+        } catch (err) {
+          if (err instanceof RequestError) {
+            return reply.status(err.statusCode).send({ ok: false, error: err.message })
+          }
+          request.server.log.error({ err, seasonId }, 'season delete failed')
+          return reply.status(500).send({ ok: false, error: 'season_delete_failed' })
+        }
+      })
+
       admin.post('/seasons/:seasonId/participants', async (request, reply) => {
         const seasonId = parseNumericId((request.params as any).seasonId, 'seasonId')
         const body = request.body as { clubId?: number }

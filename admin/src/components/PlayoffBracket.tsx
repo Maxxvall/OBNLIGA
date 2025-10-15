@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react'
 import type { Club, MatchSeries, MatchSummary } from '../types'
+import { formatDateTime } from '../utils/date'
 
 type PlayoffBracketProps = {
   series: MatchSeries[]
@@ -71,7 +72,7 @@ const formatScoreLabel = (match: MatchSummary): string => {
 }
 
 const formatKickoff = (iso: string): string =>
-  new Date(iso).toLocaleString('ru-RU', {
+  formatDateTime(iso, {
     day: '2-digit',
     month: 'short',
     hour: '2-digit',

@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { adminDelete, adminPatch, adminPost } from '../../api/adminClient'
 import { useAdminStore } from '../../store/adminStore'
 import type { NewsItem } from '@shared/types'
+import { formatDateTime } from '../../utils/date'
 
 const defaultFormState = {
   title: '',
@@ -19,16 +20,13 @@ type FeedbackState = {
 } | null
 
 const formatDate = (iso: string) => {
-  try {
-    return new Date(iso).toLocaleString('ru-RU', {
-      day: '2-digit',
-      month: 'long',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  } catch (err) {
-    return iso
-  }
+  const formatted = formatDateTime(iso, {
+    day: '2-digit',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+  return formatted || iso
 }
 
 const getPreview = (content: string, limit = 160) => {

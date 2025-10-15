@@ -71,8 +71,8 @@ export async function httpRequest<T>(path: string, options?: HttpRequestOptions)
       return { ok: true, notModified: true }
     }
 
-  const versionHeader = response.headers.get('x-resource-version') ?? undefined
-  const etagHeader = response.headers.get('etag') ?? undefined
+    const versionHeader = response.headers.get('x-resource-version') ?? undefined
+    const etagHeader = response.headers.get('etag') ?? undefined
     const text = await response.text()
     let json: unknown
     if (text) {

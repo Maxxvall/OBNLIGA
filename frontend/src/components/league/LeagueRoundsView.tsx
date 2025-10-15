@@ -155,7 +155,19 @@ type MatchSnapshot = {
   awayScore: number | null
 }
 
-const useMatchAnimations = (collection?: LeagueRoundCollection) => {
+const matchSnapshotCache = new Map<string, Map<string, MatchSnapshot>>()
+
+const buildSnapshotCacheKey = (
+  mode: 'schedule' | 'results',
+  collection?: LeagueRoundCollection
+): string | null => {
+  if (!collection || !collection.season?.id) {
+    return null
+  }
+  return `${mode}:${collection.season.id}`
+}
+
+const useMatchAnimations = (mode: 'schedule' | 'results', collection?: LeagueRoundCollection) => {
   const snapshotsRef = React.useRef<Map<string, MatchSnapshot>>(new Map())
   const liveTimersRef = React.useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const scoreTimersRef = React.useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
@@ -172,6 +184,15 @@ const useMatchAnimations = (collection?: LeagueRoundCollection) => {
       setLiveHighlightIds(prev => (prev.size ? new Set<string>() : prev))
       setScoreHighlightIds(prev => (prev.size ? new Set<string>() : prev))
       return
+    }
+
+    const cacheKey = buildSnapshotCacheKey(mode, collection)
+
+    if (cacheKey && snapshotsRef.current.size === 0) {
+      const cached = matchSnapshotCache.get(cacheKey)
+      if (cached) {
+        snapshotsRef.current = new Map(cached)
+      }
     }
 
     const previous = snapshotsRef.current
@@ -215,6 +236,9 @@ const useMatchAnimations = (collection?: LeagueRoundCollection) => {
     })
 
     snapshotsRef.current = next
+    if (cacheKey) {
+      matchSnapshotCache.set(cacheKey, new Map(next))
+    }
 
     if (removedIds.length) {
       setLiveHighlightIds(prev => {
@@ -312,7 +336,7 @@ const useMatchAnimations = (collection?: LeagueRoundCollection) => {
         scoreTimersRef.current.set(id, timeout)
       })
     }
-  }, [collection])
+  }, [collection, mode])
 
   React.useEffect(
     () => () => {
@@ -336,7 +360,7 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
   const openTeamView = useAppStore(state => state.openTeamView)
   const tablesBySeason = useAppStore(state => state.tables)
   const resultsBySeason = useAppStore(state => state.results)
-  const { liveHighlightIds, scoreHighlightIds } = useMatchAnimations(data)
+  const { liveHighlightIds, scoreHighlightIds } = useMatchAnimations(mode, data)
   const seasonId = data?.season.id ?? null
   const seasonTable = seasonId ? tablesBySeason[seasonId] : undefined
   const seasonResults = seasonId ? resultsBySeason[seasonId] : undefined

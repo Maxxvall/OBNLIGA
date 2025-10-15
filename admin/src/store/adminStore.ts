@@ -12,6 +12,8 @@ import {
 import { assistantLogin } from '../api/assistantClient'
 import { judgeLogin } from '../api/judgeClient'
 import type { NewsItem } from '@shared/types'
+import { wsClient } from '../wsClient'
+import type { WsMessage, WsPatchMessage } from '../wsClient'
 import {
   AchievementType,
   AppUser,
@@ -39,6 +41,7 @@ const storageKey = 'obnliga-admin-token'
 const lineupStorageKey = 'obnliga-lineup-token'
 const judgeStorageKey = 'obnliga-judge-token'
 const assistantStorageKey = 'obnliga-assistant-token'
+const ADMIN_NEWS_TOPIC = 'home'
 
 const readPersistedToken = () => {
   if (typeof window === 'undefined') return undefined
@@ -304,6 +307,104 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     return token
   }
 
+  let realtimeListenerAttached = false
+
+  const isPatchMessage = (message: WsMessage): message is WsPatchMessage<unknown> =>
+    message.type === 'patch'
+
+  const handleAdminPatch = (message: WsMessage) => {
+    if (!isPatchMessage(message)) return
+    if (message.topic !== ADMIN_NEWS_TOPIC) return
+    if (get().mode !== 'admin') return
+
+    const payload = message.payload
+    if (!payload || typeof payload !== 'object') {
+      return
+    }
+
+    const patch = payload as { type?: unknown; payload?: unknown }
+    const patchType = typeof patch.type === 'string' ? patch.type : undefined
+
+    if (patchType === 'news.full') {
+      const rawNews = patch.payload
+      if (!rawNews || typeof rawNews !== 'object') {
+        return
+      }
+      const news = rawNews as NewsItem
+      const cacheKey = composeCacheKey('news', [])
+      fetchTimestamps[cacheKey] = Date.now()
+      const current = get().data.news
+      const existingIndex = current.findIndex(entry => entry.id === news.id)
+      if (existingIndex >= 0) {
+        set(state => {
+          const nextNews = state.data.news.slice()
+          nextNews[existingIndex] = news
+          return {
+            data: {
+              ...state.data,
+              news: nextNews,
+            },
+          }
+        })
+      } else {
+        set(state => ({
+          data: {
+            ...state.data,
+            news: [news, ...state.data.news],
+          },
+        }))
+      }
+      return
+    }
+
+    if (patchType === 'news.remove') {
+      const rawPayload = patch.payload as { id?: string | number } | undefined
+      const rawId = rawPayload?.id
+      if (rawId === undefined || rawId === null) {
+        return
+      }
+      const id = typeof rawId === 'string' ? rawId : rawId.toString()
+      const current = get().data.news
+      if (!current.some(entry => entry.id === id)) {
+        return
+      }
+      const cacheKey = composeCacheKey('news', [])
+      fetchTimestamps[cacheKey] = Date.now()
+      set(state => ({
+        data: {
+          ...state.data,
+          news: state.data.news.filter(entry => entry.id !== id),
+        },
+      }))
+    }
+  }
+
+  const attachRealtimeListener = () => {
+    if (realtimeListenerAttached || typeof window === 'undefined') {
+      return
+    }
+    wsClient.on('patch', handleAdminPatch)
+    realtimeListenerAttached = true
+  }
+
+  const ensureAdminRealtime = (token?: string) => {
+    if (typeof window === 'undefined' || !token) {
+      return
+    }
+    attachRealtimeListener()
+    wsClient.setToken(token)
+    wsClient.connect(token)
+    wsClient.subscribe(ADMIN_NEWS_TOPIC)
+  }
+
+  const releaseAdminRealtime = () => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    wsClient.unsubscribe(ADMIN_NEWS_TOPIC)
+    wsClient.setToken(undefined)
+  }
+
   const store: AdminState = {
     status: initialStatus,
     mode: initialMode,
@@ -320,6 +421,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     loading: {},
     async login(login: string, password: string) {
       set({ status: 'authenticating', error: undefined })
+      releaseAdminRealtime()
       try {
         const adminResult = await adminLogin(login, password)
 
@@ -341,6 +443,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
             error: undefined,
           })
           useAssistantStore.getState().reset()
+          ensureAdminRealtime(adminResult.token)
           try {
             await Promise.all([get().fetchDictionaries(), get().fetchSeasons()])
           } catch (err) {
@@ -466,6 +569,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     },
     logout() {
       resetFetchCache()
+      releaseAdminRealtime()
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(storageKey)
         window.localStorage.removeItem(lineupStorageKey)
@@ -882,8 +986,8 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           await get().fetchSeasons()
           const season = get().selectedSeasonId
           await Promise.all([
-            get().fetchSeries(season, { force: true }),
-            get().fetchMatches(season, { force: true }),
+            get().fetchSeries(season),
+            get().fetchMatches(season),
             get().fetchFriendlyMatches(),
           ])
           break
@@ -913,6 +1017,13 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           break
       }
     },
+  }
+
+  if (typeof window !== 'undefined') {
+    attachRealtimeListener()
+    if (initialMode === 'admin' && initialAdminToken) {
+      ensureAdminRealtime(initialAdminToken)
+    }
   }
 
   if (initialMode === 'admin' && initialAdminToken) {

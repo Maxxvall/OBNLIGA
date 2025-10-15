@@ -441,6 +441,11 @@ body {
   background: rgba(3, 10, 22, 0.72);
 }
 
+.group-season-list[hidden],
+.city-competition-list[hidden] {
+  display: none !important;
+}
+
 .season-item {
   width: 100%;
   border-radius: 12px;

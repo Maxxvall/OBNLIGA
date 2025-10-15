@@ -140,6 +140,7 @@ export interface MatchSummary {
   penaltyAwayScore: number
   status: 'SCHEDULED' | 'LIVE' | 'FINISHED' | 'POSTPONED'
   stadiumId?: number | null
+  stadium?: Stadium | null
   refereeId?: number | null
   isArchived: boolean
   season?: { name: string }

@@ -47,6 +47,8 @@ type ValidatedGroupStage = {
   clubIds: ClubId[]
 }
 
+const MATCH_INTERVAL_MINUTES = 60
+
 const validateGroupStageConfig = (config?: GroupStageConfigInput): ValidatedGroupStage => {
   if (!config) {
     throw new Error('group_stage_missing')
@@ -480,6 +482,15 @@ export const addDays = (date: Date, days: number): Date => {
   return next
 }
 
+export const addMinutes = (date: Date, minutes: number): Date => {
+  if (!Number.isFinite(minutes) || minutes === 0) {
+    return new Date(date)
+  }
+  const next = new Date(date)
+  next.setUTCMinutes(next.getUTCMinutes() + minutes)
+  return next
+}
+
 export const runSeasonAutomation = async (
   prisma: PrismaClient,
   logger: FastifyBaseLogger,
@@ -503,11 +514,26 @@ export const runSeasonAutomation = async (
   const pairs = isGroupStageFormat ? [] : generateRoundRobinPairs(uniqueClubIds, groupRounds)
   const alignedStartDate = alignDateToWeekday(new Date(input.startDateISO), input.matchDayOfWeek)
   const kickoffDate = applyTimeToDate(alignedStartDate, input.matchTime)
+  const matchesPerRound = new Map<number, number>()
+  for (const pair of pairs) {
+    matchesPerRound.set(pair.roundIndex, (matchesPerRound.get(pair.roundIndex) ?? 0) + 1)
+  }
   const totalRounds = isGroupStageFormat
     ? 0
     : pairs.reduce((max, pair) => Math.max(max, pair.roundIndex), 0) + (pairs.length ? 1 : 0)
 
-  const seasonEndDate = totalRounds > 0 ? addDays(kickoffDate, (totalRounds - 1) * 7) : kickoffDate
+  let maxMatchesInRound = 1
+  for (const count of matchesPerRound.values()) {
+    if (count > maxMatchesInRound) {
+      maxMatchesInRound = count
+    }
+  }
+
+  const seasonEndBase = totalRounds > 0 ? addDays(kickoffDate, (totalRounds - 1) * 7) : kickoffDate
+  const seasonEndDate =
+    maxMatchesInRound > 1
+      ? addMinutes(seasonEndBase, (maxMatchesInRound - 1) * MATCH_INTERVAL_MINUTES)
+      : seasonEndBase
 
   const season = await prisma.$transaction(async tx => {
     const createdSeason = await tx.season.create({
@@ -735,8 +761,16 @@ export const runSeasonAutomation = async (
         createdSeason.endDate = latestMatchDate
       }
     } else {
+      const roundMatchCounters = new Map<number, number>()
       const matchPayload = pairs.map(pair => {
-        const matchDate = addDays(kickoffDate, pair.roundIndex * 7)
+        const matchDay = addDays(kickoffDate, pair.roundIndex * 7)
+        const scheduledBase = applyTimeToDate(matchDay, input.matchTime)
+        const matchIndexInRound = roundMatchCounters.get(pair.roundIndex) ?? 0
+        const matchDate =
+          matchIndexInRound === 0
+            ? scheduledBase
+            : addMinutes(scheduledBase, matchIndexInRound * MATCH_INTERVAL_MINUTES)
+        roundMatchCounters.set(pair.roundIndex, matchIndexInRound + 1)
         return {
           seasonId: createdSeason.id,
           matchDateTime: matchDate,
@@ -854,6 +888,8 @@ const createGroupStageSchedule = async (
       groupId: number
     }> = []
 
+    const roundMatchCounters = new Map<number, number>()
+
     for (const pair of pairs) {
       let roundId = roundCache.get(pair.roundIndex) ?? null
       if (!roundId) {
@@ -871,7 +907,13 @@ const createGroupStageSchedule = async (
       }
 
       const baseDate = addDays(params.seasonStart, pair.roundIndex * 7)
-      const scheduled = applyTimeToDate(baseDate, params.matchTime)
+      const scheduledBase = applyTimeToDate(baseDate, params.matchTime)
+      const matchIndexInRound = roundMatchCounters.get(pair.roundIndex) ?? 0
+      const scheduled =
+        matchIndexInRound === 0
+          ? scheduledBase
+          : addMinutes(scheduledBase, matchIndexInRound * MATCH_INTERVAL_MINUTES)
+      roundMatchCounters.set(pair.roundIndex, matchIndexInRound + 1)
       if (!latestMatchDate || scheduled > latestMatchDate) {
         latestMatchDate = scheduled
       }

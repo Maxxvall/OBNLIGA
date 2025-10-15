@@ -1194,6 +1194,19 @@ export const MatchesTab = () => {
     })
   }
 
+  const setMatchStadium = (match: MatchSummary, value: number | '') => {
+    setMatchUpdateForms(forms => {
+      const current = forms[match.id] ?? buildMatchUpdateForm(match)
+      return {
+        ...forms,
+        [match.id]: {
+          ...current,
+          stadiumId: value,
+        },
+      }
+    })
+  }
+
   useEffect(() => {
     setEventForm(defaultEventForm)
   }, [selectedMatchId])
@@ -1491,6 +1504,10 @@ export const MatchesTab = () => {
   const selectedMatchForm = selectedMatch
     ? (matchUpdateForms[selectedMatch.id] ?? buildMatchUpdateForm(selectedMatch))
     : null
+  const selectedMatchStadiumId =
+    selectedMatchForm?.stadiumId === '' || selectedMatchForm?.stadiumId === undefined
+      ? ''
+      : String(selectedMatchForm.stadiumId)
   const selectedMatchStatus: MatchSummary['status'] =
     selectedMatchForm?.status ?? selectedMatch?.status ?? 'SCHEDULED'
   const isSelectedMatchLive = selectedMatchStatus === 'LIVE'
@@ -2394,6 +2411,7 @@ export const MatchesTab = () => {
                   <tr>
                     <th>Дата</th>
                     <th>Матч</th>
+                    <th>Стадион</th>
                     <th>Счёт</th>
                     <th aria-label="Действия" />
                   </tr>
@@ -2401,7 +2419,7 @@ export const MatchesTab = () => {
                 <tbody>
                   {matchesGrouped.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="empty-row">
+                      <td colSpan={5} className="empty-row">
                         Матчи не найдены. Создайте игру или обновите фильтр сезона.
                       </td>
                     </tr>
@@ -2409,7 +2427,7 @@ export const MatchesTab = () => {
                     matchesGrouped.map(group => (
                       <React.Fragment key={group.key}>
                         <tr className="round-row">
-                          <td colSpan={4}>{group.label}</td>
+                          <td colSpan={5}>{group.label}</td>
                         </tr>
                         {group.matches.map(match => {
                           const home = availableClubs.find(club => club.id === match.homeTeamId)
@@ -2427,6 +2445,14 @@ export const MatchesTab = () => {
                             typeof resolvedHomeScore === 'number' ? resolvedHomeScore : '—'
                           const awayScoreDisplay =
                             typeof resolvedAwayScore === 'number' ? resolvedAwayScore : '—'
+                          const fallbackStadium =
+                            typeof match.stadiumId === 'number'
+                              ? data.stadiums.find(stadium => stadium.id === match.stadiumId)
+                              : undefined
+                          const stadiumRecord = match.stadium ?? fallbackStadium ?? null
+                          const stadiumLabel = stadiumRecord
+                            ? `${stadiumRecord.name}${stadiumRecord.city ? ` (${stadiumRecord.city})` : ''}`
+                            : null
                           return (
                             <tr
                               key={match.id}
@@ -2445,6 +2471,13 @@ export const MatchesTab = () => {
                                     {matchStatusLabels[form.status]}
                                   </span>
                                 </div>
+                              </td>
+                              <td>
+                                {stadiumLabel ? (
+                                  <span>{stadiumLabel}</span>
+                                ) : (
+                                  <span className="muted">—</span>
+                                )}
                               </td>
                               <td>
                                 <div className="score-display">
@@ -2638,6 +2671,30 @@ export const MatchesTab = () => {
                       setMatchDateTime(selectedMatch, event.target.value)
                     }}
                   />
+                </label>
+
+                <label>
+                  Стадион
+                  <select
+                    value={selectedMatchStadiumId}
+                    onChange={event => {
+                      if (!selectedMatch) return
+                      const rawValue = event.target.value
+                      const nextValue = rawValue === '' ? '' : Number(rawValue)
+                      if (nextValue !== '' && Number.isNaN(nextValue)) {
+                        return
+                      }
+                      setMatchStadium(selectedMatch, nextValue)
+                    }}
+                  >
+                    <option value="">—</option>
+                    {data.stadiums.map(stadium => (
+                      <option key={stadium.id} value={String(stadium.id)}>
+                        {stadium.name}
+                        {stadium.city ? ` (${stadium.city})` : ''}
+                      </option>
+                    ))}
+                  </select>
                 </label>
 
                 <label className="stacked">

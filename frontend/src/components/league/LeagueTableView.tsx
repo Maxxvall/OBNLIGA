@@ -28,7 +28,8 @@ export const LeagueTableView: React.FC<LeagueTableViewProps> = ({
 }) => {
   const openTeamView = useAppStore(state => state.openTeamView)
 
-  if (loading) {
+  const isInitialLoading = loading && !table
+  if (isInitialLoading) {
     return (
       <div className="league-table-placeholder" aria-live="polite" aria-busy="true">
         <div className="skeleton skeleton-heading" />
@@ -60,15 +61,16 @@ export const LeagueTableView: React.FC<LeagueTableViewProps> = ({
 
   const { season, standings } = table
   const updatedLabel = lastUpdated ? `Обновлено в ${formatTime(lastUpdated)}` : 'Актуальные данные'
+  const isRefreshing = loading && Boolean(table)
 
   return (
-    <section className="league-table" aria-label="Турнирная таблица">
+    <section className="league-table" aria-label="Турнирная таблица" data-refreshing={isRefreshing || undefined}>
       <header className="league-table-header">
         <div>
           <h2>{season.name}</h2>
           <p>{season.competition.name}</p>
         </div>
-        <span className="muted">{updatedLabel}</span>
+        <span className="muted">{isRefreshing ? 'Обновляем…' : updatedLabel}</span>
       </header>
       <div className="league-table-scroll">
         <div role="table" className="league-table-grid">

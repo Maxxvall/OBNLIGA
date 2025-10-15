@@ -180,6 +180,9 @@ export const LeagueStatsView: React.FC<LeagueStatsViewProps> = ({
     [stats?.generatedAt, lastUpdated]
   )
 
+  const isInitialLoading = loading && !stats
+  const isRefreshing = loading && Boolean(stats)
+
   const handlePrev = () => {
     setActiveIndex(prev => (prev - 1 + categories.length) % categories.length)
   }
@@ -188,7 +191,7 @@ export const LeagueStatsView: React.FC<LeagueStatsViewProps> = ({
     setActiveIndex(prev => (prev + 1) % categories.length)
   }
 
-  if (loading) {
+  if (isInitialLoading) {
     return (
       <div className="league-stats-skeleton" aria-live="polite" aria-busy="true">
         <div className="skeleton skeleton-heading" />
@@ -219,7 +222,11 @@ export const LeagueStatsView: React.FC<LeagueStatsViewProps> = ({
   }
 
   return (
-    <section className="league-stats" aria-label="Лидерборды сезона">
+    <section
+      className="league-stats"
+      aria-label="Лидерборды сезона"
+      data-refreshing={isRefreshing || undefined}
+    >
       <header className="stats-header">
         <div className="stats-meta">
           <h2>{stats.season.name}</h2>
@@ -246,9 +253,11 @@ export const LeagueStatsView: React.FC<LeagueStatsViewProps> = ({
             &gt;
           </button>
         </div>
-        {updatedLabel ? (
-          <span className="muted stats-updated">{updatedLabel}</span>
-        ) : null}
+        <span className="muted stats-updated">
+          {isRefreshing
+            ? 'Обновляем…'
+            : updatedLabel ?? 'Актуальные данные'}
+        </span>
       </header>
 
       <div className={`stats-table ${metricsClass}`} role="table">

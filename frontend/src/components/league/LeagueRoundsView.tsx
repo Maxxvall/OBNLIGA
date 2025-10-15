@@ -263,7 +263,8 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
     }
   }, [seasonResults])
 
-  if (loading) {
+  const isInitialLoading = loading && !data
+  if (isInitialLoading) {
     return (
       <div className="league-rounds-placeholder" aria-live="polite" aria-busy="true">
         <div className="skeleton skeleton-heading" />
@@ -304,15 +305,20 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
       (allowTableFallback && podium.length >= 3))
   const headerTitle = mode === 'schedule' ? 'Календарь матчей' : 'Результаты'
   const updatedLabel = formatUpdatedLabel(lastUpdated)
+  const isRefreshing = loading && Boolean(data)
 
   return (
-    <section className="league-rounds" aria-label={headerTitle}>
+    <section
+      className="league-rounds"
+      aria-label={headerTitle}
+      data-refreshing={isRefreshing || undefined}
+    >
       <header className="league-rounds-header">
         <div className="league-rounds-header-primary">
           <h2>{headerTitle}</h2>
           <p>{season.name}</p>
         </div>
-        <span className="muted">{updatedLabel}</span>
+        <span className="muted">{isRefreshing ? 'Обновляем…' : updatedLabel}</span>
       </header>
 
       {rounds.length === 0 ? (

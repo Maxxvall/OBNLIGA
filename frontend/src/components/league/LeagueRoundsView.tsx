@@ -12,6 +12,12 @@ type LeagueRoundsViewProps = {
   lastUpdated?: number
 }
 
+type PlayoffPodiumSummary = {
+  champion: { club: LeagueMatchView['homeClub'] }
+  runnerUp: { club: LeagueMatchView['homeClub'] }
+  thirdPlace?: { club: LeagueMatchView['homeClub'] }
+}
+
 const TIME_FORMATTER = new Intl.DateTimeFormat('ru-RU', {
   hour: '2-digit',
   minute: '2-digit',
@@ -68,7 +74,7 @@ const buildSeriesDescriptor = (match: LeagueMatchView, mode: 'schedule' | 'resul
 
   return {
     stageName: series.stageName,
-    seriesScore: `${leftWins} — ${rightWins}`,
+    seriesScore: `${leftWins}-${rightWins}`,
   }
 }
 
@@ -160,18 +166,16 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
     : false
   const podium = seasonTable ? seasonTable.standings.slice(0, 3) : []
 
-  const playoffState = React.useMemo(() => {
+  const playoffState = React.useMemo<{
+    hasSeries: boolean
+    allSeriesFinished: boolean
+    summary: PlayoffPodiumSummary | null
+  }>(() => {
     if (!seasonResults) {
       return {
         hasSeries: false,
         allSeriesFinished: false,
-        summary: null as
-          | null
-          | {
-              champion: { clubName: string; detail: string }
-              runnerUp: { clubName: string; detail: string }
-              thirdPlace?: { clubName: string; detail: string }
-            },
+        summary: null,
       }
     }
 
@@ -234,19 +238,13 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
     const championIsHome = finalSeries.winnerClubId === finalSeries.homeClubId
     const championClub = championIsHome ? finalSeries.homeClub : finalSeries.awayClub
     const runnerClub = championIsHome ? finalSeries.awayClub : finalSeries.homeClub
-    const championWins = championIsHome ? finalSeries.homeWinsTotal : finalSeries.awayWinsTotal
-    const runnerWins = championIsHome ? finalSeries.awayWinsTotal : finalSeries.homeWinsTotal
 
-    let thirdPlace: { clubName: string; detail: string } | undefined
+    let thirdPlace: { club: LeagueMatchView['homeClub'] } | undefined
     if (thirdSeries && thirdSeries.status === 'FINISHED' && thirdSeries.winnerClubId != null) {
       const thirdIsHome = thirdSeries.winnerClubId === thirdSeries.homeClubId
       const thirdClub = thirdIsHome ? thirdSeries.homeClub : thirdSeries.awayClub
-      const opponent = thirdIsHome ? thirdSeries.awayClub : thirdSeries.homeClub
-      const thirdWins = thirdIsHome ? thirdSeries.homeWinsTotal : thirdSeries.awayWinsTotal
-      const opponentWins = thirdIsHome ? thirdSeries.awayWinsTotal : thirdSeries.homeWinsTotal
       thirdPlace = {
-        clubName: thirdClub.name,
-        detail: `${thirdSeries.stageName}: ${thirdWins} — ${opponentWins} ${opponent.name}`,
+        club: thirdClub,
       }
     }
 
@@ -255,12 +253,10 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
       allSeriesFinished,
       summary: {
         champion: {
-          clubName: championClub.name,
-          detail: `${finalSeries.stageName}: ${championWins} — ${runnerWins} ${runnerClub.name}`,
+          club: championClub,
         },
         runnerUp: {
-          clubName: runnerClub.name,
-          detail: `${finalSeries.stageName}: ${runnerWins} — ${championWins} ${championClub.name}`,
+          club: runnerClub,
         },
         thirdPlace,
       },
@@ -325,39 +321,55 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
             <div className="tournament-finished" role="status">
               <h3>ТУРНИР ЗАВЕРШЕН</h3>
               <div className="podium-grid">
-                {playoffState.summary ? (
-                  <>
-                    <div className="podium-slot second">
-                      <span className="podium-icon" aria-hidden="true">🥈</span>
-                      <span className="podium-team">{playoffState.summary.runnerUp.clubName}</span>
-                      <span className="podium-points muted">{playoffState.summary.runnerUp.detail}</span>
-                    </div>
-                    <div className="podium-slot first">
-                      <span className="podium-icon" aria-hidden="true">🥇</span>
-                      <span className="podium-team">{playoffState.summary.champion.clubName}</span>
-                      <span className="podium-points muted">{playoffState.summary.champion.detail}</span>
-                    </div>
-                    {playoffState.summary.thirdPlace ? (
-                      <div className="podium-slot third">
-                        <span className="podium-icon" aria-hidden="true">🥉</span>
-                        <span className="podium-team">{playoffState.summary.thirdPlace.clubName}</span>
-                        <span className="podium-points muted">{playoffState.summary.thirdPlace.detail}</span>
+                {(playoffState.summary
+                  ? [
+                      {
+                        key: `runner-${playoffState.summary.runnerUp.club.id}`,
+                        tone: 'second' as const,
+                        icon: '🥈',
+                        club: playoffState.summary.runnerUp.club,
+                      },
+                      {
+                        key: `champion-${playoffState.summary.champion.club.id}`,
+                        tone: 'first' as const,
+                        icon: '🥇',
+                        club: playoffState.summary.champion.club,
+                      },
+                      ...(playoffState.summary.thirdPlace
+                        ? [
+                            {
+                              key: `third-${playoffState.summary.thirdPlace.club.id}`,
+                              tone: 'third' as const,
+                              icon: '🥉',
+                              club: playoffState.summary.thirdPlace.club,
+                            },
+                          ]
+                        : []),
+                    ]
+                  : podium.slice(0, 3).map((entry, index) => ({
+                      key: `table-${entry.clubId}`,
+                      tone: index === 0 ? ('first' as const) : index === 1 ? ('second' as const) : ('third' as const),
+                      icon: index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉',
+                      club: {
+                        id: entry.clubId,
+                        name: entry.clubName,
+                        shortName: entry.clubShortName,
+                        logoUrl: entry.clubLogoUrl,
+                      },
+                    })))
+                  .map(slot => (
+                    <div key={slot.key} className={`podium-slot ${slot.tone}`}>
+                      <span className="podium-icon" aria-hidden="true">{slot.icon}</span>
+                      <div className="podium-logo" aria-hidden="true">
+                        {slot.club.logoUrl ? (
+                          <img src={slot.club.logoUrl} alt="" />
+                        ) : (
+                          <span className="podium-logo-fallback">{slot.club.name.slice(0, 2).toUpperCase()}</span>
+                        )}
                       </div>
-                    ) : null}
-                  </>
-                ) : (
-                  podium.slice(0, 3).map((entry, index) => {
-                    const icon = index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉'
-                    const tone = index === 0 ? 'first' : index === 1 ? 'second' : 'third'
-                    return (
-                      <div key={entry.clubId} className={`podium-slot ${tone}`}>
-                        <span className="podium-icon" aria-hidden="true">{icon}</span>
-                        <span className="podium-team">{entry.clubName}</span>
-                        <span className="podium-points muted">{entry.points} очков</span>
-                      </div>
-                    )
-                  })
-                )}
+                      <span className="podium-team">{slot.club.name}</span>
+                    </div>
+                  ))}
               </div>
             </div>
           </div>

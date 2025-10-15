@@ -281,18 +281,36 @@
 }
 
 .podium-icon {
-  font-size: 26px;
+  font-size: 36px;
+}
+
+.podium-logo {
+  width: 74px;
+  height: 74px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.podium-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.podium-logo-fallback {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  color: rgba(200, 222, 255, 0.85);
 }
 
 .podium-team {
   font-weight: 600;
   letter-spacing: 0.5px;
   max-width: 180px;
-}
-
-.podium-points {
-  font-size: 12px;
-  letter-spacing: 0.4px;
+  text-align: center;
 }
 
 .league-rounds-placeholder {

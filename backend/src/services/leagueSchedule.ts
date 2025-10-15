@@ -80,6 +80,7 @@ type RoundAccumulator = {
   firstMatchAt: number
   lastMatchAt: number
   hasSeries: boolean
+  stagePriority: number | null
 }
 
 const clubSelect = {
@@ -301,6 +302,66 @@ const shouldDisplaySeriesMatch = (
   return true
 }
 
+const deriveSeriesStagePriority = (stageName: string): number => {
+  if (!stageName) {
+    return 1000
+  }
+
+  const normalized = stageName.trim().toLowerCase()
+  if (!normalized) {
+    return 1000
+  }
+
+  if (
+    normalized.includes('матч за 3') ||
+    normalized.includes('треть') ||
+    normalized.includes('3 место') ||
+    normalized.includes('малый финал') ||
+    normalized.includes('small final')
+  ) {
+    return 2
+  }
+
+  if (
+    normalized.includes('полуфин') ||
+    normalized.includes('semi') ||
+    normalized.includes('1/2') ||
+    normalized.includes('1\\2')
+  ) {
+    return 3
+  }
+
+  if (normalized.includes('четверть') || normalized.includes('1/4') || normalized.includes('1\\4')) {
+    return 4
+  }
+
+  if (normalized.includes('1/8') || normalized.includes('1\\8') || normalized.includes('восьм')) {
+    return 5
+  }
+
+  if (normalized.includes('1/16') || normalized.includes('1\\16') || normalized.includes('шестнадц')) {
+    return 6
+  }
+
+  if (normalized.includes('1/32') || normalized.includes('1\\32') || normalized.includes('тридцат')) {
+    return 7
+  }
+
+  if (normalized.includes('1/64') || normalized.includes('1\\64')) {
+    return 8
+  }
+
+  if (normalized.includes('плей-ин') || normalized.includes('play-in') || normalized.includes('плейин')) {
+    return 20
+  }
+
+  if (normalized.includes('финал') || normalized.includes('final')) {
+    return 1
+  }
+
+  return 1000
+}
+
 const buildMatchView = (
   match: MatchRecord,
   mode: 'schedule' | 'results',
@@ -403,7 +464,10 @@ const groupMatchViewsByRound = (
     const matchTime = entry.matchDateTime.getTime()
     let accumulator = map.get(key)
     if (!accumulator) {
-      accumulator = {
+      const initialStagePriority = entry.view.series
+        ? deriveSeriesStagePriority(entry.view.series.stageName)
+        : null
+      const created: RoundAccumulator = {
         roundId: entry.roundId,
         roundNumber: entry.roundNumber,
         roundLabel: entry.roundLabel,
@@ -412,13 +476,20 @@ const groupMatchViewsByRound = (
         firstMatchAt: matchTime,
         lastMatchAt: matchTime,
         hasSeries: Boolean(entry.view.series),
+        stagePriority: initialStagePriority,
       }
-      map.set(key, accumulator)
+      map.set(key, created)
+      accumulator = created
     }
     accumulator.firstMatchAt = Math.min(accumulator.firstMatchAt, matchTime)
     accumulator.lastMatchAt = Math.max(accumulator.lastMatchAt, matchTime)
     if (entry.view.series) {
+      const priority = deriveSeriesStagePriority(entry.view.series.stageName)
       accumulator.hasSeries = true
+      accumulator.stagePriority =
+        accumulator.stagePriority === null
+          ? priority
+          : Math.min(accumulator.stagePriority, priority)
     }
     accumulator.matches.push(entry.view)
   }
@@ -435,6 +506,11 @@ const groupMatchViewsByRound = (
         return left.firstMatchAt - right.firstMatchAt
       }
       return left.roundLabel.localeCompare(right.roundLabel, 'ru')
+    }
+    const leftPriority = left.stagePriority ?? Number.POSITIVE_INFINITY
+    const rightPriority = right.stagePriority ?? Number.POSITIVE_INFINITY
+    if (leftPriority !== rightPriority) {
+      return leftPriority - rightPriority
     }
     const leftDesc = left.roundNumber ?? Number.NEGATIVE_INFINITY
     const rightDesc = right.roundNumber ?? Number.NEGATIVE_INFINITY

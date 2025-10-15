@@ -96,6 +96,35 @@ export interface LeagueMatchView {
   penaltyHomeScore: number | null
   penaltyAwayScore: number | null
   location: LeagueMatchLocation | null
+  series?: {
+    id: string
+    stageName: string
+    status: 'IN_PROGRESS' | 'FINISHED'
+    matchNumber: number
+    totalMatches: number
+    requiredWins: number
+    homeWinsBefore: number
+    awayWinsBefore: number
+    homeWinsAfter: number
+    awayWinsAfter: number
+    homeClub: {
+      id: number
+      name: string
+      shortName: string
+      logoUrl: string | null
+    }
+    awayClub: {
+      id: number
+      name: string
+      shortName: string
+      logoUrl: string | null
+    }
+    homeWinsTotal: number
+    awayWinsTotal: number
+    winnerClubId: number | null
+    homeClubId: number
+    awayClubId: number
+  }
 }
 
 export interface LeagueRoundMatches {

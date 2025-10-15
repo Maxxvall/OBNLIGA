@@ -282,12 +282,85 @@ export const buildLeagueTable = async (
     }
   }
 
+  const pointsGroups = new Map<number, number[]>()
+  for (const row of standings) {
+    const list = pointsGroups.get(row.points)
+    if (list) {
+      list.push(row.clubId)
+    } else {
+      pointsGroups.set(row.points, [row.clubId])
+    }
+  }
+
+  const groupHeadToHead = new Map<
+    number,
+    Map<number, { points: number; goalsFor: number; goalsAgainst: number }>
+  >()
+
+  const ensureGroupEntry = (
+    groupPoints: number,
+    clubId: number
+  ): { points: number; goalsFor: number; goalsAgainst: number } => {
+    let clubMap = groupHeadToHead.get(groupPoints)
+    if (!clubMap) {
+      clubMap = new Map<number, { points: number; goalsFor: number; goalsAgainst: number }>()
+      groupHeadToHead.set(groupPoints, clubMap)
+    }
+    let entry = clubMap.get(clubId)
+    if (!entry) {
+      entry = { points: 0, goalsFor: 0, goalsAgainst: 0 }
+      clubMap.set(clubId, entry)
+    }
+    return entry
+  }
+
+  for (const [groupPoints, clubIds] of pointsGroups.entries()) {
+    if (clubIds.length < 2) continue
+    const clubSet = new Set(clubIds)
+    for (const match of finishedMatches) {
+      if (!clubSet.has(match.homeTeamId) || !clubSet.has(match.awayTeamId)) continue
+      const home = ensureGroupEntry(groupPoints, match.homeTeamId)
+      const away = ensureGroupEntry(groupPoints, match.awayTeamId)
+
+      home.goalsFor += match.homeScore
+      home.goalsAgainst += match.awayScore
+      away.goalsFor += match.awayScore
+      away.goalsAgainst += match.homeScore
+
+      const winnerClubId = determineMatchWinnerClubId(match)
+      if (winnerClubId === match.homeTeamId) {
+        home.points += 3
+      } else if (winnerClubId === match.awayTeamId) {
+        away.points += 3
+      } else {
+        home.points += 1
+        away.points += 1
+      }
+    }
+  }
+
   standings.sort((left, right) => {
     if (right.points !== left.points) return right.points - left.points
 
-    const leftDiff = left.goalDifference
-    const rightDiff = right.goalDifference
-    if (rightDiff !== leftDiff) return rightDiff - leftDiff
+    const groupStats = groupHeadToHead.get(left.points)
+    if (groupStats && groupStats.size >= 2) {
+      const leftGroup = groupStats.get(left.clubId) ?? { points: 0, goalsFor: 0, goalsAgainst: 0 }
+      const rightGroup = groupStats.get(right.clubId) ?? { points: 0, goalsFor: 0, goalsAgainst: 0 }
+
+      if (rightGroup.points !== leftGroup.points) {
+        return rightGroup.points - leftGroup.points
+      }
+
+      const leftGroupDiff = leftGroup.goalsFor - leftGroup.goalsAgainst
+      const rightGroupDiff = rightGroup.goalsFor - rightGroup.goalsAgainst
+      if (rightGroupDiff !== leftGroupDiff) {
+        return rightGroupDiff - leftGroupDiff
+      }
+
+      if (rightGroup.goalsFor !== leftGroup.goalsFor) {
+        return rightGroup.goalsFor - leftGroup.goalsFor
+      }
+    }
 
     const leftVsRight = getHeadToHead(left.clubId, right.clubId)
     const rightVsLeft = getHeadToHead(right.clubId, left.clubId)
@@ -305,6 +378,12 @@ export const buildLeagueTable = async (
     if (rightVsLeft.goalsFor !== leftVsRight.goalsFor) {
       return rightVsLeft.goalsFor - leftVsRight.goalsFor
     }
+
+    const leftDiff = left.goalDifference
+    const rightDiff = right.goalDifference
+    if (rightDiff !== leftDiff) return rightDiff - leftDiff
+
+    if (right.goalsFor !== left.goalsFor) return right.goalsFor - left.goalsFor
 
     return left.clubName.localeCompare(right.clubName, 'ru')
   })

@@ -49,6 +49,30 @@ const buildLocationLabel = (match: LeagueMatchView): string => {
   return parts.join(' · ')
 }
 
+const buildSeriesDescriptor = (match: LeagueMatchView, mode: 'schedule' | 'results') => {
+  const { series } = match
+  if (!series) {
+    return null
+  }
+
+  const useAfter = mode === 'results' || match.status === 'FINISHED'
+  const leftIsSeriesHome = match.homeClub.id === series.homeClubId
+
+  const leftWinsBefore = leftIsSeriesHome ? series.homeWinsBefore : series.awayWinsBefore
+  const leftWinsAfter = leftIsSeriesHome ? series.homeWinsAfter : series.awayWinsAfter
+  const rightWinsBefore = leftIsSeriesHome ? series.awayWinsBefore : series.homeWinsBefore
+  const rightWinsAfter = leftIsSeriesHome ? series.awayWinsAfter : series.homeWinsAfter
+
+  const leftWins = useAfter ? leftWinsAfter : leftWinsBefore
+  const rightWins = useAfter ? rightWinsAfter : rightWinsBefore
+
+  return {
+    stageName: series.stageName,
+    scoreLabel: `${match.homeClub.name} ${leftWins} — ${rightWins} ${match.awayClub.name}`,
+    matchLabel: `Матч ${series.matchNumber}/${series.totalMatches}`,
+  }
+}
+
 const buildMatchDescriptor = (match: LeagueMatchView, mode: 'schedule' | 'results') => {
   const { fullLabel } = parseMatchDateTime(match.matchDateTime)
   const isLive = match.status === 'LIVE'
@@ -85,6 +109,7 @@ const buildMatchDescriptor = (match: LeagueMatchView, mode: 'schedule' | 'result
       detail: penalty,
       badge,
       modifier: isLive ? 'live' : undefined,
+      series: buildSeriesDescriptor(match, mode),
     }
   }
 
@@ -94,6 +119,7 @@ const buildMatchDescriptor = (match: LeagueMatchView, mode: 'schedule' | 'result
     detail: null,
     badge: null,
     modifier: undefined,
+    series: buildSeriesDescriptor(match, mode),
   }
 }
 
@@ -124,6 +150,102 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
   lastUpdated,
 }) => {
   const openTeamView = useAppStore(state => state.openTeamView)
+  const tablesBySeason = useAppStore(state => state.tables)
+  const resultsBySeason = useAppStore(state => state.results)
+  const seasonId = data?.season.id ?? null
+  const seasonTable = seasonId ? tablesBySeason[seasonId] : undefined
+  const seasonResults = seasonId ? resultsBySeason[seasonId] : undefined
+  const rounds = data?.rounds ?? []
+  const hasFinishedMatches = seasonResults
+    ? seasonResults.rounds.some(round => round.matches.length > 0)
+    : false
+  const podium = seasonTable ? seasonTable.standings.slice(0, 3) : []
+
+  const playoffSummary = React.useMemo(() => {
+    if (!seasonResults) {
+      return null
+    }
+
+    const seriesById = new Map<string, NonNullable<LeagueMatchView['series']>>()
+
+    for (const round of seasonResults.rounds) {
+      for (const match of round.matches) {
+        if (!match.series) {
+          continue
+        }
+
+        const existing = seriesById.get(match.series.id)
+        if (!existing || existing.status !== 'FINISHED') {
+          seriesById.set(match.series.id, match.series)
+        }
+        if (match.series.status === 'FINISHED') {
+          seriesById.set(match.series.id, match.series)
+        }
+      }
+    }
+
+    if (!seriesById.size) {
+      return null
+    }
+
+    const detectFinal = (series: NonNullable<LeagueMatchView['series']>) => {
+      const normalized = series.stageName.toLowerCase()
+      const isSemi = normalized.includes('1/2') || normalized.includes('semi') || normalized.includes('полу')
+      return !isSemi && normalized.includes('финал')
+    }
+
+    const detectThird = (series: NonNullable<LeagueMatchView['series']>) => {
+      const normalized = series.stageName.toLowerCase()
+      return normalized.includes('3') && normalized.includes('мест')
+    }
+
+    let finalSeries: NonNullable<LeagueMatchView['series']> | undefined
+    let thirdSeries: NonNullable<LeagueMatchView['series']> | undefined
+
+    for (const item of seriesById.values()) {
+      if (!finalSeries && detectFinal(item)) {
+        finalSeries = item
+      }
+      if (!thirdSeries && detectThird(item)) {
+        thirdSeries = item
+      }
+    }
+
+    if (!finalSeries || finalSeries.status !== 'FINISHED' || finalSeries.winnerClubId == null) {
+      return null
+    }
+
+    const championIsHome = finalSeries.winnerClubId === finalSeries.homeClubId
+    const championClub = championIsHome ? finalSeries.homeClub : finalSeries.awayClub
+    const runnerClub = championIsHome ? finalSeries.awayClub : finalSeries.homeClub
+    const championWins = championIsHome ? finalSeries.homeWinsTotal : finalSeries.awayWinsTotal
+    const runnerWins = championIsHome ? finalSeries.awayWinsTotal : finalSeries.homeWinsTotal
+
+    let thirdPlace: { clubName: string; detail: string } | undefined
+    if (thirdSeries && thirdSeries.status === 'FINISHED' && thirdSeries.winnerClubId != null) {
+      const thirdIsHome = thirdSeries.winnerClubId === thirdSeries.homeClubId
+      const thirdClub = thirdIsHome ? thirdSeries.homeClub : thirdSeries.awayClub
+      const opponent = thirdIsHome ? thirdSeries.awayClub : thirdSeries.homeClub
+      const thirdWins = thirdIsHome ? thirdSeries.homeWinsTotal : thirdSeries.awayWinsTotal
+      const opponentWins = thirdIsHome ? thirdSeries.awayWinsTotal : thirdSeries.homeWinsTotal
+      thirdPlace = {
+        clubName: thirdClub.name,
+        detail: `${thirdSeries.stageName}: ${thirdWins} — ${opponentWins} ${opponent.name}`,
+      }
+    }
+
+    return {
+      champion: {
+        clubName: championClub.name,
+        detail: `${finalSeries.stageName}: ${championWins} — ${runnerWins} ${runnerClub.name}`,
+      },
+      runnerUp: {
+        clubName: runnerClub.name,
+        detail: `${finalSeries.stageName}: ${runnerWins} — ${championWins} ${championClub.name}`,
+      },
+      thirdPlace,
+    }
+  }, [seasonResults])
 
   if (loading) {
     return (
@@ -154,7 +276,10 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
     )
   }
 
-  const { season, rounds } = data
+  const { season } = data
+
+  const showCompletedState =
+    mode === 'schedule' && rounds.length === 0 && hasFinishedMatches && (playoffSummary || podium.length >= 3)
   const headerTitle = mode === 'schedule' ? 'Календарь матчей' : 'Результаты'
   const updatedLabel = formatUpdatedLabel(lastUpdated)
 
@@ -169,9 +294,52 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
       </header>
 
       {rounds.length === 0 ? (
-        <div className="inline-feedback info" role="status">
-          {getEmptyMessage(mode)}
-        </div>
+        showCompletedState ? (
+          <div className="league-rounds-grid">
+            <div className="tournament-finished" role="status">
+              <h3>ТУРНИР ЗАВЕРШЕН</h3>
+              <div className="podium-grid">
+                {playoffSummary ? (
+                  <>
+                    <div className="podium-slot second">
+                      <span className="podium-icon" aria-hidden="true">🥈</span>
+                      <span className="podium-team">{playoffSummary.runnerUp.clubName}</span>
+                      <span className="podium-points muted">{playoffSummary.runnerUp.detail}</span>
+                    </div>
+                    <div className="podium-slot first">
+                      <span className="podium-icon" aria-hidden="true">🥇</span>
+                      <span className="podium-team">{playoffSummary.champion.clubName}</span>
+                      <span className="podium-points muted">{playoffSummary.champion.detail}</span>
+                    </div>
+                    {playoffSummary.thirdPlace ? (
+                      <div className="podium-slot third">
+                        <span className="podium-icon" aria-hidden="true">🥉</span>
+                        <span className="podium-team">{playoffSummary.thirdPlace.clubName}</span>
+                        <span className="podium-points muted">{playoffSummary.thirdPlace.detail}</span>
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  podium.slice(0, 3).map((entry, index) => {
+                    const icon = index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉'
+                    const tone = index === 0 ? 'first' : index === 1 ? 'second' : 'third'
+                    return (
+                      <div key={entry.clubId} className={`podium-slot ${tone}`}>
+                        <span className="podium-icon" aria-hidden="true">{icon}</span>
+                        <span className="podium-team">{entry.clubName}</span>
+                        <span className="podium-points muted">{entry.points} очков</span>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="inline-feedback info" role="status">
+            {getEmptyMessage(mode)}
+          </div>
+        )
       ) : (
         <div className="league-rounds-grid">
           {rounds.map(round => {
@@ -252,6 +420,12 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
                             <span className="team-name">{awayName}</span>
                           </div>
                         </div>
+                        {descriptor.series ? (
+                          <div className="series-info">
+                            <span className="series-score">{descriptor.series.scoreLabel}</span>
+                            <span className="series-match">{descriptor.series.matchLabel}</span>
+                          </div>
+                        ) : null}
                         <div className="league-match-location">
                           <span>{location}</span>
                         </div>

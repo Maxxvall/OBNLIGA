@@ -208,6 +208,93 @@
   letter-spacing: 0.4px;
 }
 
+.series-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  letter-spacing: 0.4px;
+  color: rgba(255, 230, 255, 0.88);
+}
+
+.series-info .series-score {
+  font-weight: 600;
+}
+
+.series-info .series-match {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: rgba(200, 222, 255, 0.7);
+  letter-spacing: 0.6px;
+}
+
+.tournament-finished {
+  border-radius: 16px;
+  border: 1px solid rgba(0, 240, 255, 0.18);
+  background: rgba(0, 240, 255, 0.08);
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  text-align: center;
+}
+
+.tournament-finished h3 {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.podium-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.podium-slot {
+  border-radius: 14px;
+  border: 1px solid rgba(0, 240, 255, 0.16);
+  background: rgb(8 21 37 / 92%);
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-height: 120px;
+}
+
+.podium-slot.first {
+  border-color: rgba(255, 204, 0, 0.55);
+  box-shadow: 0 0 20px rgba(255, 204, 0, 0.18);
+}
+
+.podium-slot.second {
+  border-color: rgba(170, 200, 255, 0.45);
+}
+
+.podium-slot.third {
+  border-color: rgba(255, 160, 102, 0.4);
+}
+
+.podium-icon {
+  font-size: 26px;
+}
+
+.podium-team {
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  max-width: 180px;
+}
+
+.podium-points {
+  font-size: 12px;
+  letter-spacing: 0.4px;
+}
+
 .league-rounds-placeholder {
   background: rgba(12, 20, 36, 0.82);
   border-radius: 16px;
@@ -257,5 +344,15 @@
 
   .league-match-card {
     padding: 14px 16px;
+  }
+
+  .podium-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 420px) {
+  .podium-grid {
+    grid-template-columns: 1fr;
   }
 }

@@ -198,9 +198,9 @@
 }
 
 .stats-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
+  width: 20px;
+  height: 8px;
+  border-radius: 4px;
   border: none;
   background: rgba(229, 244, 255, 0.32);
   cursor: pointer;
@@ -208,7 +208,7 @@
 }
 
 .stats-dot.active {
-  background: var(--neon-magenta);
+  background: linear-gradient(135deg, #00f0ffe6, #781f8fe6);
   transform: scale(1.2);
 }
 

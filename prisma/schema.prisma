@@ -94,6 +94,7 @@ model Season {
   name         String
   startDate    DateTime  @map("start_date")
   endDate      DateTime  @map("end_date")
+  city         String?   @map("city")
   seriesFormat SeriesFormat? @map("series_format")
   isActive     Boolean   @default(false) @map("is_active")
 

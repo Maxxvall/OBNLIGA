@@ -130,6 +130,7 @@ interface SeasonAutomationInput {
   startDateISO: string
   matchDayOfWeek: number
   matchTime?: string | null
+  city?: string | null
   seriesFormat: SeriesFormat
   bestOfLength?: number
   groupStage?: GroupStageConfigInput
@@ -484,6 +485,8 @@ export const runSeasonAutomation = async (
   logger: FastifyBaseLogger,
   input: SeasonAutomationInput
 ): Promise<SeasonAutomationResult> => {
+  const cityValue = (input.city ?? '').trim()
+  const seasonCity = cityValue ? cityValue : null
   const isGroupStageFormat =
     input.seriesFormat === (SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF as SeriesFormat)
   const validatedGroupStage = isGroupStageFormat
@@ -513,6 +516,7 @@ export const runSeasonAutomation = async (
         name: input.seasonName.trim(),
         startDate: kickoffDate,
         endDate: seasonEndDate,
+        city: seasonCity,
         seriesFormat: input.seriesFormat,
       },
     })

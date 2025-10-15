@@ -57,6 +57,7 @@ type EventFormState = {
 type SeasonAutomationFormState = {
   competitionId: number | ''
   seasonName: string
+  city: string
   startDate: string
   matchDayOfWeek: string
   matchTime: string
@@ -131,6 +132,7 @@ type EventPlayerOption = {
 const defaultAutomationForm: SeasonAutomationFormState = {
   competitionId: '',
   seasonName: '',
+  city: '',
   startDate: new Date().toISOString().slice(0, 10),
   matchDayOfWeek: '0',
   matchTime: '12:00',
@@ -363,6 +365,7 @@ export const MatchesTab = () => {
   const [groupStageState, setGroupStageState] = useState<GroupStageState>(buildDefaultGroupStage())
   const [automationResult, setAutomationResult] = useState<SeasonAutomationResult | null>(null)
   const [automationLoading, setAutomationLoading] = useState(false)
+  const [clubSearch, setClubSearch] = useState('')
   const automationSeedingEnabled =
     automationForm.seriesFormat === 'BEST_OF_N' ||
     automationForm.seriesFormat === 'DOUBLE_ROUND_PLAYOFF'
@@ -396,6 +399,21 @@ export const MatchesTab = () => {
     }
     return map
   }, [data.clubs])
+
+  const filteredClubs = useMemo(() => {
+    const query = clubSearch.trim().toLowerCase()
+    if (!query) {
+      return data.clubs
+    }
+    return data.clubs.filter(club => {
+      if (automationForm.clubIds.includes(club.id)) {
+        return true
+      }
+      const name = club.name.toLowerCase()
+      const shortName = club.shortName.toLowerCase()
+      return name.includes(query) || shortName.includes(query)
+    })
+  }, [automationForm.clubIds, clubSearch, data.clubs])
 
   const competitionFormat: SeriesFormat | undefined =
     selectedSeason?.seriesFormat ?? selectedSeason?.competition.seriesFormat
@@ -795,12 +813,15 @@ export const MatchesTab = () => {
       }
     }
 
+    const normalizedCity = automationForm.city.trim()
+
     const payload = {
       competitionId,
       seasonName: automationForm.seasonName.trim(),
       startDate: automationForm.startDate,
       matchDayOfWeek: Number.isFinite(matchDay) ? matchDay : 0,
       matchTime: automationForm.matchTime || undefined,
+      city: normalizedCity ? normalizedCity : undefined,
       clubIds: payloadClubIds,
       seriesFormat: automationForm.seriesFormat,
       groupStage: groupStagePayload,
@@ -820,6 +841,7 @@ export const MatchesTab = () => {
         ...defaultAutomationForm,
         startDate: new Date().toISOString().slice(0, 10),
       })
+      setClubSearch('')
       setGroupStageState(buildDefaultGroupStage())
       setLastGroupStagePreview(
         groupStagePayload
@@ -1580,6 +1602,16 @@ export const MatchesTab = () => {
                   required
                 />
               </label>
+              <label>
+                Город проведения (опционально)
+                <input
+                  value={automationForm.city}
+                  onChange={event =>
+                    setAutomationForm(form => ({ ...form, city: event.target.value }))
+                  }
+                  placeholder="Например: г. Обнинск"
+                />
+              </label>
               <div className="automation-grid">
                 <label>
                   Дата старта
@@ -1774,17 +1806,30 @@ export const MatchesTab = () => {
                   <div>
                     <h5>Команды</h5>
                     <p className="muted">Выберите участников (минимум 2).</p>
+                    <label className="club-search">
+                      Поиск по клубам
+                      <input
+                        type="search"
+                        value={clubSearch}
+                        onChange={event => setClubSearch(event.target.value)}
+                        placeholder="Введите название"
+                      />
+                    </label>
                     <div className="club-selection-list">
-                      {data.clubs.map(club => (
-                        <label key={club.id} className="checkbox club-checkbox">
-                          <span>{club.name}</span>
-                          <input
-                            type="checkbox"
-                            checked={automationForm.clubIds.includes(club.id)}
-                            onChange={() => toggleAutomationClub(club.id)}
-                          />
-                        </label>
-                      ))}
+                      {filteredClubs.length === 0 ? (
+                        <div className="muted">Совпадений не найдено.</div>
+                      ) : (
+                        filteredClubs.map(club => (
+                          <label key={club.id} className="checkbox club-checkbox">
+                            <span>{club.name}</span>
+                            <input
+                              type="checkbox"
+                              checked={automationForm.clubIds.includes(club.id)}
+                              onChange={() => toggleAutomationClub(club.id)}
+                            />
+                          </label>
+                        ))
+                      )}
                     </div>
                   </div>
                   <div className="selected-clubs">
@@ -1849,6 +1894,7 @@ export const MatchesTab = () => {
                       startDate: new Date().toISOString().slice(0, 10),
                     })
                     setGroupStageState(buildDefaultGroupStage())
+                    setClubSearch('')
                   }}
                   disabled={automationLoading}
                 >
@@ -1946,6 +1992,11 @@ export const MatchesTab = () => {
                   Период: {selectedSeason.startDate.slice(0, 10)} —{' '}
                   {selectedSeason.endDate.slice(0, 10)}
                 </p>
+                {selectedSeason.city ? (
+                  <p>
+                    Город проведения: <strong>{selectedSeason.city}</strong>
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </article>

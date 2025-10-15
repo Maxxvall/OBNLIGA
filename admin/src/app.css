@@ -1449,6 +1449,19 @@
   font-size: 12px;
 }
 
+.club-search {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.club-search input {
+  width: 100%;
+}
+
 .muted {
   margin: 0 0 10px;
   color: var(--text-muted);

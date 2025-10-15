@@ -1985,6 +1985,7 @@ export default async function (server: FastifyInstance) {
           name?: string
           startDate?: string
           endDate?: string
+          city?: string | null
         }
         if (!body?.competitionId || !body?.name || !body?.startDate || !body?.endDate) {
           return reply.status(400).send({ ok: false, error: 'season_fields_required' })
@@ -1995,12 +1996,15 @@ export default async function (server: FastifyInstance) {
         if (!competition) {
           return reply.status(404).send({ ok: false, error: 'competition_not_found' })
         }
+        const cityValueRaw = typeof body.city === 'string' ? body.city.trim() : ''
+        const normalizedCity = cityValueRaw ? cityValueRaw : null
         const season = await prisma.season.create({
           data: {
             competitionId: body.competitionId,
             name: body.name.trim(),
             startDate: new Date(body.startDate),
             endDate: new Date(body.endDate),
+            city: normalizedCity,
             seriesFormat: competition.seriesFormat,
           },
         })
@@ -2016,6 +2020,7 @@ export default async function (server: FastifyInstance) {
           matchTime?: string
           clubIds?: number[]
           seriesFormat?: string
+          city?: string | null
           groupStage?: {
             groupCount?: number
             groupSize?: number
@@ -2126,6 +2131,7 @@ export default async function (server: FastifyInstance) {
             startDateISO: body.startDate,
             matchDayOfWeek: normalizedMatchDay,
             matchTime: body.matchTime,
+            city: typeof body.city === 'string' ? body.city.trim() : undefined,
             seriesFormat,
             groupStage: groupStageConfig,
           })
@@ -2175,19 +2181,33 @@ export default async function (server: FastifyInstance) {
 
       admin.put('/seasons/:seasonId', async (request, reply) => {
         const seasonId = parseNumericId((request.params as any).seasonId, 'seasonId')
-        const body = request.body as { name?: string; startDate?: string; endDate?: string }
+        const body = request.body as {
+          name?: string
+          startDate?: string
+          endDate?: string
+          city?: string | null
+        }
         const matchesPlayed = await prisma.match.findFirst({
           where: { seasonId, status: MatchStatus.FINISHED },
         })
         if (matchesPlayed && (body.startDate || body.endDate)) {
           return reply.status(409).send({ ok: false, error: 'season_dates_locked' })
         }
+        const cityValue =
+          body.city === undefined
+            ? undefined
+            : body.city === null
+              ? null
+              : typeof body.city === 'string'
+                ? body.city.trim() || null
+                : undefined
         const season = await prisma.season.update({
           where: { id: seasonId },
           data: {
             name: body.name?.trim(),
             startDate: body.startDate ? new Date(body.startDate) : undefined,
             endDate: body.endDate ? new Date(body.endDate) : undefined,
+            city: cityValue,
           },
         })
         return reply.send({ ok: true, data: season })

@@ -66,6 +66,7 @@ export interface Season {
   name: string
   startDate: string
   endDate: string
+  city?: string | null
   seriesFormat?: SeriesFormat | null
   isActive: boolean
   competition: Competition

@@ -39,6 +39,7 @@ export interface LeagueSeasonSummary {
   startDate: string
   endDate: string
   isActive: boolean
+  city?: string | null
   competition: {
     id: number
     name: string

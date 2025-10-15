@@ -386,6 +386,7 @@ export interface SeasonAutomationPayload {
   startDate: string
   matchDayOfWeek: number
   matchTime?: string
+  city?: string
   clubIds: number[]
   seriesFormat: SeriesFormat
   groupStage?: SeasonGroupStagePayload

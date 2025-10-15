@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { LeagueTableView } from '../components/league/LeagueTableView'
 import { LeagueRoundsView } from '../components/league/LeagueRoundsView'
 import { LeagueStatsView } from '../components/league/LeagueStatsView'
@@ -20,6 +20,13 @@ type CompetitionGroup = {
   seasons: LeagueSeasonSummary[]
 }
 
+type CityGroup = {
+  cityKey: string
+  cityLabel: string
+  seasonCount: number
+  competitions: CompetitionGroup[]
+}
+
 const SEASON_RANGE_FORMATTER = new Intl.DateTimeFormat('ru-RU', {
   day: '2-digit',
   month: '2-digit',
@@ -33,6 +40,29 @@ const formatSeasonRange = (season: LeagueSeasonSummary): string => {
     return `${season.startDate} — ${season.endDate}`
   }
   return `${SEASON_RANGE_FORMATTER.format(start)} — ${SEASON_RANGE_FORMATTER.format(end)}`
+}
+
+const UNKNOWN_CITY_KEY = '__unknown_city__'
+
+const normalizeCityKey = (city?: string | null): string => {
+  const value = city?.trim() ?? ''
+  if (!value) {
+    return UNKNOWN_CITY_KEY
+  }
+  return value.toLowerCase()
+}
+
+const labelForCity = (city?: string | null): string => {
+  const value = city?.trim()
+  return value && value.length ? value : 'Без города'
+}
+
+const competitionKeyFor = (cityKey: string, competitionId: number): string => {
+  return `${cityKey}::${competitionId}`
+}
+
+const domIdFor = (prefix: string, value: string): string => {
+  return `${prefix}-${encodeURIComponent(value)}`
 }
 
 const Placeholder: React.FC<{ message: string }> = ({ message }) => (
@@ -76,37 +106,97 @@ const LeaguePage: React.FC = () => {
   const schedules = useAppStore(state => state.schedules)
   const results = useAppStore(state => state.results)
   const stats = useAppStore(state => state.stats)
-  const [expandedGroups, setExpandedGroups] = useState<Set<number>>(() => new Set())
+  const [expandedCities, setExpandedCities] = useState<Set<string>>(() => new Set())
+  const [expandedCompetitions, setExpandedCompetitions] = useState<Set<string>>(
+    () => new Set()
+  )
+  const lastAutoExpandedSeasonId = useRef<number | undefined>(undefined)
 
   const selectedSeason = useMemo(
     () => seasons.find(season => season.id === selectedSeasonId),
     [seasons, selectedSeasonId]
   )
 
-  const competitionGroups = useMemo<CompetitionGroup[]>(() => {
+  const cityGroups = useMemo<CityGroup[]>(() => {
     if (seasons.length === 0) {
       return []
     }
-    const groups = new Map<number, CompetitionGroup>()
+
+    const collator = new Intl.Collator('ru', { sensitivity: 'base' })
+
+    const cityMap = new Map<
+      string,
+      {
+        label: string
+        competitions: Map<number, CompetitionGroup>
+      }
+    >()
+
     seasons.forEach(season => {
-      const current = groups.get(season.competition.id)
-      if (current) {
-        current.seasons.push(season)
+      const cityKey = normalizeCityKey(season.city)
+      const cityEntry = cityMap.get(cityKey)
+      if (!cityEntry) {
+        const competitions = new Map<number, CompetitionGroup>()
+        competitions.set(season.competition.id, {
+          competitionId: season.competition.id,
+          competitionName: season.competition.name,
+          seasons: [season],
+        })
+        cityMap.set(cityKey, {
+          label: labelForCity(season.city),
+          competitions,
+        })
         return
       }
-      groups.set(season.competition.id, {
+
+      const competitions = cityEntry.competitions
+      const competitionEntry = competitions.get(season.competition.id)
+      if (competitionEntry) {
+        competitionEntry.seasons.push(season)
+        return
+      }
+
+      competitions.set(season.competition.id, {
         competitionId: season.competition.id,
         competitionName: season.competition.name,
         seasons: [season],
       })
     })
-    const collator = new Intl.Collator('ru', { sensitivity: 'base' })
-    return Array.from(groups.values())
-      .map(group => ({
-        ...group,
-        seasons: [...group.seasons].sort((left, right) => right.startDate.localeCompare(left.startDate)),
-      }))
-      .sort((left, right) => collator.compare(left.competitionName, right.competitionName))
+
+    const sortedCities = Array.from(cityMap.entries())
+      .map(([cityKey, entry]) => {
+        const competitions = Array.from(entry.competitions.values())
+          .map(group => ({
+            ...group,
+            seasons: [...group.seasons].sort((left, right) =>
+              right.startDate.localeCompare(left.startDate)
+            ),
+          }))
+          .sort((left, right) => collator.compare(left.competitionName, right.competitionName))
+
+        const seasonCount = competitions.reduce(
+          (acc, group) => acc + group.seasons.length,
+          0
+        )
+
+        return {
+          cityKey,
+          cityLabel: entry.label,
+          seasonCount,
+          competitions,
+        }
+      })
+      .sort((left, right) => {
+        if (left.cityKey === UNKNOWN_CITY_KEY) {
+          return 1
+        }
+        if (right.cityKey === UNKNOWN_CITY_KEY) {
+          return -1
+        }
+        return collator.compare(left.cityLabel, right.cityLabel)
+      })
+
+    return sortedCities
   }, [seasons])
 
   const table = selectedSeasonId ? tables[selectedSeasonId] : undefined
@@ -119,43 +209,131 @@ const LeaguePage: React.FC = () => {
   const statsUpdatedAt = selectedSeasonId ? statsFetchedAt[selectedSeasonId] : undefined
 
   useEffect(() => {
-    setExpandedGroups(prev => {
-      const validIds = new Set(competitionGroups.map(group => group.competitionId))
+    setExpandedCities(prev => {
+      const validCityKeys = new Set(cityGroups.map(group => group.cityKey))
+      const next = new Set<string>()
       let mutated = false
-      const next = new Set<number>()
 
-      prev.forEach(id => {
-        if (validIds.has(id)) {
-          next.add(id)
+      prev.forEach(key => {
+        if (validCityKeys.has(key)) {
+          next.add(key)
         } else {
           mutated = true
         }
       })
 
-      const preferredId = selectedSeason
-        ? selectedSeason.competition.id
-        : competitionGroups[0]?.competitionId
-
-      if (preferredId !== undefined && !next.has(preferredId)) {
-        next.add(preferredId)
-        mutated = true
+      if (!mutated && next.size === prev.size) {
+        return prev
       }
+
+      const prevArr = Array.from(prev).sort()
+      const nextArr = Array.from(next).sort()
+      if (!mutated && prevArr.length === nextArr.length && prevArr.every((key, index) => key === nextArr[index])) {
+        return prev
+      }
+
+      return next
+    })
+
+    setExpandedCompetitions(prev => {
+      const validCompetitionKeys = new Set<string>()
+      cityGroups.forEach(cityGroup => {
+        cityGroup.competitions.forEach(group => {
+          validCompetitionKeys.add(competitionKeyFor(cityGroup.cityKey, group.competitionId))
+        })
+      })
+
+      const next = new Set<string>()
+      let mutated = false
+
+      prev.forEach(key => {
+        if (validCompetitionKeys.has(key)) {
+          next.add(key)
+        } else {
+          mutated = true
+        }
+      })
 
       if (!mutated && next.size === prev.size) {
         return prev
       }
 
-      if (!mutated) {
-        const prevArr = Array.from(prev).sort()
-        const nextArr = Array.from(next).sort()
-        if (prevArr.length === nextArr.length && prevArr.every((id, index) => id === nextArr[index])) {
-          return prev
-        }
+      const prevArr = Array.from(prev).sort()
+      const nextArr = Array.from(next).sort()
+      if (!mutated && prevArr.length === nextArr.length && prevArr.every((key, index) => key === nextArr[index])) {
+        return prev
       }
 
       return next
     })
-  }, [competitionGroups, selectedSeason])
+  }, [cityGroups])
+
+  useEffect(() => {
+    if (cityGroups.length === 0) {
+      return
+    }
+
+    const fallbackSeason = cityGroups[0]?.competitions[0]?.seasons[0]
+    const targetSeason = selectedSeason ?? fallbackSeason
+    if (!targetSeason) {
+      return
+    }
+
+    const cityKey = normalizeCityKey(targetSeason.city)
+    const groupKey = competitionKeyFor(cityKey, targetSeason.competition.id)
+
+    setExpandedCities(prev => {
+      if (selectedSeason) {
+        if (prev.has(cityKey)) {
+          return prev
+        }
+        const next = new Set(prev)
+        next.add(cityKey)
+        return next
+      }
+
+      if (prev.size > 0) {
+        return prev
+      }
+
+      const next = new Set(prev)
+      next.add(cityKey)
+      return next
+    })
+
+    setExpandedCompetitions(prev => {
+      if (!selectedSeason && prev.size > 0) {
+        return prev
+      }
+
+      let next = prev
+      if (!prev.has(groupKey)) {
+        next = new Set(prev)
+
+        if (selectedSeason && lastAutoExpandedSeasonId.current !== selectedSeason.id) {
+          const cityGroup = cityGroups.find(group => group.cityKey === cityKey)
+          if (cityGroup) {
+            cityGroup.competitions.forEach(group => {
+              const key = competitionKeyFor(cityKey, group.competitionId)
+              if (key !== groupKey) {
+                next.delete(key)
+              }
+            })
+          }
+        }
+
+        next.add(groupKey)
+      }
+
+      if (selectedSeason) {
+        lastAutoExpandedSeasonId.current = selectedSeason.id
+      } else {
+        lastAutoExpandedSeasonId.current = undefined
+      }
+
+      return next
+    })
+  }, [cityGroups, selectedSeason])
 
   useEffect(() => {
     ensureRealtime()
@@ -199,13 +377,26 @@ const LeaguePage: React.FC = () => {
     closeLeagueMenu()
   }
 
-  const toggleCompetition = (competitionId: number) => {
-    setExpandedGroups(prev => {
+  const toggleCity = (cityKey: string) => {
+    setExpandedCities(prev => {
       const next = new Set(prev)
-      if (next.has(competitionId)) {
-        next.delete(competitionId)
+      if (next.has(cityKey)) {
+        next.delete(cityKey)
       } else {
-        next.add(competitionId)
+        next.add(cityKey)
+      }
+      return next
+    })
+  }
+
+  const toggleCompetition = (cityKey: string, competitionId: number) => {
+    const key = competitionKeyFor(cityKey, competitionId)
+    setExpandedCompetitions(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
       }
       return next
     })
@@ -253,49 +444,84 @@ const LeaguePage: React.FC = () => {
           {loadingSeasons && <span className="muted">Загружаем…</span>}
         </header>
         <div className="league-season-groups">
-          {competitionGroups.map(group => {
-            const expanded = expandedGroups.has(group.competitionId)
+          {cityGroups.map(cityGroup => {
+            const cityExpanded = expandedCities.has(cityGroup.cityKey)
+            const cityDomId = domIdFor('city', cityGroup.cityKey)
             return (
               <div
-                key={group.competitionId}
-                className={`competition-group${expanded ? ' expanded' : ''}`}
+                key={cityGroup.cityKey}
+                className={`city-group${cityExpanded ? ' expanded' : ''}`}
               >
                 <button
                   type="button"
-                  className="competition-toggle"
-                  onClick={() => toggleCompetition(group.competitionId)}
-                  aria-expanded={expanded}
-                  aria-controls={`competition-${group.competitionId}`}
+                  className="competition-toggle city-toggle"
+                  onClick={() => toggleCity(cityGroup.cityKey)}
+                  aria-expanded={cityExpanded}
+                  aria-controls={cityDomId}
                 >
-                  <span className="competition-name">{group.competitionName}</span>
+                  <span className="city-name">{cityGroup.cityLabel}</span>
                   <span className="competition-meta">
-                    <span className="competition-count">{group.seasons.length}</span>
+                    <span className="competition-count">{cityGroup.seasonCount}</span>
                     <span className="competition-caret" aria-hidden>
-                      {expanded ? '-' : '+'}
+                      {cityExpanded ? '-' : '+'}
                     </span>
                   </span>
                 </button>
                 <div
-                  id={`competition-${group.competitionId}`}
-                  className="group-season-list"
+                  id={cityDomId}
+                  className="group-season-list city-competition-list"
                   role="list"
-                  hidden={!expanded}
+                  hidden={!cityExpanded}
                 >
-                  {group.seasons.map(season => {
-                    const isActive = season.id === activeSeasonId
-                    const isSelected = season.id === selectedSeasonId
+                  {cityGroup.competitions.map(group => {
+                    const key = competitionKeyFor(cityGroup.cityKey, group.competitionId)
+                    const competitionExpanded = expandedCompetitions.has(key)
+                    const compDomId = domIdFor('competition', key)
                     return (
-                      <button
-                        key={season.id}
-                        type="button"
-                        role="listitem"
-                        className={`season-item${isSelected ? ' selected' : ''}${isActive ? ' active' : ''}`}
-                        onClick={() => handleSeasonClick(season.id)}
+                      <div
+                        key={key}
+                        className={`competition-group${competitionExpanded ? ' expanded' : ''}`}
                       >
-                        <span className="season-name">{season.name}</span>
-                        <span className="season-range muted">{formatSeasonRange(season)}</span>
-                        {isActive && <span className="season-chip">Текущий</span>}
-                      </button>
+                        <button
+                          type="button"
+                          className="competition-toggle"
+                          onClick={() => toggleCompetition(cityGroup.cityKey, group.competitionId)}
+                          aria-expanded={competitionExpanded}
+                          aria-controls={compDomId}
+                        >
+                          <span className="competition-name">{group.competitionName}</span>
+                          <span className="competition-meta">
+                            <span className="competition-count">{group.seasons.length}</span>
+                            <span className="competition-caret" aria-hidden>
+                              {competitionExpanded ? '-' : '+'}
+                            </span>
+                          </span>
+                        </button>
+                        <div
+                          id={compDomId}
+                          className="group-season-list"
+                          role="list"
+                          hidden={!competitionExpanded}
+                        >
+                          {group.seasons.map(season => {
+                            const isActive = season.id === activeSeasonId
+                            const isSelected = season.id === selectedSeasonId
+                            return (
+                              <button
+                                key={season.id}
+                                type="button"
+                                role="listitem"
+                                className={`season-item${isSelected ? ' selected' : ''}${isActive ? ' active' : ''}`}
+                                onClick={() => handleSeasonClick(season.id)}
+                              >
+                                <span className="season-name">{season.name}</span>
+                                <span className="season-range muted">{formatSeasonRange(season)}</span>
+                                {isActive && <span className="season-chip">Текущий</span>}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
                     )
                   })}
                 </div>

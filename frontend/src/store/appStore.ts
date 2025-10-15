@@ -166,12 +166,14 @@ const isLeagueSeasonSummary = (value: unknown): value is LeagueSeasonSummary => 
   }
   const season = value as LeagueSeasonSummary
   const competition = (season as { competition?: unknown }).competition
+  const city = (season as { city?: unknown }).city
   return (
     typeof season.id === 'number' &&
     typeof season.name === 'string' &&
     typeof season.startDate === 'string' &&
     typeof season.endDate === 'string' &&
     typeof season.isActive === 'boolean' &&
+    (city === undefined || city === null || typeof city === 'string') &&
     !!competition &&
     typeof (competition as { id?: unknown }).id === 'number'
   )

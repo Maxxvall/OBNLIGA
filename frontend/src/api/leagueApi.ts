@@ -6,25 +6,30 @@ import type {
 } from '@shared/types'
 import { httpRequest, type ApiResponse } from './httpClient'
 
+type RequestOptions = {
+  signal?: AbortSignal
+  version?: string
+}
+
 export const leagueApi = {
-  fetchSeasons(signal?: AbortSignal) {
-    return httpRequest<LeagueSeasonSummary[]>('/api/league/seasons', { signal })
+  fetchSeasons(options?: RequestOptions) {
+    return httpRequest<LeagueSeasonSummary[]>('/api/league/seasons', options)
   },
-  fetchTable(seasonId?: number, signal?: AbortSignal) {
+  fetchTable(seasonId?: number, options?: RequestOptions) {
     const query = seasonId ? `?seasonId=${encodeURIComponent(seasonId)}` : ''
-    return httpRequest<LeagueTableResponse>(`/api/league/table${query}`, { signal })
+    return httpRequest<LeagueTableResponse>(`/api/league/table${query}`, options)
   },
-  fetchSchedule(seasonId?: number, signal?: AbortSignal) {
+  fetchSchedule(seasonId?: number, options?: RequestOptions) {
     const query = seasonId ? `?seasonId=${encodeURIComponent(seasonId)}` : ''
-    return httpRequest<LeagueRoundCollection>(`/api/league/schedule${query}`, { signal })
+    return httpRequest<LeagueRoundCollection>(`/api/league/schedule${query}`, options)
   },
-  fetchResults(seasonId?: number, signal?: AbortSignal) {
+  fetchResults(seasonId?: number, options?: RequestOptions) {
     const query = seasonId ? `?seasonId=${encodeURIComponent(seasonId)}` : ''
-    return httpRequest<LeagueRoundCollection>(`/api/league/results${query}`, { signal })
+    return httpRequest<LeagueRoundCollection>(`/api/league/results${query}`, options)
   },
-  fetchStats(seasonId?: number, signal?: AbortSignal) {
+  fetchStats(seasonId?: number, options?: RequestOptions) {
     const query = seasonId ? `?seasonId=${encodeURIComponent(seasonId)}` : ''
-    return httpRequest<LeagueStatsResponse>(`/api/league/stats${query}`, { signal })
+    return httpRequest<LeagueStatsResponse>(`/api/league/stats${query}`, options)
   },
 }
 

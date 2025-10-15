@@ -11,6 +11,12 @@ type ApiSuccess<T> = {
   ok: true
   data: T
   version?: string
+  notModified?: false
+}
+
+type ApiNotModified = {
+  ok: true
+  notModified: true
 }
 
 type ApiError = {
@@ -19,7 +25,7 @@ type ApiError = {
   status: number
 }
 
-export type ApiResponse<T> = ApiSuccess<T> | ApiError
+export type ApiResponse<T> = ApiSuccess<T> | ApiError | ApiNotModified
 
 const jsonHeaders = {
   Accept: 'application/json',
@@ -41,15 +47,32 @@ const parseErrorMessage = (value: unknown): string => {
   return 'unknown_error'
 }
 
-export async function httpRequest<T>(path: string, init?: RequestInit): Promise<ApiResponse<T>> {
+type HttpRequestOptions = Omit<RequestInit, 'headers'> & {
+  headers?: HeadersInit
+  version?: string
+}
+
+export async function httpRequest<T>(path: string, options?: HttpRequestOptions): Promise<ApiResponse<T>> {
   const url = buildUrl(path)
+  const { version, headers, ...rest } = options ?? {}
+  const requestHeaders: Record<string, string> = headers
+    ? { ...jsonHeaders, ...(headers as Record<string, string>) }
+    : { ...jsonHeaders }
+  if (version) {
+    requestHeaders['If-None-Match'] = version
+  }
   try {
     const response = await fetch(url, {
-      ...init,
-      headers: init?.headers ? { ...jsonHeaders, ...init.headers } : jsonHeaders,
+      ...rest,
+      headers: requestHeaders,
     })
 
+    if (response.status === 304) {
+      return { ok: true, notModified: true }
+    }
+
     const versionHeader = response.headers.get('x-resource-version') ?? undefined
+    const etagHeader = response.headers.get('etag') ?? undefined
     const text = await response.text()
     let json: unknown
     if (text) {
@@ -92,12 +115,12 @@ export async function httpRequest<T>(path: string, init?: RequestInit): Promise<
       }
     }
 
-    const version = body.meta?.version ?? versionHeader
+    const versionValue = body.meta?.version ?? versionHeader ?? etagHeader
 
     return {
       ok: true,
       data: body.data,
-      version,
+      version: versionValue,
     }
   } catch (err) {
     return {

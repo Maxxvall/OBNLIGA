@@ -194,6 +194,7 @@ interface AppState {
   teamView: TeamViewState
   teamSummaries: Record<number, ClubSummaryResponse>
   teamSummaryFetchedAt: Record<number, number>
+  teamSummaryVersions: Record<number, string | undefined>
   teamSummaryLoadingId: number | null
   teamSummaryErrors: Record<number, string | undefined>
   teamPollingAttached: boolean
@@ -356,6 +357,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   teamView: { ...INITIAL_TEAM_VIEW },
   teamSummaries: {},
   teamSummaryFetchedAt: {},
+  teamSummaryVersions: {},
   teamSummaryLoadingId: null,
   teamSummaryErrors: {},
   teamPollingAttached: false,
@@ -416,13 +418,27 @@ export const useAppStore = create<AppState>((set, get) => ({
       loading: { ...prev.loading, seasons: true },
       errors: { ...prev.errors, seasons: undefined },
     }))
-    const response = await leagueApi.fetchSeasons()
+    const response = await leagueApi.fetchSeasons({ version: state.seasonsVersion })
     if (!response.ok) {
       set(prev => ({
         loading: { ...prev.loading, seasons: false },
         errors: { ...prev.errors, seasons: response.error },
       }))
       return { ok: false }
+    }
+    if (!('data' in response)) {
+      if (state.seasons.length === 0) {
+        set(prev => ({
+          loading: { ...prev.loading, seasons: false },
+          errors: { ...prev.errors, seasons: 'empty_cache' },
+        }))
+        return { ok: false }
+      }
+      set(prev => ({
+        seasonsFetchedAt: now,
+        loading: { ...prev.loading, seasons: false },
+      }))
+      return { ok: true }
     }
     const ordered = orderSeasons(response.data)
     const active = ordered.find(season => season.isActive)
@@ -464,7 +480,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       loading: { ...prev.loading, table: true },
       errors: { ...prev.errors, table: undefined },
     }))
-    const response = await leagueApi.fetchTable(seasonId)
+    const response = await leagueApi.fetchTable(seasonId, {
+      version: state.tableVersions[seasonId],
+    })
     if (!response.ok) {
       set(prev => ({
         loading: { ...prev.loading, table: false },
@@ -472,12 +490,28 @@ export const useAppStore = create<AppState>((set, get) => ({
       }))
       return { ok: false }
     }
+    if (!('data' in response)) {
+      if (!state.tables[seasonId]) {
+        set(prev => ({
+          loading: { ...prev.loading, table: false },
+          errors: { ...prev.errors, table: 'empty_cache' },
+        }))
+        return { ok: false }
+      }
+      set(prev => ({
+        tableFetchedAt: { ...prev.tableFetchedAt, [seasonId]: now },
+        loading: { ...prev.loading, table: false },
+      }))
+      return { ok: true }
+    }
+    const payload = response.data
+    const nextVersion = response.version ?? state.tableVersions[seasonId]
     set(prev => ({
-      tables: { ...prev.tables, [seasonId]: response.data },
-      tableVersions: { ...prev.tableVersions, [seasonId]: response.version },
+      tables: { ...prev.tables, [seasonId]: payload },
+      tableVersions: { ...prev.tableVersions, [seasonId]: nextVersion },
       tableFetchedAt: { ...prev.tableFetchedAt, [seasonId]: now },
       loading: { ...prev.loading, table: false },
-      activeSeasonId: response.data.season.isActive ? response.data.season.id : prev.activeSeasonId,
+      activeSeasonId: payload.season.isActive ? payload.season.id : prev.activeSeasonId,
     }))
     return { ok: true }
   },
@@ -499,7 +533,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       loading: { ...prev.loading, schedule: true },
       errors: { ...prev.errors, schedule: undefined },
     }))
-    const response = await leagueApi.fetchSchedule(seasonId)
+    const response = await leagueApi.fetchSchedule(seasonId, {
+      version: state.scheduleVersions[seasonId],
+    })
     if (!response.ok) {
       set(prev => ({
         loading: { ...prev.loading, schedule: false },
@@ -507,12 +543,28 @@ export const useAppStore = create<AppState>((set, get) => ({
       }))
       return { ok: false }
     }
+    if (!('data' in response)) {
+      if (!state.schedules[seasonId]) {
+        set(prev => ({
+          loading: { ...prev.loading, schedule: false },
+          errors: { ...prev.errors, schedule: 'empty_cache' },
+        }))
+        return { ok: false }
+      }
+      set(prev => ({
+        scheduleFetchedAt: { ...prev.scheduleFetchedAt, [seasonId]: now },
+        loading: { ...prev.loading, schedule: false },
+      }))
+      return { ok: true }
+    }
+    const payload = response.data
+    const nextVersion = response.version ?? state.scheduleVersions[seasonId]
     set(prev => ({
-      schedules: { ...prev.schedules, [seasonId]: response.data },
-      scheduleVersions: { ...prev.scheduleVersions, [seasonId]: response.version },
+      schedules: { ...prev.schedules, [seasonId]: payload },
+      scheduleVersions: { ...prev.scheduleVersions, [seasonId]: nextVersion },
       scheduleFetchedAt: { ...prev.scheduleFetchedAt, [seasonId]: now },
       loading: { ...prev.loading, schedule: false },
-      activeSeasonId: response.data.season.isActive ? response.data.season.id : prev.activeSeasonId,
+      activeSeasonId: payload.season.isActive ? payload.season.id : prev.activeSeasonId,
     }))
     return { ok: true }
   },
@@ -534,7 +586,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       loading: { ...prev.loading, results: true },
       errors: { ...prev.errors, results: undefined },
     }))
-    const response = await leagueApi.fetchResults(seasonId)
+    const response = await leagueApi.fetchResults(seasonId, {
+      version: state.resultsVersions[seasonId],
+    })
     if (!response.ok) {
       set(prev => ({
         loading: { ...prev.loading, results: false },
@@ -542,12 +596,28 @@ export const useAppStore = create<AppState>((set, get) => ({
       }))
       return { ok: false }
     }
+    if (!('data' in response)) {
+      if (!state.results[seasonId]) {
+        set(prev => ({
+          loading: { ...prev.loading, results: false },
+          errors: { ...prev.errors, results: 'empty_cache' },
+        }))
+        return { ok: false }
+      }
+      set(prev => ({
+        resultsFetchedAt: { ...prev.resultsFetchedAt, [seasonId]: now },
+        loading: { ...prev.loading, results: false },
+      }))
+      return { ok: true }
+    }
+    const payload = response.data
+    const nextVersion = response.version ?? state.resultsVersions[seasonId]
     set(prev => ({
-      results: { ...prev.results, [seasonId]: response.data },
-      resultsVersions: { ...prev.resultsVersions, [seasonId]: response.version },
+      results: { ...prev.results, [seasonId]: payload },
+      resultsVersions: { ...prev.resultsVersions, [seasonId]: nextVersion },
       resultsFetchedAt: { ...prev.resultsFetchedAt, [seasonId]: now },
       loading: { ...prev.loading, results: false },
-      activeSeasonId: response.data.season.isActive ? response.data.season.id : prev.activeSeasonId,
+      activeSeasonId: payload.season.isActive ? payload.season.id : prev.activeSeasonId,
     }))
     return { ok: true }
   },
@@ -569,7 +639,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       loading: { ...prev.loading, stats: true },
       errors: { ...prev.errors, stats: undefined },
     }))
-    const response = await leagueApi.fetchStats(seasonId)
+    const response = await leagueApi.fetchStats(seasonId, {
+      version: state.statsVersions[seasonId],
+    })
     if (!response.ok) {
       set(prev => ({
         loading: { ...prev.loading, stats: false },
@@ -577,12 +649,28 @@ export const useAppStore = create<AppState>((set, get) => ({
       }))
       return { ok: false }
     }
+    if (!('data' in response)) {
+      if (!state.stats[seasonId]) {
+        set(prev => ({
+          loading: { ...prev.loading, stats: false },
+          errors: { ...prev.errors, stats: 'empty_cache' },
+        }))
+        return { ok: false }
+      }
+      set(prev => ({
+        statsFetchedAt: { ...prev.statsFetchedAt, [seasonId]: now },
+        loading: { ...prev.loading, stats: false },
+      }))
+      return { ok: true }
+    }
+    const payload = response.data
+    const nextVersion = response.version ?? state.statsVersions[seasonId]
     set(prev => ({
-      stats: { ...prev.stats, [seasonId]: response.data },
-      statsVersions: { ...prev.statsVersions, [seasonId]: response.version },
+      stats: { ...prev.stats, [seasonId]: payload },
+      statsVersions: { ...prev.statsVersions, [seasonId]: nextVersion },
       statsFetchedAt: { ...prev.statsFetchedAt, [seasonId]: now },
       loading: { ...prev.loading, stats: false },
-      activeSeasonId: response.data.season.isActive ? response.data.season.id : prev.activeSeasonId,
+      activeSeasonId: payload.season.isActive ? payload.season.id : prev.activeSeasonId,
     }))
     return { ok: true }
   },
@@ -644,7 +732,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       teamSummaryErrors: { ...prev.teamSummaryErrors, [clubId]: undefined },
     }))
 
-    const response = await clubApi.fetchSummary(clubId)
+    const response = await clubApi.fetchSummary(clubId, {
+      version: state.teamSummaryVersions[clubId],
+    })
     if (!response.ok) {
       set(prev => ({
         teamSummaryLoadingId:
@@ -652,6 +742,24 @@ export const useAppStore = create<AppState>((set, get) => ({
         teamSummaryErrors: { ...prev.teamSummaryErrors, [clubId]: response.error },
       }))
       return { ok: false }
+    }
+    if (!('data' in response)) {
+      if (!state.teamSummaries[clubId]) {
+        set(prev => ({
+          teamSummaryLoadingId:
+            prev.teamSummaryLoadingId === clubId ? null : prev.teamSummaryLoadingId,
+          teamSummaryErrors: { ...prev.teamSummaryErrors, [clubId]: 'empty_cache' },
+        }))
+        return { ok: false }
+      }
+      set(prev => ({
+        teamSummaryFetchedAt: { ...prev.teamSummaryFetchedAt, [clubId]: Date.now() },
+        teamSummaryLoadingId:
+          prev.teamSummaryLoadingId === clubId ? null : prev.teamSummaryLoadingId,
+        teamSummaryErrors: { ...prev.teamSummaryErrors, [clubId]: undefined },
+      }))
+      get().ensureTeamPolling()
+      return { ok: true }
     }
 
     const payload = response.data as unknown
@@ -665,8 +773,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const fetchedAt = Date.now()
+    const nextVersion = response.version ?? state.teamSummaryVersions[clubId]
     set(prev => ({
       teamSummaries: { ...prev.teamSummaries, [clubId]: payload },
+      teamSummaryVersions: { ...prev.teamSummaryVersions, [clubId]: nextVersion },
       teamSummaryFetchedAt: { ...prev.teamSummaryFetchedAt, [clubId]: fetchedAt },
       teamSummaryLoadingId: prev.teamSummaryLoadingId === clubId ? null : prev.teamSummaryLoadingId,
       teamSummaryErrors: { ...prev.teamSummaryErrors, [clubId]: undefined },

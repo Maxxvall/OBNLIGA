@@ -71,8 +71,8 @@ export async function httpRequest<T>(path: string, options?: HttpRequestOptions)
       return { ok: true, notModified: true }
     }
 
-    const versionHeader = response.headers.get('x-resource-version') ?? undefined
-    const etagHeader = response.headers.get('etag') ?? undefined
+  const versionHeader = response.headers.get('x-resource-version') ?? undefined
+  const etagHeader = response.headers.get('etag') ?? undefined
     const text = await response.text()
     let json: unknown
     if (text) {
@@ -115,7 +115,9 @@ export async function httpRequest<T>(path: string, options?: HttpRequestOptions)
       }
     }
 
-    const versionValue = body.meta?.version ?? versionHeader ?? etagHeader
+    const metaVersion = body.meta?.version
+    const versionValue =
+      etagHeader ?? versionHeader ?? (metaVersion !== undefined ? String(metaVersion) : undefined)
 
     return {
       ok: true,

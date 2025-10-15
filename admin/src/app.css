@@ -2207,6 +2207,11 @@
   flex-wrap: wrap;
 }
 
+.season-details-actions {
+  margin-top: 10px;
+  justify-content: flex-start;
+}
+
 .season-active-row .muted {
   margin: 0;
 }

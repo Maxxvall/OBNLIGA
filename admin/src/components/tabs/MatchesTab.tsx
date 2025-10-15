@@ -28,7 +28,7 @@ import {
   SeriesFormat,
 } from '../../types'
 import { PlayoffBracket } from '../PlayoffBracket'
-import { formatDateTime } from '../../utils/date'
+import { formatDateTime, formatDateTimeInput, toMoscowISOString } from '../../utils/date'
 
 type FeedbackLevel = 'info' | 'success' | 'error'
 
@@ -195,7 +195,7 @@ const buildMatchUpdateForm = (match: MatchSummary): MatchUpdateFormState => ({
   status: match.status,
   stadiumId: match.stadiumId ?? '',
   refereeId: match.refereeId ?? '',
-  matchDateTime: match.matchDateTime.slice(0, 16),
+  matchDateTime: formatDateTimeInput(match.matchDateTime),
   hasPenaltyShootout: match.hasPenaltyShootout ?? false,
   penaltyHomeScore: match.penaltyHomeScore ?? 0,
   penaltyAwayScore: match.penaltyAwayScore ?? 0,
@@ -1001,9 +1001,14 @@ export const MatchesTab = () => {
       handleFeedback('Названия команд должны отличаться', 'error')
       return
     }
+    const matchDateIso = toMoscowISOString(matchDate)
+    if (!matchDateIso) {
+      handleFeedback('Не удалось разобрать дату матча', 'error')
+      return
+    }
     await runWithMessages(async () => {
       await adminPost(token, '/api/admin/friendly-matches', {
-        matchDateTime: new Date(matchDate).toISOString(),
+        matchDateTime: matchDateIso,
         homeTeamName: homeName,
         awayTeamName: awayName,
         stadiumId: matchForm.stadiumId || undefined,
@@ -1051,9 +1056,18 @@ export const MatchesTab = () => {
       allowScoreUpdate && form.homeScore !== '' ? Math.max(0, Number(form.homeScore)) : undefined
     const awayScorePayload =
       allowScoreUpdate && form.awayScore !== '' ? Math.max(0, Number(form.awayScore)) : undefined
+    let matchDatePayload: string | undefined
+    if (form.matchDateTime) {
+      const normalized = toMoscowISOString(form.matchDateTime)
+      if (!normalized) {
+        handleFeedback('Не удалось разобрать дату матча', 'error')
+        return
+      }
+      matchDatePayload = normalized
+    }
     await runWithMessages(async () => {
       await adminPut(token, `/api/admin/matches/${match.id}`, {
-        matchDateTime: form.matchDateTime ? new Date(form.matchDateTime).toISOString() : undefined,
+        matchDateTime: matchDatePayload,
         homeScore: homeScorePayload,
         awayScore: awayScorePayload,
         status: form.status,
@@ -2009,27 +2023,14 @@ export const MatchesTab = () => {
                     : 'не выбран'}
                 </strong>
               </span>
-              <div className="season-actions">
-                <button
-                  className="button-primary"
-                  type="button"
-                  onClick={() => selectedSeason && activateSeason(selectedSeason.id)}
-                  disabled={
-                    !selectedSeason || activatingSeason || selectedSeason.isActive || !token
-                  }
-                >
-                  {activatingSeason ? 'Сохраняем…' : 'Сделать активным'}
-                </button>
-                <button
-                  className="button-danger"
-                  type="button"
-                  onClick={handleSeasonDelete}
-                  disabled={seasonDeleteDisabled}
-                  title={seasonDeleteTitle}
-                >
-                  {deletingSeason ? 'Удаляем…' : 'Удалить сезон'}
-                </button>
-              </div>
+              <button
+                className="button-primary"
+                type="button"
+                onClick={() => selectedSeason && activateSeason(selectedSeason.id)}
+                disabled={!selectedSeason || activatingSeason || selectedSeason.isActive || !token}
+              >
+                {activatingSeason ? 'Сохраняем…' : 'Сделать активным'}
+              </button>
             </div>
             {selectedSeason ? (
               <div className="season-details">
@@ -2045,6 +2046,17 @@ export const MatchesTab = () => {
                     Город проведения: <strong>{selectedSeason.city}</strong>
                   </p>
                 ) : null}
+                <div className="season-actions season-details-actions">
+                  <button
+                    className="button-danger"
+                    type="button"
+                    onClick={handleSeasonDelete}
+                    disabled={seasonDeleteDisabled}
+                    title={seasonDeleteTitle}
+                  >
+                    {deletingSeason ? 'Удаляем…' : 'Удалить сезон'}
+                  </button>
+                </div>
               </div>
             ) : null}
           </article>

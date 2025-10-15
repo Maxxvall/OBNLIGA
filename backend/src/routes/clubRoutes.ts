@@ -2,7 +2,9 @@ import { FastifyPluginAsync } from 'fastify'
 import {
   ClubSummaryNotFoundError,
   getClubSummary,
+  publicClubSummaryKey,
 } from '../services/clubSummary'
+import { buildWeakEtag, matchesIfNoneMatch } from '../utils/httpCaching'
 
 const clubRoutes: FastifyPluginAsync = async fastify => {
   fastify.get<{ Params: { clubId: string } }>('/api/clubs/:clubId/summary', async (request, reply) => {
@@ -15,7 +17,19 @@ const clubRoutes: FastifyPluginAsync = async fastify => {
 
     try {
       const { value, version } = await getClubSummary(clubId)
-      reply.header('X-Resource-Version', version)
+      const cacheKey = publicClubSummaryKey(clubId)
+      const etag = buildWeakEtag(cacheKey, version)
+
+      if (matchesIfNoneMatch(request.headers, etag)) {
+        return reply
+          .status(304)
+          .header('ETag', etag)
+          .header('X-Resource-Version', String(version))
+          .send()
+      }
+
+      reply.header('ETag', etag)
+      reply.header('X-Resource-Version', String(version))
       return reply.send({ ok: true, data: value, meta: { version } })
     } catch (err) {
       if (err instanceof ClubSummaryNotFoundError) {

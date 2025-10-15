@@ -22,6 +22,7 @@ import {
   PUBLIC_LEAGUE_STATS_TTL_SECONDS,
   buildLeagueStats,
 } from '../services/leagueStats'
+import { buildWeakEtag, matchesIfNoneMatch } from '../utils/httpCaching'
 
 const SEASONS_CACHE_KEY = 'public:league:seasons'
 const SEASONS_TTL_SECONDS = 60
@@ -71,7 +72,18 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
       fetchLeagueSeasons,
       SEASONS_TTL_SECONDS
     )
-    reply.header('X-Resource-Version', version)
+    const etag = buildWeakEtag(SEASONS_CACHE_KEY, version)
+
+    if (matchesIfNoneMatch(_request.headers, etag)) {
+      return reply
+        .status(304)
+        .header('ETag', etag)
+        .header('X-Resource-Version', String(version))
+        .send()
+    }
+
+    reply.header('ETag', etag)
+    reply.header('X-Resource-Version', String(version))
     return reply.send({ ok: true, data: value, meta: { version } })
   })
 
@@ -94,8 +106,18 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
       () => buildLeagueTable(season),
       TABLE_TTL_SECONDS
     )
+    const etag = buildWeakEtag(cacheKey, version)
 
-    reply.header('X-Resource-Version', version)
+    if (matchesIfNoneMatch(request.headers, etag)) {
+      return reply
+        .status(304)
+        .header('ETag', etag)
+        .header('X-Resource-Version', String(version))
+        .send()
+    }
+
+    reply.header('ETag', etag)
+    reply.header('X-Resource-Version', String(version))
     return reply.send({ ok: true, data: value, meta: { version } })
   })
 
@@ -118,8 +140,18 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
       () => buildLeagueSchedule(season),
       PUBLIC_LEAGUE_SCHEDULE_TTL_SECONDS
     )
+    const etag = buildWeakEtag(cacheKey, version)
 
-    reply.header('X-Resource-Version', version)
+    if (matchesIfNoneMatch(request.headers, etag)) {
+      return reply
+        .status(304)
+        .header('ETag', etag)
+        .header('X-Resource-Version', String(version))
+        .send()
+    }
+
+    reply.header('ETag', etag)
+    reply.header('X-Resource-Version', String(version))
     return reply.send({ ok: true, data: value, meta: { version } })
   })
 
@@ -142,8 +174,18 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
       () => buildLeagueResults(season),
       PUBLIC_LEAGUE_RESULTS_TTL_SECONDS
     )
+    const etag = buildWeakEtag(cacheKey, version)
 
-    reply.header('X-Resource-Version', version)
+    if (matchesIfNoneMatch(request.headers, etag)) {
+      return reply
+        .status(304)
+        .header('ETag', etag)
+        .header('X-Resource-Version', String(version))
+        .send()
+    }
+
+    reply.header('ETag', etag)
+    reply.header('X-Resource-Version', String(version))
     return reply.send({ ok: true, data: value, meta: { version } })
   })
 
@@ -166,8 +208,18 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
       () => buildLeagueStats(season),
       PUBLIC_LEAGUE_STATS_TTL_SECONDS
     )
+    const etag = buildWeakEtag(cacheKey, version)
 
-    reply.header('X-Resource-Version', version)
+    if (matchesIfNoneMatch(request.headers, etag)) {
+      return reply
+        .status(304)
+        .header('ETag', etag)
+        .header('X-Resource-Version', String(version))
+        .send()
+    }
+
+    reply.header('ETag', etag)
+    reply.header('X-Resource-Version', String(version))
     return reply.send({ ok: true, data: value, meta: { version } })
   })
 }

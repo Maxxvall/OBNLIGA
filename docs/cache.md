@@ -31,10 +31,10 @@
 ## Ресурсы и TTL (адаптировано под 5000 юзеров)
 
 ### 1. League (Лига) — versioned, TTL адаптивный
-- `league:table` — versioned, TTL 60–300 с; при активных матчах 5–30 с; инвалидация: match_finalized, match_results_update.  
-- `league:schedule` — versioned, TTL 3600 с; инвалидация: schedule_update.  
+- `league:table` — versioned, TTL 30 с (сейчас совпадает с клиентским TTL); при активных матчах допускается снижение до 10–15 с на стороне бэкенда; инвалидация: match_finalized, match_results_update.  
+- `league:schedule` — versioned, TTL 12 с (короткий поллинг для live‑расписания, пока нет фонового воркера); инвалидация: schedule_update.  
 - `league:stats` — versioned, TTL 300 с; горячие live-поля кешируются отдельно (3–30 с); инвалидация: match_stats_update, match_finalized.  
-- `league:results` — versioned, TTL 3600–86400 с; инвалидация: match_finalized.  
+- `league:results` — versioned, TTL 20 с (выравнено с клиентским TTL чтобы быстрее подтягивать обновления счёта); по мере стабилизации можно увеличивать до минут/часов; инвалидация: match_finalized.  
 - `league:bracket` — versioned, TTL 1ч–24ч; инвалидация: bracket_update, match_finalized.
 
 ### 2. Match Details — split static / live

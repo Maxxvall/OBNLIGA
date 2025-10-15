@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify'
 import prisma from '../db'
 import { defaultCache } from '../cache'
 import { serializePrisma } from '../utils/serialization'
+import { buildWeakEtag, matchesIfNoneMatch } from '../utils/httpCaching'
 
 const NEWS_CACHE_KEY = 'news:all'
 const NEWS_CACHE_TTL_SECONDS = 30 // seconds
@@ -32,8 +33,6 @@ const loadNews = async (): Promise<NewsView[]> => {
   return serializePrisma(rows) as NewsView[]
 }
 
-const buildEtag = (version: number) => `W/"news-${version}"`
-
 export default async function newsRoutes(server: FastifyInstance) {
   server.get('/api/news', async (request, reply) => {
     const { value, version } = await defaultCache.getWithMeta(
@@ -41,11 +40,14 @@ export default async function newsRoutes(server: FastifyInstance) {
       loadNews,
       NEWS_CACHE_TTL_SECONDS
     )
-    const etag = buildEtag(version)
-    const ifNoneMatch = request.headers['if-none-match']
+    const etag = buildWeakEtag(NEWS_CACHE_KEY, version)
 
-    if (ifNoneMatch && ifNoneMatch === etag) {
-      return reply.status(304).send()
+    if (matchesIfNoneMatch(request.headers, etag)) {
+      return reply
+        .status(304)
+        .header('ETag', etag)
+        .header('X-Resource-Version', String(version))
+        .send()
     }
 
     reply.header(

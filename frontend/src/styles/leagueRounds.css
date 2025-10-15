@@ -218,15 +218,15 @@
   color: rgba(255, 230, 255, 0.88);
 }
 
-.series-info .series-score {
-  font-weight: 600;
-}
-
-.series-info .series-match {
+.series-info .series-label {
   font-size: 11px;
   text-transform: uppercase;
   color: rgba(200, 222, 255, 0.7);
   letter-spacing: 0.6px;
+}
+
+.series-info .series-score {
+  font-weight: 600;
 }
 
 .tournament-finished {

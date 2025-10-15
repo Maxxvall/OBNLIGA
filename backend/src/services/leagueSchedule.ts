@@ -79,6 +79,7 @@ type RoundAccumulator = {
   matches: LeagueMatchView[]
   firstMatchAt: number
   lastMatchAt: number
+  hasSeries: boolean
 }
 
 const clubSelect = {
@@ -410,11 +411,15 @@ const groupMatchViewsByRound = (
         matches: [],
         firstMatchAt: matchTime,
         lastMatchAt: matchTime,
+        hasSeries: Boolean(entry.view.series),
       }
       map.set(key, accumulator)
     }
     accumulator.firstMatchAt = Math.min(accumulator.firstMatchAt, matchTime)
     accumulator.lastMatchAt = Math.max(accumulator.lastMatchAt, matchTime)
+    if (entry.view.series) {
+      accumulator.hasSeries = true
+    }
     accumulator.matches.push(entry.view)
   }
 
@@ -448,7 +453,7 @@ const groupMatchViewsByRound = (
   const includedKeys = new Set(initial.map(keyFor))
 
   for (const round of sorted) {
-    if (round.roundType === RoundType.PLAYOFF) {
+    if (round.roundType === RoundType.PLAYOFF || round.hasSeries) {
       const key = keyFor(round)
       if (!includedKeys.has(key)) {
         includedKeys.add(key)

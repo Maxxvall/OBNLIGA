@@ -68,8 +68,7 @@ const buildSeriesDescriptor = (match: LeagueMatchView, mode: 'schedule' | 'resul
 
   return {
     stageName: series.stageName,
-    scoreLabel: `${match.homeClub.name} ${leftWins} — ${rightWins} ${match.awayClub.name}`,
-    matchLabel: `Матч ${series.matchNumber}/${series.totalMatches}`,
+    seriesScore: `${leftWins} — ${rightWins}`,
   }
 }
 
@@ -161,17 +160,34 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
     : false
   const podium = seasonTable ? seasonTable.standings.slice(0, 3) : []
 
-  const playoffSummary = React.useMemo(() => {
+  const playoffState = React.useMemo(() => {
     if (!seasonResults) {
-      return null
+      return {
+        hasSeries: false,
+        allSeriesFinished: false,
+        summary: null as
+          | null
+          | {
+              champion: { clubName: string; detail: string }
+              runnerUp: { clubName: string; detail: string }
+              thirdPlace?: { clubName: string; detail: string }
+            },
+      }
     }
 
     const seriesById = new Map<string, NonNullable<LeagueMatchView['series']>>()
+    let hasSeries = false
+    let allSeriesFinished = true
 
     for (const round of seasonResults.rounds) {
       for (const match of round.matches) {
         if (!match.series) {
           continue
+        }
+
+        hasSeries = true
+        if (match.series.status !== 'FINISHED') {
+          allSeriesFinished = false
         }
 
         const existing = seriesById.get(match.series.id)
@@ -184,8 +200,8 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
       }
     }
 
-    if (!seriesById.size) {
-      return null
+    if (!hasSeries || !seriesById.size) {
+      return { hasSeries: false, allSeriesFinished: false, summary: null }
     }
 
     const detectFinal = (series: NonNullable<LeagueMatchView['series']>) => {
@@ -212,7 +228,7 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
     }
 
     if (!finalSeries || finalSeries.status !== 'FINISHED' || finalSeries.winnerClubId == null) {
-      return null
+      return { hasSeries: true, allSeriesFinished, summary: null }
     }
 
     const championIsHome = finalSeries.winnerClubId === finalSeries.homeClubId
@@ -235,15 +251,19 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
     }
 
     return {
-      champion: {
-        clubName: championClub.name,
-        detail: `${finalSeries.stageName}: ${championWins} — ${runnerWins} ${runnerClub.name}`,
+      hasSeries: true,
+      allSeriesFinished,
+      summary: {
+        champion: {
+          clubName: championClub.name,
+          detail: `${finalSeries.stageName}: ${championWins} — ${runnerWins} ${runnerClub.name}`,
+        },
+        runnerUp: {
+          clubName: runnerClub.name,
+          detail: `${finalSeries.stageName}: ${runnerWins} — ${championWins} ${championClub.name}`,
+        },
+        thirdPlace,
       },
-      runnerUp: {
-        clubName: runnerClub.name,
-        detail: `${finalSeries.stageName}: ${runnerWins} — ${championWins} ${championClub.name}`,
-      },
-      thirdPlace,
     }
   }, [seasonResults])
 
@@ -277,9 +297,15 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
   }
 
   const { season } = data
+  const seasonEndTime = Number.isNaN(Date.parse(season.endDate)) ? null : Date.parse(season.endDate)
+  const allowTableFallback = !playoffState.hasSeries && (!season.isActive || (seasonEndTime !== null && Date.now() > seasonEndTime))
 
   const showCompletedState =
-    mode === 'schedule' && rounds.length === 0 && hasFinishedMatches && (playoffSummary || podium.length >= 3)
+    mode === 'schedule' &&
+    rounds.length === 0 &&
+    hasFinishedMatches &&
+    ((playoffState.hasSeries && playoffState.allSeriesFinished && playoffState.summary) ||
+      (allowTableFallback && podium.length >= 3))
   const headerTitle = mode === 'schedule' ? 'Календарь матчей' : 'Результаты'
   const updatedLabel = formatUpdatedLabel(lastUpdated)
 
@@ -299,23 +325,23 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
             <div className="tournament-finished" role="status">
               <h3>ТУРНИР ЗАВЕРШЕН</h3>
               <div className="podium-grid">
-                {playoffSummary ? (
+                {playoffState.summary ? (
                   <>
                     <div className="podium-slot second">
                       <span className="podium-icon" aria-hidden="true">🥈</span>
-                      <span className="podium-team">{playoffSummary.runnerUp.clubName}</span>
-                      <span className="podium-points muted">{playoffSummary.runnerUp.detail}</span>
+                      <span className="podium-team">{playoffState.summary.runnerUp.clubName}</span>
+                      <span className="podium-points muted">{playoffState.summary.runnerUp.detail}</span>
                     </div>
                     <div className="podium-slot first">
                       <span className="podium-icon" aria-hidden="true">🥇</span>
-                      <span className="podium-team">{playoffSummary.champion.clubName}</span>
-                      <span className="podium-points muted">{playoffSummary.champion.detail}</span>
+                      <span className="podium-team">{playoffState.summary.champion.clubName}</span>
+                      <span className="podium-points muted">{playoffState.summary.champion.detail}</span>
                     </div>
-                    {playoffSummary.thirdPlace ? (
+                    {playoffState.summary.thirdPlace ? (
                       <div className="podium-slot third">
                         <span className="podium-icon" aria-hidden="true">🥉</span>
-                        <span className="podium-team">{playoffSummary.thirdPlace.clubName}</span>
-                        <span className="podium-points muted">{playoffSummary.thirdPlace.detail}</span>
+                        <span className="podium-team">{playoffState.summary.thirdPlace.clubName}</span>
+                        <span className="podium-points muted">{playoffState.summary.thirdPlace.detail}</span>
                       </div>
                     ) : null}
                   </>
@@ -422,8 +448,8 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
                         </div>
                         {descriptor.series ? (
                           <div className="series-info">
-                            <span className="series-score">{descriptor.series.scoreLabel}</span>
-                            <span className="series-match">{descriptor.series.matchLabel}</span>
+                            <span className="series-label">Счёт в серии</span>
+                            <span className="series-score">{descriptor.series.seriesScore}</span>
                           </div>
                         ) : null}
                         <div className="league-match-location">

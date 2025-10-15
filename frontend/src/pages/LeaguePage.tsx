@@ -81,7 +81,8 @@ const LeaguePage: React.FC = () => {
   const fetchSchedule = useAppStore(state => state.fetchLeagueSchedule)
   const fetchResults = useAppStore(state => state.fetchLeagueResults)
   const fetchStats = useAppStore(state => state.fetchLeagueStats)
-  const ensureRealtime = useAppStore(state => state.ensureRealtime)
+  const ensureLeaguePolling = useAppStore(state => state.ensureLeaguePolling)
+  const stopLeaguePolling = useAppStore(state => state.stopLeaguePolling)
   const setSelectedSeason = useAppStore(state => state.setSelectedSeason)
   const selectedSeasonId = useAppStore(state => state.selectedSeasonId)
   const activeSeasonId = useAppStore(state => state.activeSeasonId)
@@ -336,9 +337,13 @@ const LeaguePage: React.FC = () => {
   }, [cityGroups, selectedSeason])
 
   useEffect(() => {
-    ensureRealtime()
+    ensureLeaguePolling()
     void fetchSeasons()
-  }, [ensureRealtime, fetchSeasons])
+
+    return () => {
+      stopLeaguePolling()
+    }
+  }, [ensureLeaguePolling, stopLeaguePolling, fetchSeasons])
 
   useEffect(() => {
     if (selectedSeasonId) {

@@ -4,13 +4,10 @@ import type {
   LeagueSeasonSummary,
   LeagueTableResponse,
   LeagueStatsResponse,
-  LeagueStatsCategory,
-  LeaguePlayerLeaderboardEntry,
   ClubSummaryResponse,
 } from '@shared/types'
 import { leagueApi } from '../api/leagueApi'
 import { clubApi } from '../api/clubApi'
-import { wsClient } from '../wsClient'
 
 export type UITab = 'home' | 'league' | 'predictions' | 'leaderboard' | 'shop' | 'profile'
 export type LeagueSubTab = 'table' | 'schedule' | 'results' | 'stats'
@@ -29,28 +26,126 @@ const INITIAL_TEAM_VIEW: TeamViewState = {
 }
 
 const SEASONS_TTL_MS = 55_000
-const TABLE_TTL_MS = 240_000
-const SCHEDULE_TTL_MS = 7_500
-const RESULTS_TTL_MS = 14_000
+const TABLE_TTL_MS = 30_000
+const SCHEDULE_TTL_MS = 12_000
+const RESULTS_TTL_MS = 20_000
 const STATS_TTL_MS = 300_000
-const CLUB_SUMMARY_TTL_MS = 1_200_000
+const CLUB_SUMMARY_TTL_MS = 45_000
 const DOUBLE_TAP_THRESHOLD_MS = 280
 
-const clubSummaryTopic = (clubId: number) => `public:club:${clubId}:summary`
+const LEAGUE_POLL_INTERVAL_MS = 10_000
+const TEAM_POLL_INTERVAL_MS = 20_000
+const hasWindow = typeof window !== 'undefined'
 
-let teamRealtimeCleanup: (() => void) | null = null
-let teamRealtimeTopic: string | null = null
-let teamRealtimeUnloadRegistered = false
+let leaguePollingTimer: number | null = null
+let teamPollingTimer: number | null = null
+let teamPollingClubId: number | null = null
+let unloadCleanupRegistered = false
 
-const detachTeamRealtime = () => {
-  if (teamRealtimeCleanup) {
-    teamRealtimeCleanup()
-    teamRealtimeCleanup = null
+const clearLeaguePolling = () => {
+  if (!hasWindow) {
+    leaguePollingTimer = null
+    return
   }
-  if (teamRealtimeTopic) {
-    wsClient.unsubscribe(teamRealtimeTopic)
-    teamRealtimeTopic = null
+  if (leaguePollingTimer !== null) {
+    window.clearInterval(leaguePollingTimer)
+    leaguePollingTimer = null
   }
+}
+
+const clearTeamPolling = () => {
+  if (hasWindow && teamPollingTimer !== null) {
+    window.clearInterval(teamPollingTimer)
+  }
+  teamPollingTimer = null
+  teamPollingClubId = null
+}
+
+const registerUnloadCleanup = () => {
+  if (!hasWindow || unloadCleanupRegistered) {
+    return
+  }
+  window.addEventListener(
+    'beforeunload',
+    () => {
+      clearLeaguePolling()
+      clearTeamPolling()
+    },
+    { once: true }
+  )
+  unloadCleanupRegistered = true
+}
+
+const startLeaguePolling = (get: () => AppState) => {
+  if (!hasWindow || leaguePollingTimer !== null) {
+    return
+  }
+  registerUnloadCleanup()
+
+  const tick = () => {
+    if (typeof document !== 'undefined' && document.hidden) {
+      return
+    }
+
+    const state = get()
+    if (state.currentTab !== 'league') {
+      return
+    }
+
+    const seasonId = resolveSeasonId(state)
+    if (!seasonId) {
+      return
+    }
+
+    void state.fetchLeagueTable({ seasonId })
+
+    if (state.leagueSubTab === 'schedule') {
+      void state.fetchLeagueSchedule({ seasonId })
+    }
+
+    if (state.leagueSubTab === 'results') {
+      void state.fetchLeagueResults({ seasonId })
+    }
+
+    if (state.leagueSubTab === 'stats') {
+      void state.fetchLeagueStats({ seasonId })
+    }
+  }
+
+  leaguePollingTimer = window.setInterval(tick, LEAGUE_POLL_INTERVAL_MS)
+  tick()
+}
+
+const startTeamPolling = (get: () => AppState, clubId: number) => {
+  if (!hasWindow) {
+    return
+  }
+
+  registerUnloadCleanup()
+
+  if (teamPollingTimer !== null && teamPollingClubId === clubId) {
+    return
+  }
+
+  clearTeamPolling()
+  teamPollingClubId = clubId
+
+  const tick = () => {
+    if (typeof document !== 'undefined' && document.hidden) {
+      return
+    }
+
+    const state = get()
+    if (!state.teamView.open || state.teamView.clubId !== clubId) {
+      clearTeamPolling()
+      return
+    }
+
+    void state.fetchClubSummary(clubId)
+  }
+
+  teamPollingTimer = window.setInterval(tick, TEAM_POLL_INTERVAL_MS)
+  tick()
 }
 
 type FetchResult = { ok: boolean }
@@ -95,14 +190,14 @@ interface AppState {
   loading: LoadingState
   errors: ErrorState
   lastLeagueTapAt: number
-  realtimeAttached: boolean
+  leaguePollingAttached: boolean
   teamView: TeamViewState
   teamSummaries: Record<number, ClubSummaryResponse>
   teamSummaryFetchedAt: Record<number, number>
   teamSummaryLoadingId: number | null
   teamSummaryErrors: Record<number, string | undefined>
-  teamRealtimeAttached: boolean
-  teamRealtimeClubId?: number
+  teamPollingAttached: boolean
+  teamPollingClubId?: number
   setTab: (tab: UITab) => void
   setLeagueSubTab: (tab: LeagueSubTab) => void
   toggleLeagueMenu: (force?: boolean) => void
@@ -114,22 +209,14 @@ interface AppState {
   fetchLeagueSchedule: (options?: { seasonId?: number; force?: boolean }) => Promise<FetchResult>
   fetchLeagueResults: (options?: { seasonId?: number; force?: boolean }) => Promise<FetchResult>
   fetchLeagueStats: (options?: { seasonId?: number; force?: boolean }) => Promise<FetchResult>
-  applyRealtimeTable: (table: LeagueTableResponse) => void
-  applyRealtimeSchedule: (collection: LeagueRoundCollection) => void
-  applyRealtimeResults: (collection: LeagueRoundCollection) => void
-  applyRealtimeStats: (params: {
-    season: LeagueSeasonSummary
-    category: LeagueStatsCategory
-    entries: LeaguePlayerLeaderboardEntry[]
-    generatedAt?: string
-  }) => void
-  ensureRealtime: () => void
+  ensureLeaguePolling: () => void
+  stopLeaguePolling: () => void
   openTeamView: (clubId: number) => void
   closeTeamView: () => void
   setTeamSubTab: (tab: TeamSubTab) => void
   fetchClubSummary: (clubId: number, options?: { force?: boolean }) => Promise<FetchResult>
-  applyRealtimeClubSummary: (summary: ClubSummaryResponse) => void
-  ensureTeamRealtime: () => void
+  ensureTeamPolling: () => void
+  stopTeamPolling: () => void
 }
 
 const orderSeasons = (items: LeagueSeasonSummary[]) =>
@@ -137,92 +224,6 @@ const orderSeasons = (items: LeagueSeasonSummary[]) =>
 
 const resolveSeasonId = (state: AppState, override?: number) =>
   override ?? state.selectedSeasonId ?? state.activeSeasonId
-
-const isRoundCollection = (payload: unknown): payload is LeagueRoundCollection => {
-  if (!payload || typeof payload !== 'object') {
-    return false
-  }
-  const season = (payload as { season?: unknown }).season
-  if (!season || typeof season !== 'object' || !(season as { id?: unknown }).id) {
-    return false
-  }
-  return Array.isArray((payload as { rounds?: unknown }).rounds)
-}
-
-const isTableResponse = (payload: unknown): payload is LeagueTableResponse => {
-  if (!payload || typeof payload !== 'object') {
-    return false
-  }
-  const season = (payload as { season?: unknown }).season
-  if (!season || typeof season !== 'object' || !(season as { id?: unknown }).id) {
-    return false
-  }
-  return Array.isArray((payload as { standings?: unknown }).standings)
-}
-
-const isLeagueSeasonSummary = (value: unknown): value is LeagueSeasonSummary => {
-  if (!value || typeof value !== 'object') {
-    return false
-  }
-  const season = value as LeagueSeasonSummary
-  const competition = (season as { competition?: unknown }).competition
-  const city = (season as { city?: unknown }).city
-  return (
-    typeof season.id === 'number' &&
-    typeof season.name === 'string' &&
-    typeof season.startDate === 'string' &&
-    typeof season.endDate === 'string' &&
-    typeof season.isActive === 'boolean' &&
-    (city === undefined || city === null || typeof city === 'string') &&
-    !!competition &&
-    typeof (competition as { id?: unknown }).id === 'number'
-  )
-}
-
-const isLeaderboardEntry = (value: unknown): value is LeaguePlayerLeaderboardEntry => {
-  if (!value || typeof value !== 'object') {
-    return false
-  }
-  const entry = value as LeaguePlayerLeaderboardEntry
-  return (
-    typeof entry.personId === 'number' &&
-    typeof entry.firstName === 'string' &&
-    typeof entry.lastName === 'string' &&
-    typeof entry.clubId === 'number' &&
-    typeof entry.clubName === 'string' &&
-    typeof entry.clubShortName === 'string' &&
-    (entry.clubLogoUrl === null || typeof entry.clubLogoUrl === 'string') &&
-    typeof entry.matchesPlayed === 'number' &&
-    typeof entry.goals === 'number' &&
-    typeof entry.assists === 'number' &&
-    typeof entry.penaltyGoals === 'number'
-  )
-}
-
-const isStatsPayload = (payload: unknown): payload is {
-  season: LeagueSeasonSummary
-  generatedAt?: string
-  entries: LeaguePlayerLeaderboardEntry[]
-} => {
-  if (!payload || typeof payload !== 'object') {
-    return false
-  }
-  const candidate = payload as {
-    season?: unknown
-    generatedAt?: unknown
-    entries?: unknown
-  }
-  if (!isLeagueSeasonSummary(candidate.season)) {
-    return false
-  }
-  if (candidate.generatedAt !== undefined && typeof candidate.generatedAt !== 'string') {
-    return false
-  }
-  if (!Array.isArray(candidate.entries)) {
-    return false
-  }
-  return candidate.entries.every(isLeaderboardEntry)
-}
 
 const isClubSummaryStatistics = (
   value: unknown
@@ -327,12 +328,6 @@ const isClubSummaryResponsePayload = (
   return typeof candidate.generatedAt === 'string'
 }
 
-const emptyLeaderboards = (): LeagueStatsResponse['leaderboards'] => ({
-  goalContribution: [],
-  scorers: [],
-  assists: [],
-})
-
 export const useAppStore = create<AppState>((set, get) => ({
   currentTab: 'home',
   leagueSubTab: 'table',
@@ -357,14 +352,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   loading: { seasons: false, table: false, schedule: false, results: false, stats: false },
   errors: {},
   lastLeagueTapAt: 0,
-  realtimeAttached: false,
+  leaguePollingAttached: false,
   teamView: { ...INITIAL_TEAM_VIEW },
   teamSummaries: {},
   teamSummaryFetchedAt: {},
   teamSummaryLoadingId: null,
   teamSummaryErrors: {},
-  teamRealtimeAttached: false,
-  teamRealtimeClubId: undefined,
+  teamPollingAttached: false,
+  teamPollingClubId: undefined,
   setTab: tab => {
     set(state => ({
       currentTab: tab,
@@ -591,144 +586,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     }))
     return { ok: true }
   },
-  applyRealtimeTable: table => {
-    const seasonId = table.season.id
-    set(prev => ({
-      tables: { ...prev.tables, [seasonId]: table },
-      tableVersions: { ...prev.tableVersions, [seasonId]: undefined },
-      tableFetchedAt: { ...prev.tableFetchedAt, [seasonId]: Date.now() },
-      activeSeasonId: table.season.isActive ? seasonId : prev.activeSeasonId,
-    }))
-  },
-  applyRealtimeSchedule: collection => {
-    const seasonId = collection.season.id
-    set(prev => ({
-      schedules: { ...prev.schedules, [seasonId]: collection },
-      scheduleVersions: { ...prev.scheduleVersions, [seasonId]: undefined },
-      scheduleFetchedAt: { ...prev.scheduleFetchedAt, [seasonId]: Date.now() },
-      activeSeasonId: collection.season.isActive ? seasonId : prev.activeSeasonId,
-    }))
-  },
-  applyRealtimeResults: collection => {
-    const seasonId = collection.season.id
-    set(prev => ({
-      results: { ...prev.results, [seasonId]: collection },
-      resultsVersions: { ...prev.resultsVersions, [seasonId]: undefined },
-      resultsFetchedAt: { ...prev.resultsFetchedAt, [seasonId]: Date.now() },
-      activeSeasonId: collection.season.isActive ? seasonId : prev.activeSeasonId,
-    }))
-  },
-  applyRealtimeStats: ({ season, category, entries, generatedAt }) => {
-    const seasonId = season.id
-    set(prev => {
-      const existing = prev.stats[seasonId]
-      const leaderboards = existing ? { ...existing.leaderboards } : emptyLeaderboards()
-      leaderboards[category] = entries
-      const nextSnapshot: LeagueStatsResponse = {
-        season,
-        generatedAt: generatedAt ?? existing?.generatedAt ?? new Date().toISOString(),
-        leaderboards,
-      }
-      return {
-        stats: { ...prev.stats, [seasonId]: nextSnapshot },
-        statsVersions: { ...prev.statsVersions, [seasonId]: undefined },
-        statsFetchedAt: { ...prev.statsFetchedAt, [seasonId]: Date.now() },
-        activeSeasonId: season.isActive ? seasonId : prev.activeSeasonId,
-      }
-    })
-  },
-  ensureRealtime: () => {
+  ensureLeaguePolling: () => {
     const state = get()
-    if (state.realtimeAttached) {
+    if (state.leaguePollingAttached) {
       return
     }
-
-    const unsubTable = wsClient.on('league.table', message => {
-      if (!isTableResponse(message.payload)) {
-        return
-      }
-      get().applyRealtimeTable(message.payload)
-    })
-
-    const unsubSchedule = wsClient.on('league.schedule', message => {
-      if (!isRoundCollection(message.payload)) {
-        return
-      }
-      get().applyRealtimeSchedule(message.payload)
-    })
-
-    const unsubResults = wsClient.on('league.results', message => {
-      if (!isRoundCollection(message.payload)) {
-        return
-      }
-      get().applyRealtimeResults(message.payload)
-    })
-
-    const unsubGoalContribution = wsClient.on('league.goalContribution', message => {
-      if (!isStatsPayload(message.payload)) {
-        return
-      }
-      get().applyRealtimeStats({
-        season: message.payload.season,
-        category: 'goalContribution',
-        entries: message.payload.entries,
-        generatedAt: message.payload.generatedAt,
-      })
-    })
-
-    const unsubScorers = wsClient.on('league.scorers', message => {
-      if (!isStatsPayload(message.payload)) {
-        return
-      }
-      get().applyRealtimeStats({
-        season: message.payload.season,
-        category: 'scorers',
-        entries: message.payload.entries,
-        generatedAt: message.payload.generatedAt,
-      })
-    })
-
-    const unsubAssists = wsClient.on('league.assists', message => {
-      if (!isStatsPayload(message.payload)) {
-        return
-      }
-      get().applyRealtimeStats({
-        season: message.payload.season,
-        category: 'assists',
-        entries: message.payload.entries,
-        generatedAt: message.payload.generatedAt,
-      })
-    })
-
-    wsClient.subscribe('public:league:table')
-    wsClient.subscribe('public:league:schedule')
-    wsClient.subscribe('public:league:results')
-    wsClient.subscribe('public:league:goal-contributors')
-    wsClient.subscribe('public:league:top-scorers')
-    wsClient.subscribe('public:league:top-assists')
-
-    if (typeof window !== 'undefined') {
-      window.addEventListener(
-        'beforeunload',
-        () => {
-          unsubTable()
-          unsubSchedule()
-          unsubResults()
-          unsubGoalContribution()
-          unsubScorers()
-          unsubAssists()
-          wsClient.unsubscribe('public:league:table')
-          wsClient.unsubscribe('public:league:schedule')
-          wsClient.unsubscribe('public:league:results')
-          wsClient.unsubscribe('public:league:goal-contributors')
-          wsClient.unsubscribe('public:league:top-scorers')
-          wsClient.unsubscribe('public:league:top-assists')
-        },
-        { once: true }
-      )
-    }
-
-    set({ realtimeAttached: true })
+    startLeaguePolling(get)
+    set({ leaguePollingAttached: true })
+  },
+  stopLeaguePolling: () => {
+    clearLeaguePolling()
+    set({ leaguePollingAttached: false })
   },
   openTeamView: clubId => {
     set(prev => ({
@@ -739,18 +607,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       },
       teamSummaryErrors: { ...prev.teamSummaryErrors, [clubId]: undefined },
     }))
-    get().ensureTeamRealtime()
+    get().ensureTeamPolling()
     void get().fetchClubSummary(clubId)
   },
   closeTeamView: () => {
     const state = get()
-    detachTeamRealtime()
+    get().stopTeamPolling()
     const shouldClearLoading =
       state.teamSummaryLoadingId !== null && state.teamSummaryLoadingId === state.teamView.clubId
     set(prev => ({
       teamView: { ...INITIAL_TEAM_VIEW },
-      teamRealtimeAttached: false,
-      teamRealtimeClubId: undefined,
+      teamPollingAttached: false,
+      teamPollingClubId: undefined,
       teamSummaryLoadingId: shouldClearLoading ? null : prev.teamSummaryLoadingId,
     }))
   },
@@ -765,7 +633,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const lastFetched = state.teamSummaryFetchedAt[clubId] ?? 0
     const hasFreshData = now - lastFetched < CLUB_SUMMARY_TTL_MS
     if (!options?.force && state.teamSummaries[clubId] && hasFreshData) {
-      get().ensureTeamRealtime()
+      get().ensureTeamPolling()
       return { ok: true }
     }
     if (state.teamSummaryLoadingId === clubId && !options?.force) {
@@ -803,58 +671,25 @@ export const useAppStore = create<AppState>((set, get) => ({
       teamSummaryLoadingId: prev.teamSummaryLoadingId === clubId ? null : prev.teamSummaryLoadingId,
       teamSummaryErrors: { ...prev.teamSummaryErrors, [clubId]: undefined },
     }))
-    get().ensureTeamRealtime()
+    get().ensureTeamPolling()
     return { ok: true }
   },
-  applyRealtimeClubSummary: summary => {
-    const clubId = summary.club.id
-    set(prev => ({
-      teamSummaries: { ...prev.teamSummaries, [clubId]: summary },
-      teamSummaryFetchedAt: { ...prev.teamSummaryFetchedAt, [clubId]: Date.now() },
-      teamSummaryErrors: { ...prev.teamSummaryErrors, [clubId]: undefined },
-    }))
-  },
-  ensureTeamRealtime: () => {
+  ensureTeamPolling: () => {
     const state = get()
     const clubId = state.teamView.clubId
     if (!clubId) {
+      get().stopTeamPolling()
       return
     }
-    if (state.teamRealtimeAttached && state.teamRealtimeClubId === clubId) {
+    if (state.teamPollingAttached && state.teamPollingClubId === clubId) {
       return
     }
-
-    detachTeamRealtime()
-
-    const topic = clubSummaryTopic(clubId)
-    const unsubscribe = wsClient.on('club.summary', message => {
-      if (typeof message.clubId !== 'number' || message.clubId !== clubId) {
-        return
-      }
-      if (!isClubSummaryResponsePayload(message.payload)) {
-        return
-      }
-      get().applyRealtimeClubSummary(message.payload)
-    })
-    teamRealtimeCleanup = () => {
-      unsubscribe()
-      teamRealtimeCleanup = null
-    }
-    teamRealtimeTopic = topic
-    wsClient.subscribe(topic)
-
-    if (!teamRealtimeUnloadRegistered && typeof window !== 'undefined') {
-      window.addEventListener(
-        'beforeunload',
-        () => {
-          detachTeamRealtime()
-        },
-        { once: true }
-      )
-      teamRealtimeUnloadRegistered = true
-    }
-
-    set({ teamRealtimeAttached: true, teamRealtimeClubId: clubId })
+    startTeamPolling(get, clubId)
+    set({ teamPollingAttached: true, teamPollingClubId: clubId })
+  },
+  stopTeamPolling: () => {
+    clearTeamPolling()
+    set({ teamPollingAttached: false, teamPollingClubId: undefined })
   },
 }))
 

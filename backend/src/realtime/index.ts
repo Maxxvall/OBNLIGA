@@ -23,7 +23,6 @@ const REDIS_READY_TIMEOUT_MS = 10_000
 
 type TrackedWebSocket = WebSocket & {
   topics: Set<string>
-  isPublicOnly?: boolean
   isAlive?: boolean
 }
 
@@ -178,7 +177,6 @@ export default async function registerRealtime(server: FastifyInstance) {
     ].filter(Boolean) as string[]
 
     let verified = false
-    let publicOnly = false
 
     if (token) {
       const tokenStr = String(token)
@@ -192,10 +190,6 @@ export default async function registerRealtime(server: FastifyInstance) {
           return false
         }
       })
-    } else {
-      verified = true
-      publicOnly = true
-      req.log.info('realtime: connection without token, limiting to public topics')
     }
 
     if (!verified) {
@@ -205,7 +199,6 @@ export default async function registerRealtime(server: FastifyInstance) {
     }
 
     socket.topics = new Set<string>()
-    socket.isPublicOnly = publicOnly
     socket.isAlive = true
 
     const heartbeat = () => {
@@ -275,8 +268,8 @@ export default async function registerRealtime(server: FastifyInstance) {
         return
       }
       const topicName = topic
-      if (socket.isPublicOnly && !isPublicTopic(topicName)) {
-        req.log.warn({ topic: topicName }, 'realtime: forbidden topic for public connection')
+      if (isPublicTopic(topicName)) {
+        req.log.warn({ topic: topicName }, 'realtime: public topics are disabled')
         socket.send(JSON.stringify({ type: 'error', topic: topicName, error: 'forbidden' }))
         return
       }

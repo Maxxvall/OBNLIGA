@@ -60,7 +60,7 @@
 ## 🛠 Технологический стек
 | Слой | Технологии | Версии/особенности | Назначение |
 | --- | --- | --- | --- |
-| Клиент (публичный) | React 18, TypeScript 5, Vite 5, SW WebSocket | `frontend/package.json` | Telegram WebApp, офлайн-кэш новостей, профиль, навигация bottom-nav |
+| Клиент (публичный) | React 18, TypeScript 5, Vite 5, adaptive HTTP polling + ETag | `frontend/package.json` | Telegram WebApp, офлайн-кэш новостей, профиль, навигация bottom-nav |
 | Клиент (админ) | React 18, Zustand 4.5.2, Vite 5 | `admin/src/store`, `vite.config.ts` | Дашборд с табами, live-редактирование матчей, управление новостями |
 | CSS | Кастомные CSS-файлы, переменные `--bg-*`, `--neon-*`, адаптивные гриды | `frontend/src/app.css`, `admin/src/theme.css` | Стиль «неокубизм» с неоновыми акцентами, доступность WCAG AA |
 | Backend | Fastify 4, Prisma 5.x, Node.js ≥20, `@fastify/websocket`, BullMQ 5.61, ioredis 5.8, grammy | `backend/package.json` | REST API, WebSocket-шина, очереди уведомлений, Telegram-бот |
@@ -71,9 +71,9 @@
 ## 🏗 Архитектура
 - **Компонентная модель.** Публичный фронт держит простое дерево: `App` управляет навигацией табов, `NewsSection` инкапсулирует кэш, swipe и RealTime, `Profile` выполняет Telegram auth+ETag, `LineupPortal` — полноценное CRUD-модальное приложение. В админке основная логика живёт в Zustand-сторе, компоненты (`DashboardLayout`, `PlayoffBracket`, `JudgePanel`) подписываются селекторами и вызывают экшены.
 - **Разделение логики.** Прикладные функции вынесены в API-клиенты (например, `admin/src/api/adminClient.ts` с envelope/мета и словарём ошибок), инфраструктура — в `backend/src/cache`, `backend/src/realtime`. Повторяемые операции обёрнуты в помощники (`runCachedFetch` в сторе, `adminRequestWithMeta` на клиенте, `defaultCache.getWithMeta` на сервере).
-- **Состояние.** Публичный фронт получил первый модуль стора (`frontend/src/store/appStore.ts`) для вкладки «Лига» с TTL-кэшом и WebSocket-подпиской; остальные экраны пока опираются на локальные `useState`/`useEffect`. Админ-панель использует полноценный Zustand с TTL и ролями (admin → judge → assistant → lineup). Серверный state — через Prisma транзакции + кэш-версии в Redis.
+- **Состояние.** Публичный фронт получил модуль стора (`frontend/src/store/appStore.ts`) для вкладки «Лига» с TTL-кэшом и адаптивными HTTP-интервалами; остальные экраны пока опираются на локальные `useState`/`useEffect`. Админ-панель использует полноценный Zustand с TTL и ролями (admin → judge → assistant → lineup). Серверный state — через Prisma транзакции + кэш-версии в Redis.
 - **API-слой.** REST организован вокруг Fastify-плагинов: каждый набор маршрутов регистрируется модульно, под капотом идут Prisma-операции и кэш-инвалидации (например, `newsRoutes` подставляет ETag, `adminRoutes` публикует обновления в WS и инвалидирует кэш ключами `season:*`). Клиенты строят относительные URL (`buildApiUrl`, `buildUrl`) и поддерживают условные заголовки.
-- **Реалтайм.** Реализована WebSocket-шина с Redis pub/sub, JWT-проверкой несколько секретов и таблицей подписок по топикам; клиент `frontend/src/wsClient.ts` умеет heartbeat, экспоненциальный бэкофф и мультиплекс тем.
+- **Реалтайм.** WebSocket-шина с Redis pub/sub, JWT-проверкой и таблицей подписок остаётся для админских панелей; публичное приложение теперь работает через HTTP polling + ETag и больше не использует `frontend/src/wsClient.ts`.
 - **Навигация.** React Router не используется: публичный SPA делает ручной state-машину табов (адекватно для WebApp), админка опирается на `activeTab` в сторе.
 - **Ошибки и загрузки.** Практически каждый fetch окружён индикаторами (`loading`, `portalError`, `modalError`), ошибки переводятся в локализованные сообщения словарями. На сервере ошибки мапятся в `translateAdminError`, в `authRoutes` обрабатывается несколько вариантов некорректного initData.
 
@@ -93,47 +93,35 @@
 
 ## 🔧 Ключевые компоненты
 **NewsSection (`frontend/src/components/NewsSection.tsx`)**
-- **Роль.** Главный блок новостей: загрузка с ETag, локальный кеш, автопрокрутка, real-time обновления.
+- **Роль.** Главный блок новостей: загрузка с ETag, локальный кеш, автопрокрутка и фоновый HTTP polling.
 - **Ключевой код:**
 ```tsx
 useEffect(() => {
-  const handler = (message: WSMessage) => {
-    if (!isNewsItem(message.payload)) return
-    const item = message.payload
-    setNews(current => {
-      const deduped = current.filter(entry => entry.id !== item.id)
-      const nextItems = [item, ...deduped]
-      writeCache(nextItems, etagRef.current)
-      newsRef.current = nextItems
-      return nextItems
-    })
-    setActiveIndex(0)
-  }
-  const detachFull = wsClient.on('news.full', handler)
-  const detachRemove = wsClient.on('news.remove', removeHandler)
-  return () => {
-    detachFull()
-    detachRemove()
-  }
-}, [writeCache])
-```
-- **API/пропсы.** Не принимает пропсов, работает с локальным состоянием и `wsClient`.
-- **Зависимости.** `@shared/types`, кастомный WS-клиент, локальное хранилище, ETag.
-
-**Profile (`frontend/src/Profile.tsx`)**
-- **Роль.** Авторизация WebApp через Telegram initData, синхронизация с сервером, real-time патчи профиля.
-- **Фрагмент:**
-```tsx
-const loadProfile = async () => {
-  const cached = getCachedProfile()
-  if (cached?.data) {
-    setUser(cached.data)
-    console.log('Loaded profile from cache')
+  if (typeof window === 'undefined') {
     return
   }
-  setLoading(true)
-  const backend = (import.meta.env.VITE_BACKEND_URL ?? '').replace(/\/$/, '')
-  const meUrl = backend ? `${backend}/api/auth/me` : '/api/auth/me'
+  const tick = () => {
+    if (typeof document !== 'undefined' && document.hidden) return
+    void fetchNews({ background: true })
+  }
+  const intervalId = window.setInterval(tick, NEWS_REFRESH_INTERVAL_MS)
+  return () => window.clearInterval(intervalId)
+}, [fetchNews])
+```
+- **API/пропсы.** Не принимает пропсов, работает с локальным состоянием и локальным storage.
+- **Зависимости.** `@shared/types`, fetch + ETag, `localStorage`.
+
+**Profile (`frontend/src/Profile.tsx`)**
+- **Роль.** Авторизация WebApp через Telegram initData, синхронизация с сервером и фоновое обновление профиля по HTTP.
+- **Фрагмент:**
+```tsx
+const loadProfile = useCallback(async (opts?: { background?: boolean }) => {
+  if (isFetchingRef.current) return
+  const cached = getCachedProfile()
+  if (!opts?.background && cached?.data) {
+    setUser(cached.data)
+  }
+  isFetchingRef.current = true
   try {
     const token = localStorage.getItem('session')
     if (token) {
@@ -142,28 +130,26 @@ const loadProfile = async () => {
       const resp = await fetch(meUrl, { headers, credentials: 'include' })
       if (resp.status === 304 && cached?.data) {
         setUser(cached.data)
-        wsClient.setToken(token)
-        setLoading(false)
         return
       }
       if (resp.ok) {
         const payload = (await resp.json()) as unknown
         const profileUser = readProfileUser(payload)
         if (profileUser) {
-          setCachedProfile(profileUser, resp.headers.get('ETag') ?? undefined)
+          const etag = resp.headers.get('ETag') ?? undefined
+          setCachedProfile(profileUser, etag)
           setUser(profileUser)
-          wsClient.setToken(token)
+          return
         }
       }
     }
-  } catch (e) {
-    console.error('Token-based load error:', e)
+  } finally {
+    isFetchingRef.current = false
   }
-  setLoading(false)
-}
+}, [])
 ```
-- **API/пропсы.** Нет пропсов; взаимодействует с `wsClient` и localStorage.
-- **Зависимости.** Telegram WebApp API, JWT-токен, ETag-логика, real-time топики `user:${id}` и `profile`.
+- **API/пропсы.** Нет пропсов; использует Telegram WebApp API, `fetch` и `localStorage`.
+- **Зависимости.** Telegram WebApp initData, JWT-токен, ETag-логика, локальный кеш.
 
 **Admin store (`admin/src/store/adminStore.ts`)**
 - **Роль.** Централизованное управление административной панелью (авторизация, словари, матчи, новости, кэширование).

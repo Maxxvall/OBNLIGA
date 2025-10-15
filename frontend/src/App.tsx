@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react'
 import './app.css'
 import './styles/splash.css'
 import Profile from './Profile'
-import { wsClient } from './wsClient'
 import { NewsSection } from './components/NewsSection'
 import LeaguePage from './pages/LeaguePage'
 import { TeamView } from './components/team/TeamView'
@@ -41,14 +40,6 @@ export default function App() {
     const t = setTimeout(() => setShowSplash(false), 350)
     return () => clearTimeout(t)
   }, [isExiting])
-
-  useEffect(() => {
-    // auto-subscribe to topic named after tab
-    if (currentTab) wsClient.subscribe(currentTab)
-    return () => {
-      if (currentTab) wsClient.unsubscribe(currentTab)
-    }
-  }, [currentTab])
 
   if (showSplash) {
     return (

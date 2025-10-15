@@ -323,40 +323,40 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
               <div className="podium-grid">
                 {(playoffState.summary
                   ? [
-                      {
-                        key: `runner-${playoffState.summary.runnerUp.club.id}`,
-                        tone: 'second' as const,
-                        icon: '🥈',
-                        club: playoffState.summary.runnerUp.club,
-                      },
-                      {
-                        key: `champion-${playoffState.summary.champion.club.id}`,
-                        tone: 'first' as const,
-                        icon: '🥇',
-                        club: playoffState.summary.champion.club,
-                      },
-                      ...(playoffState.summary.thirdPlace
-                        ? [
-                            {
-                              key: `third-${playoffState.summary.thirdPlace.club.id}`,
-                              tone: 'third' as const,
-                              icon: '🥉',
-                              club: playoffState.summary.thirdPlace.club,
-                            },
-                          ]
-                        : []),
-                    ]
+                    {
+                      key: `runner-${playoffState.summary.runnerUp.club.id}`,
+                      tone: 'second' as const,
+                      icon: '🥈',
+                      club: playoffState.summary.runnerUp.club,
+                    },
+                    {
+                      key: `champion-${playoffState.summary.champion.club.id}`,
+                      tone: 'first' as const,
+                      icon: '🥇',
+                      club: playoffState.summary.champion.club,
+                    },
+                    ...(playoffState.summary.thirdPlace
+                      ? [
+                        {
+                          key: `third-${playoffState.summary.thirdPlace.club.id}`,
+                          tone: 'third' as const,
+                          icon: '🥉',
+                          club: playoffState.summary.thirdPlace.club,
+                        },
+                      ]
+                      : []),
+                  ]
                   : podium.slice(0, 3).map((entry, index) => ({
-                      key: `table-${entry.clubId}`,
-                      tone: index === 0 ? ('first' as const) : index === 1 ? ('second' as const) : ('third' as const),
-                      icon: index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉',
-                      club: {
-                        id: entry.clubId,
-                        name: entry.clubName,
-                        shortName: entry.clubShortName,
-                        logoUrl: entry.clubLogoUrl,
-                      },
-                    })))
+                    key: `table-${entry.clubId}`,
+                    tone: index === 0 ? ('first' as const) : index === 1 ? ('second' as const) : ('third' as const),
+                    icon: index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉',
+                    club: {
+                      id: entry.clubId,
+                      name: entry.clubName,
+                      shortName: entry.clubShortName,
+                      logoUrl: entry.clubLogoUrl,
+                    },
+                  })))
                   .map(slot => (
                     <div key={slot.key} className={`podium-slot ${slot.tone}`}>
                       <span className="podium-icon" aria-hidden="true">{slot.icon}</span>

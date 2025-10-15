@@ -27,22 +27,6 @@ const formatDateTime = (value?: string) => {
   })
 }
 
-const STAT_LABELS: Array<{
-  key: keyof ClubSummaryResponse['statistics']
-  label: string
-  hint?: string
-}> = [
-  { key: 'matchesPlayed', label: 'Матчи', hint: 'Всего сыграно' },
-  { key: 'wins', label: 'Победы' },
-  { key: 'draws', label: 'Ничьи' },
-  { key: 'losses', label: 'Поражения' },
-  { key: 'goalsFor', label: 'Забито' },
-  { key: 'goalsAgainst', label: 'Пропущено' },
-  { key: 'cleanSheets', label: 'Сухие матчи' },
-  { key: 'yellowCards', label: 'Жёлтые' },
-  { key: 'redCards', label: 'Красные' },
-]
-
 const FORM_LABEL: Record<ClubSummaryResponse['form'][number]['result'], string> = {
   WIN: 'В',
   DRAW: 'Н',
@@ -94,12 +78,6 @@ const useEscClose = (enabled: boolean, close: () => void) => {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [enabled, close])
-}
-
-const formatOpponent = (summary: ClubSummaryResponse['form'][number]) => {
-  const descriptor = summary.isHome ? 'Дом' : 'В гостях'
-  const opponentLabel = summary.opponent.shortName || summary.opponent.name
-  return `${descriptor} · ${opponentLabel}`
 }
 
 const renderAchievements = (summary: ClubSummaryResponse) => {
@@ -208,8 +186,6 @@ const renderOverview = (summary: ClubSummaryResponse) => {
   const total = stats.wins + stats.draws + stats.losses
   const winPercent = total > 0 ? (stats.wins / total) * 100 : 0
   const drawPercent = total > 0 ? (stats.draws / total) * 100 : 0
-  const lossPercent = total > 0 ? (stats.losses / total) * 100 : 0
-  
   // Генерируем градиент с отступами между сегментами
   const generateArcGradient = () => {
     if (total === 0) return undefined
@@ -245,7 +221,7 @@ const renderOverview = (summary: ClubSummaryResponse) => {
     // Поражения (красный)
     if (stats.losses > 0) {
       segments.push(`rgba(255, 0, 100, 0.6) ${currentPos}%`)
-      segments.push(`rgba(255, 0, 100, 0.6) 100%`)
+      segments.push('rgba(255, 0, 100, 0.6) 100%')
     }
     
     return `linear-gradient(to right, ${segments.join(', ')})`
@@ -438,8 +414,6 @@ export const TeamView: React.FC = () => {
   }
 
   const header = summary ?? null
-  const updatedAt = summary ? formatDateTime(summary.generatedAt) : undefined
-
   return createPortal(
     <div className="team-view-backdrop" role="presentation" onClick={close}>
       <section

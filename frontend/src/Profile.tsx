@@ -1,6 +1,5 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import './profile.css'
-import { wsClient, WSMessage } from './wsClient'
 
 interface ProfileUser {
   telegramId?: string
@@ -10,8 +9,6 @@ interface ProfileUser {
   createdAt?: string
   updatedAt?: string
 }
-
-type ProfilePatchPayload = Partial<ProfileUser> & { telegramId?: string }
 
 interface CacheEntry {
   data: ProfileUser
@@ -45,71 +42,17 @@ interface TelegramWindow extends Window {
 
 const CACHE_TTL = 5 * 60 * 1000 // 5 минут
 const CACHE_KEY = 'obnliga_profile_cache'
+const PROFILE_REFRESH_INTERVAL_MS = 90_000
 
 export default function Profile() {
   const [user, setUser] = useState<Nullable<ProfileUser>>(null)
   const [loading, setLoading] = useState<boolean>(false)
+  const isFetchingRef = useRef(false)
+  const userRef = useRef<Nullable<ProfileUser>>(null)
 
   useEffect(() => {
-    loadProfile()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // WebSocket real-time updates для профиля
-  useEffect(() => {
-    const telegramId = user?.telegramId
-    if (!telegramId) return
-
-    const userTopic = `user:${telegramId}`
-    const profileTopic = 'profile' // Глобальные обновления профилей
-
-    console.log(`Subscribing to topics: ${userTopic}, ${profileTopic}`)
-
-    // Подписываемся на персональный топик пользователя
-    wsClient.subscribe(userTopic)
-    // Подписываемся на общий топик профилей
-    wsClient.subscribe(profileTopic)
-
-    // Обработчик патчей для реального времени
-    const handlePatch = (msg: WSMessage) => {
-      if (msg.type !== 'patch' || !msg.topic) {
-        return
-      }
-
-      const { topic } = msg
-      const payload = msg.payload
-      if (!isProfilePatchPayload(payload)) {
-        return
-      }
-
-      const payloadTelegramId = payload.telegramId
-      if (!payloadTelegramId) return
-
-      const tryUpdate = (expectedTopic: string) => {
-        if (topic !== expectedTopic || payloadTelegramId !== telegramId) {
-          return
-        }
-
-        setUser(prev => {
-          const next: ProfileUser = prev ? { ...prev, ...payload } : { ...payload }
-          setCachedProfile(next)
-          return next
-        })
-      }
-
-      tryUpdate(userTopic)
-      tryUpdate(profileTopic)
-    }
-
-    const detach = wsClient.on('patch', handlePatch)
-
-    // Cleanup при размонтировании или смене пользователя
-    return () => {
-      wsClient.unsubscribe(userTopic)
-      wsClient.unsubscribe(profileTopic)
-      detach()
-    }
-  }, [user?.telegramId])
+    userRef.current = user
+  }, [user])
 
   function getCachedProfile(): CacheEntry | null {
     try {
@@ -152,157 +95,171 @@ export default function Profile() {
     }
   }
 
-  async function loadProfile() {
-    // Проверяем кэш сначала
-    const cached = getCachedProfile()
-    if (cached && cached.data) {
-      setUser(cached.data)
-      console.log('Loaded profile from cache')
+  const loadProfile = useCallback(async (opts?: { background?: boolean }) => {
+    if (isFetchingRef.current) {
       return
     }
 
-    setLoading(true)
-    const backendRaw = import.meta.env.VITE_BACKEND_URL ?? ''
-    const backend = backendRaw || ''
-    const meUrl = backend ? `${backend.replace(/\/$/, '')}/api/auth/me` : '/api/auth/me'
-
-    // 1) Check if we're inside Telegram WebApp first and try to authenticate
-    try {
-      const telegramWindow = window as TelegramWindow
-      const tg = telegramWindow.Telegram?.WebApp
-      const unsafe = tg?.initDataUnsafe?.user
-      if (tg && unsafe) {
-        console.log('Telegram user data:', unsafe)
-        if (!user) {
-          setUser({
-            telegramId: String(unsafe.id),
-            username: unsafe.username ?? null,
-            firstName: unsafe.first_name ?? null,
-            photoUrl: unsafe.photo_url ?? null,
-            createdAt: new Date().toISOString(),
-          })
-        }
-
-        // Try to send initData to backend
-        const initUrl = backend
-          ? `${backend.replace(/\/$/, '')}/api/auth/telegram-init`
-          : '/api/auth/telegram-init'
-
-        // Prepare initData - use the raw initData string if available
-        let initDataValue = tg.initData
-        if (!initDataValue) {
-          // Fallback: construct from initDataUnsafe
-          initDataValue = JSON.stringify({
-            user: {
-              id: unsafe.id,
-              first_name: unsafe.first_name,
-              last_name: unsafe.last_name,
-              username: unsafe.username,
-              photo_url: unsafe.photo_url,
-              language_code: unsafe.language_code,
-            },
-          })
-        }
-
-        console.log('Sending initData to backend')
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-        if (typeof initDataValue === 'string' && initDataValue.length > 0) {
-          headers['X-Telegram-Init-Data'] = initDataValue
-        }
-        // Добавляем ETag из кэша если есть
-        if (cached?.etag) {
-          headers['If-None-Match'] = cached.etag
-        }
-
-        const r = await fetch(initUrl, {
-          method: 'POST',
-          headers,
-          credentials: 'include',
-          body: JSON.stringify({ initData: initDataValue }),
-        })
-
-        if (r.status === 304) {
-          // Используем кэшированные данные
-          if (cached?.data) {
-            setUser(cached.data)
-            console.log('Using cached profile (304 Not Modified)')
-            const existingToken = localStorage.getItem('session')
-            if (cached?.etag && existingToken) {
-              wsClient.setToken(existingToken)
-            }
-            setLoading(false)
-            return
-          }
-        } else if (r.ok) {
-          const responseBody = (await r.json()) as unknown
-          console.log('Backend response:', responseBody)
-          const sessionToken = readTokenFromResponse(responseBody)
-          if (sessionToken) {
-            localStorage.setItem('session', sessionToken)
-            wsClient.setToken(sessionToken)
-          }
-
-          const profileUser = readProfileUser(responseBody)
-          if (profileUser) {
-            const etag = r.headers.get('ETag') ?? undefined
-            setCachedProfile(profileUser, etag)
-            setUser(profileUser)
-            setLoading(false)
-            return
-          }
-        } else {
-          console.error('Backend auth failed:', await r.text())
-          setUser(null)
-        }
-      }
-    } catch (e) {
-      console.error('Telegram WebApp auth error:', e)
-      setUser(null)
+    const isBackground = Boolean(opts?.background)
+    const cached = getCachedProfile()
+    if (!isBackground && cached?.data) {
+      setUser(cached.data)
+      console.log('Loaded profile from cache')
     }
 
-    // 2) Try token-based load as fallback
-    try {
-      const token = localStorage.getItem('session')
-      if (token) {
-        const headers: Record<string, string> = { Authorization: `Bearer ${token}` }
-        // Добавляем ETag из кэша если есть
-        if (cached?.etag) {
-          headers['If-None-Match'] = cached.etag
-        }
-
-        const resp = await fetch(meUrl, { headers, credentials: 'include' })
-
-        if (resp.status === 304) {
-          // Используем кэшированные данные
-          if (cached?.data) {
-            setUser(cached.data)
-            console.log('Using cached profile (304 Not Modified)')
-            if (token) {
-              wsClient.setToken(token)
-            }
-            setLoading(false)
-            return
-          }
-        } else if (resp.ok) {
-          const payload = (await resp.json()) as unknown
-          console.log('Token-based profile load:', payload)
-          const profileUser = readProfileUser(payload)
-          if (profileUser) {
-            const etag = resp.headers.get('ETag') ?? undefined
-            setCachedProfile(profileUser, etag)
-            setUser(profileUser)
-            wsClient.setToken(token)
-            setLoading(false)
-            return
-          }
-        }
-      }
-    } catch (e) {
-      console.error('Token-based load error:', e)
+    isFetchingRef.current = true
+    if (!isBackground) {
+      setLoading(true)
     }
 
-    setLoading(false)
-  }
+    try {
+      const backendRaw = import.meta.env.VITE_BACKEND_URL ?? ''
+      const backend = backendRaw || ''
+      const meUrl = backend ? `${backend.replace(/\/$/, '')}/api/auth/me` : '/api/auth/me'
+
+      // 1) Check if we're inside Telegram WebApp first and try to authenticate
+      try {
+        const telegramWindow = window as TelegramWindow
+        const tg = telegramWindow.Telegram?.WebApp
+        const unsafe = tg?.initDataUnsafe?.user
+        if (tg && unsafe) {
+          console.log('Telegram user data:', unsafe)
+          if (!userRef.current) {
+            setUser(prev =>
+              prev ?? {
+                telegramId: String(unsafe.id),
+                username: unsafe.username ?? null,
+                firstName: unsafe.first_name ?? null,
+                photoUrl: unsafe.photo_url ?? null,
+                createdAt: new Date().toISOString(),
+              }
+            )
+          }
+
+          const initUrl = backend
+            ? `${backend.replace(/\/$/, '')}/api/auth/telegram-init`
+            : '/api/auth/telegram-init'
+
+          let initDataValue = tg.initData
+          if (!initDataValue) {
+            initDataValue = JSON.stringify({
+              user: {
+                id: unsafe.id,
+                first_name: unsafe.first_name,
+                last_name: unsafe.last_name,
+                username: unsafe.username,
+                photo_url: unsafe.photo_url,
+                language_code: unsafe.language_code,
+              },
+            })
+          }
+
+          console.log('Sending initData to backend')
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+          if (typeof initDataValue === 'string' && initDataValue.length > 0) {
+            headers['X-Telegram-Init-Data'] = initDataValue
+          }
+          if (cached?.etag) {
+            headers['If-None-Match'] = cached.etag
+          }
+
+          const r = await fetch(initUrl, {
+            method: 'POST',
+            headers,
+            credentials: 'include',
+            body: JSON.stringify({ initData: initDataValue }),
+          })
+
+          if (r.status === 304) {
+            if (cached?.data) {
+              setUser(cached.data)
+              console.log('Using cached profile (304 Not Modified)')
+              return
+            }
+          } else if (r.ok) {
+            const responseBody = (await r.json()) as unknown
+            console.log('Backend response:', responseBody)
+            const sessionToken = readTokenFromResponse(responseBody)
+            if (sessionToken) {
+              localStorage.setItem('session', sessionToken)
+            }
+
+            const profileUser = readProfileUser(responseBody)
+            if (profileUser) {
+              const etag = r.headers.get('ETag') ?? undefined
+              setCachedProfile(profileUser, etag)
+              setUser(profileUser)
+              return
+            }
+          } else {
+            console.error('Backend auth failed:', await r.text())
+            setUser(null)
+          }
+        }
+      } catch (e) {
+        console.error('Telegram WebApp auth error:', e)
+        setUser(null)
+      }
+
+      // 2) Try token-based load as fallback
+      try {
+        const token = localStorage.getItem('session')
+        if (token) {
+          const headers: Record<string, string> = { Authorization: `Bearer ${token}` }
+          if (cached?.etag) {
+            headers['If-None-Match'] = cached.etag
+          }
+
+          const resp = await fetch(meUrl, { headers, credentials: 'include' })
+
+          if (resp.status === 304) {
+            if (cached?.data) {
+              setUser(cached.data)
+              console.log('Using cached profile (304 Not Modified)')
+              return
+            }
+          } else if (resp.ok) {
+            const payload = (await resp.json()) as unknown
+            console.log('Token-based profile load:', payload)
+            const profileUser = readProfileUser(payload)
+            if (profileUser) {
+              const etag = resp.headers.get('ETag') ?? undefined
+              setCachedProfile(profileUser, etag)
+              setUser(profileUser)
+              return
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Token-based load error:', e)
+      }
+    } finally {
+      if (!isBackground) {
+        setLoading(false)
+      }
+      isFetchingRef.current = false
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadProfile()
+  }, [loadProfile])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.hidden) {
+        return
+      }
+      void loadProfile({ background: true })
+    }
+
+    const timer = window.setInterval(tick, PROFILE_REFRESH_INTERVAL_MS)
+    return () => window.clearInterval(timer)
+  }, [loadProfile])
 
   return (
     <div className="profile-container">
@@ -362,18 +319,6 @@ function isProfileUser(value: unknown): value is ProfileUser {
   if (!isNullableString(record.photoUrl)) return false
   if (!isNullableString(record.createdAt)) return false
   if (!isNullableString(record.updatedAt)) return false
-  return true
-}
-
-function isProfilePatchPayload(value: unknown): value is ProfilePatchPayload {
-  if (!value || typeof value !== 'object') return false
-  const record = value as Record<string, unknown>
-  if ('telegramId' in record && typeof record.telegramId !== 'string') return false
-  if ('username' in record && !isNullableString(record.username)) return false
-  if ('firstName' in record && !isNullableString(record.firstName)) return false
-  if ('photoUrl' in record && !isNullableString(record.photoUrl)) return false
-  if ('createdAt' in record && !isNullableString(record.createdAt)) return false
-  if ('updatedAt' in record && !isNullableString(record.updatedAt)) return false
   return true
 }
 

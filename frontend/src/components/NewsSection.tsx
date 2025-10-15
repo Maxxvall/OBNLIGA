@@ -2,7 +2,6 @@ import type { PointerEvent, TouchEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { NewsItem } from '@shared/types'
-import { wsClient, WSMessage } from '../wsClient'
 import '../styles/news.css'
 
 const API_BASE = import.meta.env.VITE_BACKEND_URL || ''
@@ -10,6 +9,7 @@ const ROTATION_INTERVAL_MS = 7_000
 const SWIPE_THRESHOLD = 40
 const NEWS_CACHE_KEY = 'obnliga_news_cache'
 const NEWS_CACHE_TTL = 1000 * 60 * 30 // 30 минут локального кеша
+const NEWS_REFRESH_INTERVAL_MS = 60_000
 
 const buildUrl = (path: string) => (API_BASE ? `${API_BASE}${path}` : path)
 
@@ -43,12 +43,6 @@ const extractNewsItems = (value: unknown): NewsItem[] => {
   const data = (value as Record<string, unknown>).data
   if (!Array.isArray(data)) return []
   return data.filter(isNewsItem)
-}
-
-const getNewsId = (value: unknown): string | null => {
-  if (!value || typeof value !== 'object') return null
-  const id = (value as Record<string, unknown>).id
-  return typeof id === 'string' ? id : null
 }
 
 export const NewsSection = () => {
@@ -186,42 +180,20 @@ export const NewsSection = () => {
   }, [news.length, next])
 
   useEffect(() => {
-    const handler = (message: WSMessage) => {
-      if (!isNewsItem(message.payload)) return
-      const item = message.payload
-      setNews(current => {
-        const deduped = current.filter(entry => entry.id !== item.id)
-        const nextItems = [item, ...deduped]
-        writeCache(nextItems, etagRef.current)
-        newsRef.current = nextItems
-        return nextItems
-      })
-      setActiveIndex(0)
+    if (typeof window === 'undefined') {
+      return
     }
-    const detachFull = wsClient.on('news.full', handler)
-    const removeHandler = (message: WSMessage) => {
-      const id = getNewsId(message.payload)
-      if (!id) return
-      setNews(current => {
-        const filtered = current.filter(entry => entry.id !== id)
-        if (filtered.length === current.length) {
-          return current
-        }
-        writeCache(filtered, etagRef.current)
-        newsRef.current = filtered
-        setActiveIndex(prev => {
-          if (filtered.length === 0) return 0
-          return Math.min(prev, filtered.length - 1)
-        })
-        return filtered
-      })
+
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.hidden) {
+        return
+      }
+      void fetchNews({ background: true })
     }
-    const detachRemove = wsClient.on('news.remove', removeHandler)
-    return () => {
-      detachFull()
-      detachRemove()
-    }
-  }, [writeCache])
+
+    const intervalId = window.setInterval(tick, NEWS_REFRESH_INTERVAL_MS)
+    return () => window.clearInterval(intervalId)
+  }, [fetchNews])
 
   const activeItem = useMemo(() => news[activeIndex] ?? null, [news, activeIndex])
 
@@ -328,44 +300,44 @@ export const NewsSection = () => {
 
       {modalState
         ? createPortal(
-            <>
-              <div className="news-modal-backdrop" role="presentation" onClick={closeModal} />
-              <div
-                className="news-modal"
-                role="dialog"
-                aria-modal="true"
-                aria-label={modalState.item.title}
-              >
-                <div className="news-modal-content">
-                  <header>
-                    <time className="news-date" dateTime={modalState.item.createdAt}>
-                      {new Date(modalState.item.createdAt).toLocaleString('ru-RU', {
-                        day: '2-digit',
-                        month: 'long',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </time>
-                    <h3>{modalState.item.title}</h3>
-                  </header>
-                  {modalState.item.coverUrl ? (
-                    <div className="news-cover">
-                      <img src={modalState.item.coverUrl} alt="Обложка новости" loading="lazy" />
-                    </div>
-                  ) : null}
-                  <div className="news-content">
-                    {modalState.item.content.split('\n').map((paragraph, idx) => (
-                      <p key={idx}>{paragraph}</p>
-                    ))}
+          <>
+            <div className="news-modal-backdrop" role="presentation" onClick={closeModal} />
+            <div
+              className="news-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-label={modalState.item.title}
+            >
+              <div className="news-modal-content">
+                <header>
+                  <time className="news-date" dateTime={modalState.item.createdAt}>
+                    {new Date(modalState.item.createdAt).toLocaleString('ru-RU', {
+                      day: '2-digit',
+                      month: 'long',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </time>
+                  <h3>{modalState.item.title}</h3>
+                </header>
+                {modalState.item.coverUrl ? (
+                  <div className="news-cover">
+                    <img src={modalState.item.coverUrl} alt="Обложка новости" loading="lazy" />
                   </div>
-                  <button className="news-close" type="button" onClick={closeModal}>
-                    Закрыть
-                  </button>
+                ) : null}
+                <div className="news-content">
+                  {modalState.item.content.split('\n').map((paragraph, idx) => (
+                    <p key={idx}>{paragraph}</p>
+                  ))}
                 </div>
+                <button className="news-close" type="button" onClick={closeModal}>
+                    Закрыть
+                </button>
               </div>
-            </>,
-            document.body
-          )
+            </div>
+          </>,
+          document.body
+        )
         : null}
     </section>
   )

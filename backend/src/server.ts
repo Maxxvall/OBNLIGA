@@ -20,6 +20,7 @@ const validateRequiredEnv = (required: string[]) => {
 server.register(cors, {
   origin: true, // Allow all origins in development, configure specifically for production
   credentials: true,
+  exposedHeaders: ['ETag', 'X-Resource-Version', 'Cache-Control'],
 })
 
 server.get('/health', async () => {

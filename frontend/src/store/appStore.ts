@@ -798,9 +798,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       loading: { ...prev.loading, table: true },
       errors: { ...prev.errors, table: undefined },
     }))
+    const currentVersion = state.tableVersions[seasonId]
+    console.log('[fetchLeagueTable] seasonId:', seasonId, 'currentVersion:', currentVersion)
     const response = await leagueApi.fetchTable(seasonId, {
-      version: state.tableVersions[seasonId],
+      version: currentVersion,
     })
+    console.log('[fetchLeagueTable] response:', { ok: response.ok, notModified: 'notModified' in response ? response.notModified : false, version: 'version' in response ? response.version : undefined, fullResponse: response })
     if (!response.ok) {
       set(prev => ({
         loading: { ...prev.loading, table: false },

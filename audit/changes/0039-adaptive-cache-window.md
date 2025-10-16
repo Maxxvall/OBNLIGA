@@ -14,3 +14,7 @@
 ## Проверки
 - `npm run build` (backend) — ✅
 - `npm run lint` (backend) — ⚠️ (сыпятся существующие `no-explicit-any` в `backend/src/routes/adminRoutes.ts`)
+
+## Дополнительно
+- Обновлён `backend/src/plugins/etag.ts`, чтобы не перезаписывать версионные ETag и корректно возвращать `304 Not Modified`.
+- **См. также:** [`0040-etag-304-cors-fix.md`](./0040-etag-304-cors-fix.md) — исправление CORS и fetch options для работы 304 ответов.

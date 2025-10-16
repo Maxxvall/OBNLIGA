@@ -79,6 +79,7 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
 
     reply.header('ETag', etag)
     reply.header('X-Resource-Version', String(version))
+    reply.header('Cache-Control', 'no-cache')
     return reply.send({ ok: true, data: value, meta: { version } })
   })
 
@@ -114,6 +115,7 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
 
     reply.header('ETag', etag)
     reply.header('X-Resource-Version', String(version))
+    reply.header('Cache-Control', 'no-cache')
     return reply.send({ ok: true, data: value, meta: { version } })
   })
 
@@ -149,6 +151,7 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
 
     reply.header('ETag', etag)
     reply.header('X-Resource-Version', String(version))
+    reply.header('Cache-Control', 'no-cache')
     return reply.send({ ok: true, data: value, meta: { version } })
   })
 
@@ -219,6 +222,7 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
 
     reply.header('ETag', etag)
     reply.header('X-Resource-Version', String(version))
+    reply.header('Cache-Control', 'no-cache')
     return reply.send({ ok: true, data: value, meta: { version } })
   })
 }

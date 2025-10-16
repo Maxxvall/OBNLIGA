@@ -54,16 +54,7 @@ export const NewsSection = () => {
   const touchStartX = useRef<number | null>(null)
   const etagRef = useRef<string | null>(null)
   const newsRef = useRef<NewsItem[]>([])
-  const canSendConditionalHeader = useMemo(() => {
-    if (typeof window === 'undefined') return false
-    if (!API_BASE) return true
-    try {
-      const target = new URL(API_BASE, window.location.href)
-      return target.origin === window.location.origin
-    } catch {
-      return false
-    }
-  }, [])
+  const fetchingRef = useRef(false)
 
   const next = useCallback(() => {
     setActiveIndex(current => {
@@ -117,15 +108,20 @@ export const NewsSection = () => {
 
   const fetchNews = useCallback(
     async (opts?: { background?: boolean; force?: boolean }) => {
+      if (fetchingRef.current && !opts?.force) {
+        return
+      }
+      
+      fetchingRef.current = true
       try {
         if (!opts?.background) setLoading(true)
-        const headers: HeadersInit | undefined =
-          !opts?.force && etagRef.current && canSendConditionalHeader
+        const headers: HeadersInit =
+          !opts?.force && etagRef.current
             ? { 'If-None-Match': etagRef.current }
-            : undefined
+            : {}
         const response = await fetch(buildUrl('/api/news'), {
           cache: 'no-store',
-          ...(headers ? { headers } : {}),
+          headers,
         })
         if (response.status === 304) {
           if (!opts?.force && newsRef.current.length === 0) {
@@ -153,9 +149,10 @@ export const NewsSection = () => {
         setError(message)
       } finally {
         setLoading(false)
+        fetchingRef.current = false
       }
     },
-    [writeCache, canSendConditionalHeader]
+    [writeCache]
   )
 
   useEffect(() => {

@@ -12,6 +12,7 @@ import type {
 } from '@shared/types'
 import { leagueApi } from '../api/leagueApi'
 import { clubApi } from '../api/clubApi'
+import { readFromStorage, writeToStorage } from '../utils/leaguePersistence'
 
 export type UITab = 'home' | 'league' | 'predictions' | 'leaderboard' | 'shop' | 'profile'
 export type LeagueSubTab = 'table' | 'schedule' | 'results' | 'stats'
@@ -415,18 +416,20 @@ const startLeaguePolling = (get: () => AppState) => {
       return
     }
 
-    void state.fetchLeagueTable({ seasonId })
-
-    if (state.leagueSubTab === 'schedule') {
-      void state.fetchLeagueSchedule({ seasonId })
-    }
-
-    if (state.leagueSubTab === 'results') {
-      void state.fetchLeagueResults({ seasonId })
-    }
-
-    if (state.leagueSubTab === 'stats') {
-      void state.fetchLeagueStats({ seasonId })
+    // Запрашиваем данные только для активной подвкладки
+    switch (state.leagueSubTab) {
+      case 'table':
+        void state.fetchLeagueTable({ seasonId })
+        break
+      case 'schedule':
+        void state.fetchLeagueSchedule({ seasonId })
+        break
+      case 'results':
+        void state.fetchLeagueResults({ seasonId })
+        break
+      case 'stats':
+        void state.fetchLeagueStats({ seasonId })
+        break
     }
   }
 
@@ -654,17 +657,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   seasons: [],
   seasonsVersion: undefined,
   seasonsFetchedAt: 0,
-  tables: {},
-  tableVersions: {},
+  tables: readFromStorage('tables') ?? {},
+  tableVersions: readFromStorage('tableVersions') ?? {},
   tableFetchedAt: {},
-  schedules: {},
-  scheduleVersions: {},
+  schedules: readFromStorage('schedules') ?? {},
+  scheduleVersions: readFromStorage('scheduleVersions') ?? {},
   scheduleFetchedAt: {},
-  results: {},
-  resultsVersions: {},
+  results: readFromStorage('results') ?? {},
+  resultsVersions: readFromStorage('resultsVersions') ?? {},
   resultsFetchedAt: {},
-  stats: {},
-  statsVersions: {},
+  stats: readFromStorage('stats') ?? {},
+  statsVersions: readFromStorage('statsVersions') ?? {},
   statsFetchedAt: {},
   selectedSeasonId: undefined,
   activeSeasonId: undefined,
@@ -823,9 +826,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     const nextVersion = response.version ?? state.tableVersions[seasonId]
     set(prev => {
       const nextTable = mergeLeagueTable(prev.tables[seasonId], response.data)
+      const nextTables = { ...prev.tables, [seasonId]: nextTable }
+      const nextTableVersions = { ...prev.tableVersions, [seasonId]: nextVersion }
+      
+      writeToStorage('tables', nextTables)
+      writeToStorage('tableVersions', nextTableVersions)
+      
       return {
-        tables: { ...prev.tables, [seasonId]: nextTable },
-        tableVersions: { ...prev.tableVersions, [seasonId]: nextVersion },
+        tables: nextTables,
+        tableVersions: nextTableVersions,
         tableFetchedAt: { ...prev.tableFetchedAt, [seasonId]: now },
         loading: { ...prev.loading, table: false },
         activeSeasonId: nextTable.season.isActive ? nextTable.season.id : prev.activeSeasonId,
@@ -878,9 +887,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     const nextVersion = response.version ?? state.scheduleVersions[seasonId]
     set(prev => {
       const nextSchedule = mergeRoundCollection(prev.schedules[seasonId], response.data)
+      const nextSchedules = { ...prev.schedules, [seasonId]: nextSchedule }
+      const nextScheduleVersions = { ...prev.scheduleVersions, [seasonId]: nextVersion }
+      
+      writeToStorage('schedules', nextSchedules)
+      writeToStorage('scheduleVersions', nextScheduleVersions)
+      
       return {
-        schedules: { ...prev.schedules, [seasonId]: nextSchedule },
-        scheduleVersions: { ...prev.scheduleVersions, [seasonId]: nextVersion },
+        schedules: nextSchedules,
+        scheduleVersions: nextScheduleVersions,
         scheduleFetchedAt: { ...prev.scheduleFetchedAt, [seasonId]: now },
         loading: { ...prev.loading, schedule: false },
         activeSeasonId: nextSchedule.season.isActive ? nextSchedule.season.id : prev.activeSeasonId,
@@ -933,9 +948,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     const nextVersion = response.version ?? state.resultsVersions[seasonId]
     set(prev => {
       const nextResults = mergeRoundCollection(prev.results[seasonId], response.data)
+      const nextResultsMap = { ...prev.results, [seasonId]: nextResults }
+      const nextResultsVersions = { ...prev.resultsVersions, [seasonId]: nextVersion }
+      
+      writeToStorage('results', nextResultsMap)
+      writeToStorage('resultsVersions', nextResultsVersions)
+      
       return {
-        results: { ...prev.results, [seasonId]: nextResults },
-        resultsVersions: { ...prev.resultsVersions, [seasonId]: nextVersion },
+        results: nextResultsMap,
+        resultsVersions: nextResultsVersions,
         resultsFetchedAt: { ...prev.resultsFetchedAt, [seasonId]: now },
         loading: { ...prev.loading, results: false },
         activeSeasonId: nextResults.season.isActive ? nextResults.season.id : prev.activeSeasonId,
@@ -988,9 +1009,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     const nextVersion = response.version ?? state.statsVersions[seasonId]
     set(prev => {
       const nextStats = mergeStatsResponse(prev.stats[seasonId], response.data)
+      const nextStatsMap = { ...prev.stats, [seasonId]: nextStats }
+      const nextStatsVersions = { ...prev.statsVersions, [seasonId]: nextVersion }
+      
+      writeToStorage('stats', nextStatsMap)
+      writeToStorage('statsVersions', nextStatsVersions)
+      
       return {
-        stats: { ...prev.stats, [seasonId]: nextStats },
-        statsVersions: { ...prev.statsVersions, [seasonId]: nextVersion },
+        stats: nextStatsMap,
+        statsVersions: nextStatsVersions,
         statsFetchedAt: { ...prev.statsFetchedAt, [seasonId]: now },
         loading: { ...prev.loading, stats: false },
         activeSeasonId: nextStats.season.isActive ? nextStats.season.id : prev.activeSeasonId,

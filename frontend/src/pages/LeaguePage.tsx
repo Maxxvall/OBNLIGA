@@ -348,9 +348,8 @@ const LeaguePage: React.FC = () => {
   useEffect(() => {
     if (selectedSeasonId) {
       void fetchTable({ seasonId: selectedSeasonId })
-      void fetchStats({ seasonId: selectedSeasonId })
     }
-  }, [selectedSeasonId, fetchTable, fetchStats])
+  }, [selectedSeasonId, fetchTable])
 
   useEffect(() => {
     if (!selectedSeasonId) {

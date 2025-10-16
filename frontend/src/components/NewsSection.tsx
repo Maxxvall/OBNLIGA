@@ -123,7 +123,10 @@ export const NewsSection = () => {
           !opts?.force && etagRef.current && canSendConditionalHeader
             ? { 'If-None-Match': etagRef.current }
             : undefined
-        const response = await fetch(buildUrl('/api/news'), headers ? { headers } : undefined)
+        const response = await fetch(buildUrl('/api/news'), {
+          cache: 'no-store',
+          ...(headers ? { headers } : {}),
+        })
         if (response.status === 304) {
           if (!opts?.force && newsRef.current.length === 0) {
             etagRef.current = null

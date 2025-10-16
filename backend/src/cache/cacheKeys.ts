@@ -1,0 +1,7 @@
+export const PUBLIC_LEAGUE_TABLE_KEY = 'public:league:table'
+export const PUBLIC_LEAGUE_SCHEDULE_KEY = 'public:league:schedule'
+export const PUBLIC_LEAGUE_RESULTS_KEY = 'public:league:results'
+export const PUBLIC_LEAGUE_STATS_KEY = 'public:league:stats'
+export const PUBLIC_LEAGUE_SCORERS_KEY = 'public:league:top-scorers'
+export const PUBLIC_LEAGUE_ASSISTS_KEY = 'public:league:top-assists'
+export const PUBLIC_LEAGUE_GOAL_CONTRIBUTORS_KEY = 'public:league:goal-contributors'

@@ -1,5 +1,12 @@
 import prisma from '../db'
-import { defaultCache } from '../cache'
+import {
+  defaultCache,
+  resolveCacheOptions,
+  PUBLIC_LEAGUE_ASSISTS_KEY,
+  PUBLIC_LEAGUE_GOAL_CONTRIBUTORS_KEY,
+  PUBLIC_LEAGUE_SCORERS_KEY,
+  PUBLIC_LEAGUE_STATS_KEY,
+} from '../cache'
 import type { SeasonWithCompetition, LeagueSeasonSummary } from './leagueTable'
 import { ensureSeasonSummary } from './leagueTable'
 
@@ -27,12 +34,6 @@ export interface LeagueStatsSnapshot {
   leaderboards: Record<LeagueStatsCategory, LeaguePlayerLeaderboardEntry[]>
 }
 
-export const PUBLIC_LEAGUE_STATS_KEY = 'public:league:stats'
-export const PUBLIC_LEAGUE_SCORERS_KEY = 'public:league:top-scorers'
-export const PUBLIC_LEAGUE_ASSISTS_KEY = 'public:league:top-assists'
-export const PUBLIC_LEAGUE_GOAL_CONTRIBUTORS_KEY = 'public:league:goal-contributors'
-
-export const PUBLIC_LEAGUE_STATS_TTL_SECONDS = 30
 export const PUBLIC_LEAGUE_LEADERBOARD_TTL_SECONDS = 300
 const LEADERBOARD_LIMIT = 15
 
@@ -194,14 +195,12 @@ export const refreshLeagueStats = async (
 
   const snapshot = await buildLeagueStats(season)
 
+  const statsOptions = await resolveCacheOptions('leagueStats')
+
   await Promise.all(
     [
-      defaultCache.set(PUBLIC_LEAGUE_STATS_KEY, snapshot, PUBLIC_LEAGUE_STATS_TTL_SECONDS),
-      defaultCache.set(
-        `${PUBLIC_LEAGUE_STATS_KEY}:${seasonId}`,
-        snapshot,
-        PUBLIC_LEAGUE_STATS_TTL_SECONDS
-      ),
+      defaultCache.set(PUBLIC_LEAGUE_STATS_KEY, snapshot, statsOptions),
+      defaultCache.set(`${PUBLIC_LEAGUE_STATS_KEY}:${seasonId}`, snapshot, statsOptions),
     ].map(task => task.catch(() => undefined))
   )
 

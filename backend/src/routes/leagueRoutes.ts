@@ -1,6 +1,13 @@
 import { FastifyPluginAsync } from 'fastify'
 import prisma from '../db'
-import { defaultCache } from '../cache'
+import {
+  defaultCache,
+  resolveCacheOptions,
+  PUBLIC_LEAGUE_RESULTS_KEY,
+  PUBLIC_LEAGUE_SCHEDULE_KEY,
+  PUBLIC_LEAGUE_STATS_KEY,
+  PUBLIC_LEAGUE_TABLE_KEY,
+} from '../cache'
 import {
   LeagueSeasonSummary,
   LeagueTableResponse,
@@ -8,25 +15,13 @@ import {
   buildLeagueTable,
   fetchLeagueSeasons,
 } from '../services/leagueTable'
-import {
-  PUBLIC_LEAGUE_RESULTS_KEY,
-  PUBLIC_LEAGUE_RESULTS_TTL_SECONDS,
-  PUBLIC_LEAGUE_SCHEDULE_KEY,
-  PUBLIC_LEAGUE_SCHEDULE_TTL_SECONDS,
-  type LeagueRoundCollection,
-  buildLeagueResults,
-  buildLeagueSchedule,
-} from '../services/leagueSchedule'
-import {
-  PUBLIC_LEAGUE_STATS_KEY,
-  PUBLIC_LEAGUE_STATS_TTL_SECONDS,
-  buildLeagueStats,
-} from '../services/leagueStats'
+import { type LeagueRoundCollection, buildLeagueResults, buildLeagueSchedule } from '../services/leagueSchedule'
+import { buildLeagueStats } from '../services/leagueStats'
 import { buildWeakEtag, matchesIfNoneMatch } from '../utils/httpCaching'
 
 const SEASONS_CACHE_KEY = 'public:league:seasons'
 const SEASONS_TTL_SECONDS = 60
-const TABLE_TTL_SECONDS = 300
+const TABLE_CACHE_RESOURCE = 'leagueTable' as const
 
 type SeasonResolution =
   | { ok: true; season: SeasonWithCompetition; requestedSeasonId?: number }
@@ -99,12 +94,13 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
     const { season, requestedSeasonId } = seasonResolution
 
     const cacheKey = requestedSeasonId
-      ? `public:league:table:${season.id}`
-      : 'public:league:table'
+      ? `${PUBLIC_LEAGUE_TABLE_KEY}:${season.id}`
+      : PUBLIC_LEAGUE_TABLE_KEY
+    const cacheOptions = await resolveCacheOptions(TABLE_CACHE_RESOURCE)
     const { value, version } = await defaultCache.getWithMeta<LeagueTableResponse>(
       cacheKey,
       () => buildLeagueTable(season),
-      TABLE_TTL_SECONDS
+      cacheOptions
     )
     const etag = buildWeakEtag(cacheKey, version)
 
@@ -135,10 +131,11 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
     const cacheKey = requestedSeasonId
       ? `${PUBLIC_LEAGUE_SCHEDULE_KEY}:${season.id}`
       : PUBLIC_LEAGUE_SCHEDULE_KEY
+    const cacheOptions = await resolveCacheOptions('leagueSchedule')
     const { value, version } = await defaultCache.getWithMeta<LeagueRoundCollection>(
       cacheKey,
       () => buildLeagueSchedule(season),
-      PUBLIC_LEAGUE_SCHEDULE_TTL_SECONDS
+      cacheOptions
     )
     const etag = buildWeakEtag(cacheKey, version)
 
@@ -169,10 +166,11 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
     const cacheKey = requestedSeasonId
       ? `${PUBLIC_LEAGUE_RESULTS_KEY}:${season.id}`
       : PUBLIC_LEAGUE_RESULTS_KEY
+    const cacheOptions = await resolveCacheOptions('leagueResults')
     const { value, version } = await defaultCache.getWithMeta<LeagueRoundCollection>(
       cacheKey,
       () => buildLeagueResults(season),
-      PUBLIC_LEAGUE_RESULTS_TTL_SECONDS
+      cacheOptions
     )
     const etag = buildWeakEtag(cacheKey, version)
 
@@ -203,10 +201,11 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
     const cacheKey = requestedSeasonId
       ? `${PUBLIC_LEAGUE_STATS_KEY}:${season.id}`
       : PUBLIC_LEAGUE_STATS_KEY
+    const cacheOptions = await resolveCacheOptions('leagueStats')
     const { value, version } = await defaultCache.getWithMeta(
       cacheKey,
       () => buildLeagueStats(season),
-      PUBLIC_LEAGUE_STATS_TTL_SECONDS
+      cacheOptions
     )
     const etag = buildWeakEtag(cacheKey, version)
 

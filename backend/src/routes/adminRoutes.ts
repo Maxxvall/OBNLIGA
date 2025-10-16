@@ -16,14 +16,10 @@ import {
 } from '@prisma/client'
 import { handleMatchFinalization, rebuildCareerStatsForClubs } from '../services/matchAggregation'
 import { buildLeagueTable } from '../services/leagueTable'
-import {
-  PUBLIC_LEAGUE_RESULTS_KEY,
-  PUBLIC_LEAGUE_SCHEDULE_KEY,
-  refreshLeagueMatchAggregates,
-} from '../services/leagueSchedule'
+import { refreshLeagueMatchAggregates } from '../services/leagueSchedule'
 import { createSeasonPlayoffs, runSeasonAutomation } from '../services/seasonAutomation'
 import { serializePrisma } from '../utils/serialization'
-import { defaultCache } from '../cache'
+import { defaultCache, PUBLIC_LEAGUE_RESULTS_KEY, PUBLIC_LEAGUE_SCHEDULE_KEY } from '../cache'
 import { deliverTelegramNewsNow, enqueueTelegramNewsJob } from '../queue/newsWorker'
 import { secureEquals } from '../utils/secureEquals'
 import { parseBigIntId, parseNumericId, parseOptionalNumericId } from '../utils/parsers'

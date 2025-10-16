@@ -1,6 +1,11 @@
 import { MatchStatus, RoundType, SeriesStatus } from '@prisma/client'
 import prisma from '../db'
-import { defaultCache } from '../cache'
+import {
+  defaultCache,
+  resolveCacheOptions,
+  PUBLIC_LEAGUE_RESULTS_KEY,
+  PUBLIC_LEAGUE_SCHEDULE_KEY,
+} from '../cache'
 import type { SeasonWithCompetition, LeagueSeasonSummary } from './leagueTable'
 import { ensureSeasonSummary } from './leagueTable'
 
@@ -64,10 +69,6 @@ export interface LeagueRoundCollection {
   generatedAt: string
 }
 
-export const PUBLIC_LEAGUE_SCHEDULE_KEY = 'public:league:schedule'
-export const PUBLIC_LEAGUE_RESULTS_KEY = 'public:league:results'
-export const PUBLIC_LEAGUE_SCHEDULE_TTL_SECONDS = 8
-export const PUBLIC_LEAGUE_RESULTS_TTL_SECONDS = 15
 
 type PublishFn = (topic: string, payload: unknown) => Promise<unknown>
 
@@ -703,19 +704,16 @@ export const refreshLeagueMatchAggregates = async (
     buildLeagueResults(season),
   ])
 
+  const [scheduleOptions, resultsOptions] = await Promise.all([
+    resolveCacheOptions('leagueSchedule'),
+    resolveCacheOptions('leagueResults'),
+  ])
+
   await Promise.all([
-    defaultCache.set(PUBLIC_LEAGUE_SCHEDULE_KEY, schedule, PUBLIC_LEAGUE_SCHEDULE_TTL_SECONDS),
-    defaultCache.set(
-      `${PUBLIC_LEAGUE_SCHEDULE_KEY}:${seasonId}`,
-      schedule,
-      PUBLIC_LEAGUE_SCHEDULE_TTL_SECONDS
-    ),
-    defaultCache.set(PUBLIC_LEAGUE_RESULTS_KEY, results, PUBLIC_LEAGUE_RESULTS_TTL_SECONDS),
-    defaultCache.set(
-      `${PUBLIC_LEAGUE_RESULTS_KEY}:${seasonId}`,
-      results,
-      PUBLIC_LEAGUE_RESULTS_TTL_SECONDS
-    ),
+    defaultCache.set(PUBLIC_LEAGUE_SCHEDULE_KEY, schedule, scheduleOptions),
+    defaultCache.set(`${PUBLIC_LEAGUE_SCHEDULE_KEY}:${seasonId}`, schedule, scheduleOptions),
+    defaultCache.set(PUBLIC_LEAGUE_RESULTS_KEY, results, resultsOptions),
+    defaultCache.set(`${PUBLIC_LEAGUE_RESULTS_KEY}:${seasonId}`, results, resultsOptions),
   ])
 
   if (options?.publishTopic) {

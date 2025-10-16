@@ -15,20 +15,20 @@ import {
   SeriesStatus,
 } from '@prisma/client'
 import prisma from '../db'
-import { defaultCache } from '../cache'
-import { buildLeagueTable } from './leagueTable'
 import {
-  PUBLIC_LEAGUE_RESULTS_KEY,
-  PUBLIC_LEAGUE_SCHEDULE_KEY,
-  refreshLeagueMatchAggregates,
-} from './leagueSchedule'
-import {
-  PUBLIC_LEAGUE_STATS_KEY,
-  PUBLIC_LEAGUE_SCORERS_KEY,
+  defaultCache,
+  resolveCacheOptions,
   PUBLIC_LEAGUE_ASSISTS_KEY,
   PUBLIC_LEAGUE_GOAL_CONTRIBUTORS_KEY,
-  refreshLeagueStats,
-} from './leagueStats'
+  PUBLIC_LEAGUE_RESULTS_KEY,
+  PUBLIC_LEAGUE_SCORERS_KEY,
+  PUBLIC_LEAGUE_SCHEDULE_KEY,
+  PUBLIC_LEAGUE_STATS_KEY,
+  PUBLIC_LEAGUE_TABLE_KEY,
+} from '../cache'
+import { buildLeagueTable } from './leagueTable'
+import { refreshLeagueMatchAggregates } from './leagueSchedule'
+import { refreshLeagueStats } from './leagueStats'
 import { publicClubSummaryKey, refreshClubSummary } from './clubSummary'
 import {
   addDays,
@@ -40,8 +40,6 @@ import {
 const YELLOW_CARD_LIMIT = 4
 const RED_CARD_BAN_MATCHES = 2
 const SECOND_YELLOW_BAN_MATCHES = 1
-const PUBLIC_LEAGUE_TABLE_KEY = 'public:league:table'
-const PUBLIC_LEAGUE_TABLE_TTL_SECONDS = 300
 
 type MatchOutcomeSource = Pick<
   Match,
@@ -168,12 +166,11 @@ export async function handleMatchFinalization(
     })
     if (refreshedSeason) {
       const table = await buildLeagueTable(refreshedSeason)
-      await defaultCache.set(PUBLIC_LEAGUE_TABLE_KEY, table, PUBLIC_LEAGUE_TABLE_TTL_SECONDS)
-      await defaultCache.set(
-        `${PUBLIC_LEAGUE_TABLE_KEY}:${seasonId}`,
-        table,
-        PUBLIC_LEAGUE_TABLE_TTL_SECONDS
-      )
+      const tableOptions = await resolveCacheOptions('leagueTable')
+      await Promise.all([
+        defaultCache.set(PUBLIC_LEAGUE_TABLE_KEY, table, tableOptions),
+        defaultCache.set(`${PUBLIC_LEAGUE_TABLE_KEY}:${seasonId}`, table, tableOptions),
+      ])
       await refreshLeagueMatchAggregates(refreshedSeason.id, {
         publishTopic: options?.publishTopic,
       })

@@ -240,3 +240,100 @@ export interface ClubSummaryResponse {
   squad?: ClubSquadPlayer[]
   generatedAt: string
 }
+
+export type MatchDetailsStatus = 'SCHEDULED' | 'LIVE' | 'POSTPONED' | 'FINISHED'
+
+export interface MatchDetailsHeader {
+  status: MatchDetailsStatus
+  matchDateTime: string
+  updatedAt: string
+  currentMinute: number | null
+  venue?: {
+    city?: string | null
+    stadium?: string | null
+  }
+  homeTeam: {
+    name: string
+    shortName: string
+    logo: string | null
+    score: number
+    penaltyScore: number | null
+  }
+  awayTeam: {
+    name: string
+    shortName: string
+    logo: string | null
+    score: number
+    penaltyScore: number | null
+  }
+}
+
+export interface MatchDetailsLineupPlayer {
+  firstName: string
+  lastName: string
+  shirtNumber: number | null
+}
+
+export interface MatchDetailsLineupTeam {
+  version: string
+  players: MatchDetailsLineupPlayer[]
+}
+
+export interface MatchDetailsLineups {
+  homeTeam: MatchDetailsLineupTeam
+  awayTeam: MatchDetailsLineupTeam
+}
+
+export type MatchDetailsEventType =
+  | 'GOAL'
+  | 'PENALTY_GOAL'
+  | 'OWN_GOAL'
+  | 'PENALTY_MISSED'
+  | 'YELLOW_CARD'
+  | 'SECOND_YELLOW_CARD'
+  | 'RED_CARD'
+  | 'SUB_IN'
+  | 'SUB_OUT'
+
+export type MatchDetailsEventTeam = 'HOME' | 'AWAY'
+
+export interface MatchDetailsEventPlayer {
+  firstName: string
+  lastName: string
+  shirtNumber: number | null
+}
+
+export interface MatchDetailsEventItem {
+  id: string
+  minute: number
+  team: MatchDetailsEventTeam
+  eventType: MatchDetailsEventType
+  primary: MatchDetailsEventPlayer
+  secondary?: MatchDetailsEventPlayer | null
+}
+
+export interface MatchDetailsEvents {
+  version: string
+  events: MatchDetailsEventItem[]
+}
+
+export interface MatchDetailsStatsEntry {
+  shots: number
+  shotsOnTarget: number
+  corners: number
+  yellowCards: number
+}
+
+export interface MatchDetailsStatsTeam {
+  version: string
+  stats: MatchDetailsStatsEntry
+}
+
+export interface MatchDetailsStats {
+  homeTeam: MatchDetailsStatsTeam
+  awayTeam: MatchDetailsStatsTeam
+}
+
+export interface MatchDetailsBroadcast {
+  status: 'not_available'
+}

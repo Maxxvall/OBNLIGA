@@ -622,19 +622,14 @@ const startLeaguePolling = (get: () => AppState) => {
     }
 
     // Запрашиваем данные только для активной подвкладки
-    switch (state.leagueSubTab) {
-      case 'table':
-        void state.fetchLeagueTable({ seasonId })
-        break
-      case 'schedule':
-        void state.fetchLeagueSchedule({ seasonId })
-        break
-      case 'results':
-        void state.fetchLeagueResults({ seasonId })
-        break
-      case 'stats':
-        void state.fetchLeagueStats({ seasonId })
-        break
+    if (state.leagueSubTab === 'table') {
+      void state.fetchLeagueTable({ seasonId })
+    } else if (state.leagueSubTab === 'schedule') {
+      void state.fetchLeagueSchedule({ seasonId })
+    } else if (state.leagueSubTab === 'results') {
+      void state.fetchLeagueResults({ seasonId })
+    } else if (state.leagueSubTab === 'stats') {
+      void state.fetchLeagueStats({ seasonId })
     }
   }
 

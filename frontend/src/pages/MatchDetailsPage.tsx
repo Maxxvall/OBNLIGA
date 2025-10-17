@@ -97,50 +97,30 @@ export const MatchDetailsPage: React.FC = () => {
 
   const [homeScoreAnimated, setHomeScoreAnimated] = React.useState(false)
   const [awayScoreAnimated, setAwayScoreAnimated] = React.useState(false)
-  const previousScoresRef = React.useRef<{ home: number | null; away: number | null }>(
-    { home: null, away: null }
-  )
+  const previousScoresRef = React.useRef<{ home: number | null; away: number | null }>({
+    home: null,
+    away: null,
+  })
   const scoreTimersRef = React.useRef<{ home?: number; away?: number }>({})
 
-  React.useEffect(() => () => {
-    const timers = scoreTimersRef.current
-    if (typeof timers.home === 'number') {
-      window.clearTimeout(timers.home)
-      timers.home = undefined
-    }
-    if (typeof timers.away === 'number') {
-      window.clearTimeout(timers.away)
-      timers.away = undefined
+  React.useEffect(() => {
+    const cleanupTimers = scoreTimersRef.current
+
+    return () => {
+      if (typeof cleanupTimers.home === 'number') {
+        window.clearTimeout(cleanupTimers.home)
+        cleanupTimers.home = undefined
+      }
+      if (typeof cleanupTimers.away === 'number') {
+        window.clearTimeout(cleanupTimers.away)
+        cleanupTimers.away = undefined
+      }
     }
   }, [])
-
-  if (!matchDetails.open || !matchDetails.matchId) {
-    return null
-  }
-
-  if (!header && !snapshot) {
-    return (
-      <div className="match-details-page">
-        <div className="match-details-container">
-          <div className="match-details-loading">
-            <p>Загрузка...</p>
-          </div>
-        </div>
-      </div>
-    )
-  }
 
   const status: MatchStatus | undefined = header?.st ?? snapshot?.status
   const matchDateIso = header?.dt ?? snapshot?.matchDateTime
   const dateLabel = formatMatchDateLabel(matchDateIso)
-
-  const homeName = header?.ht.n ?? snapshot?.homeClub.name ?? '—'
-  const homeShort = header?.ht.sn ?? snapshot?.homeClub.shortName ?? undefined
-  const homeLogo = header?.ht.lg ?? snapshot?.homeClub.logoUrl ?? undefined
-
-  const awayName = header?.at.n ?? snapshot?.awayClub.name ?? '—'
-  const awayShort = header?.at.sn ?? snapshot?.awayClub.shortName ?? undefined
-  const awayLogo = header?.at.lg ?? snapshot?.awayClub.logoUrl ?? undefined
 
   const showNumericScore = status === 'LIVE' || status === 'FINISHED'
   const homeScoreValue = showNumericScore
@@ -155,6 +135,21 @@ export const MatchDetailsPage: React.FC = () => {
   React.useEffect(() => {
     const timers = scoreTimersRef.current
     const previous = previousScoresRef.current
+
+    if (!matchDetails.open) {
+      if (typeof timers.home === 'number') {
+        window.clearTimeout(timers.home)
+        timers.home = undefined
+      }
+      if (typeof timers.away === 'number') {
+        window.clearTimeout(timers.away)
+        timers.away = undefined
+      }
+      previousScoresRef.current = { home: null, away: null }
+      setHomeScoreAnimated(false)
+      setAwayScoreAnimated(false)
+      return
+    }
 
     if (homeScoreValue === null) {
       if (previous.home !== null && typeof timers.home === 'number') {
@@ -195,7 +190,31 @@ export const MatchDetailsPage: React.FC = () => {
     }
 
     previousScoresRef.current = { home: homeScoreValue, away: awayScoreValue }
-  }, [homeScoreValue, awayScoreValue])
+  }, [matchDetails.open, homeScoreValue, awayScoreValue])
+
+  if (!matchDetails.open || !matchDetails.matchId) {
+    return null
+  }
+
+  if (!header && !snapshot) {
+    return (
+      <div className="match-details-page">
+        <div className="match-details-container">
+          <div className="match-details-loading">
+            <p>Загрузка...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const homeName = header?.ht.n ?? snapshot?.homeClub.name ?? '—'
+  const homeShort = header?.ht.sn ?? snapshot?.homeClub.shortName ?? undefined
+  const homeLogo = header?.ht.lg ?? snapshot?.homeClub.logoUrl ?? undefined
+
+  const awayName = header?.at.n ?? snapshot?.awayClub.name ?? '—'
+  const awayShort = header?.at.sn ?? snapshot?.awayClub.shortName ?? undefined
+  const awayLogo = header?.at.lg ?? snapshot?.awayClub.logoUrl ?? undefined
 
   const penaltyHome = header?.ph ?? snapshot?.penaltyHomeScore ?? null
   const penaltyAway = header?.pa ?? snapshot?.penaltyAwayScore ?? null
@@ -393,7 +412,7 @@ const EventsView: React.FC<{
       <ul className="event-list">
         {events.ev.map(ev => (
           <li key={ev.id} className={`event ${ev.tm}`}>
-            <span className="event-minute">{ev.min}'</span>
+            <span className="event-minute">{ev.min}&apos;</span>
             <span className="event-type">{eventTypeLabel(ev.tp)}</span>
             <span className="event-player">{ev.pl || '—'}</span>
             {ev.pl2 && <span className="event-player2">→ {ev.pl2}</span>}

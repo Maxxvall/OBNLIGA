@@ -634,7 +634,10 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
                             <button
                               type="button"
                               className="club-logo-button"
-                              onClick={(e) => { e.stopPropagation(); openTeamView(match.homeClub.id); }}
+                              onClick={e => {
+                                e.stopPropagation()
+                                openTeamView(match.homeClub.id)
+                              }}
                               aria-label={`Открыть страницу клуба ${match.homeClub.name}`}
                             >
                               {match.homeClub.logoUrl ? (
@@ -662,7 +665,10 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
                             <button
                               type="button"
                               className="club-logo-button"
-                              onClick={(e) => { e.stopPropagation(); openTeamView(match.awayClub.id); }}
+                              onClick={e => {
+                                e.stopPropagation()
+                                openTeamView(match.awayClub.id)
+                              }}
                               aria-label={`Открыть страницу клуба ${match.awayClub.name}`}
                             >
                               {match.awayClub.logoUrl ? (

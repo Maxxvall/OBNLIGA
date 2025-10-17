@@ -8,13 +8,9 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "outDir": "dist",
+    "rootDir": "src",
     "resolveJsonModule": true,
-    "types": ["node"],
-    "baseUrl": ".",
-    "rootDirs": ["src", "../shared"],  // ← ТОЛЬКО ЭТОТ ПАРАМЕТР (без rootDir!)
-    "paths": {
-      "@shared/*": ["../shared/*"]
-    }
+    "types": ["node"]
   },
-  "include": ["src/**/*.ts", "../shared/**/*.ts"]
+  "include": ["src/**/*.ts"]
 }

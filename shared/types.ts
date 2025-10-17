@@ -241,99 +241,95 @@ export interface ClubSummaryResponse {
   generatedAt: string
 }
 
-export type MatchDetailsStatus = 'SCHEDULED' | 'LIVE' | 'POSTPONED' | 'FINISHED'
+// ============================================================
+// Public Match Details API Types (optimized, minimal payload)
+// ============================================================
+
+export type MatchStatus = 'SCHEDULED' | 'LIVE' | 'POSTPONED' | 'FINISHED'
 
 export interface MatchDetailsHeader {
-  status: MatchDetailsStatus
-  matchDateTime: string
-  updatedAt: string
-  currentMinute: number | null
-  venue?: {
-    city?: string | null
-    stadium?: string | null
+  st: MatchStatus // status
+  dt: string // matchDateTime (ISO)
+  min?: number // currentMinute (only for LIVE)
+  ht: {
+    // homeTeam
+    n: string // name
+    lg?: string // logo URL
+    sc: number // score
   }
-  homeTeam: {
-    name: string
-    shortName: string
-    logo: string | null
-    score: number
-    penaltyScore: number | null
-  }
-  awayTeam: {
-    name: string
-    shortName: string
-    logo: string | null
-    score: number
-    penaltyScore: number | null
+  at: {
+    // awayTeam
+    n: string
+    lg?: string
+    sc: number
   }
 }
 
 export interface MatchDetailsLineupPlayer {
-  firstName: string
-  lastName: string
-  shirtNumber: number | null
-}
-
-export interface MatchDetailsLineupTeam {
-  version: string
-  players: MatchDetailsLineupPlayer[]
+  fn: string // firstName
+  ln: string // lastName
+  sn: number // shirtNumber
 }
 
 export interface MatchDetailsLineups {
-  homeTeam: MatchDetailsLineupTeam
-  awayTeam: MatchDetailsLineupTeam
+  ht: {
+    // homeTeam
+    v: number // version
+    pl: MatchDetailsLineupPlayer[] // players
+  }
+  at: {
+    // awayTeam
+    v: number
+    pl: MatchDetailsLineupPlayer[]
+  }
 }
 
-export type MatchDetailsEventType =
-  | 'GOAL'
-  | 'PENALTY_GOAL'
-  | 'OWN_GOAL'
-  | 'PENALTY_MISSED'
-  | 'YELLOW_CARD'
-  | 'SECOND_YELLOW_CARD'
-  | 'RED_CARD'
-  | 'SUB_IN'
-  | 'SUB_OUT'
-
-export type MatchDetailsEventTeam = 'HOME' | 'AWAY'
-
-export interface MatchDetailsEventPlayer {
-  firstName: string
-  lastName: string
-  shirtNumber: number | null
-}
-
-export interface MatchDetailsEventItem {
-  id: string
-  minute: number
-  team: MatchDetailsEventTeam
-  eventType: MatchDetailsEventType
-  primary: MatchDetailsEventPlayer
-  secondary?: MatchDetailsEventPlayer | null
-}
-
-export interface MatchDetailsEvents {
-  version: string
-  events: MatchDetailsEventItem[]
-}
-
-export interface MatchDetailsStatsEntry {
-  shots: number
-  shotsOnTarget: number
-  corners: number
-  yellowCards: number
-}
-
-export interface MatchDetailsStatsTeam {
-  version: string
-  stats: MatchDetailsStatsEntry
+export interface MatchDetailsTeamStats {
+  sh?: number // shots
+  sot?: number // shotsOnTarget
+  cor?: number // corners
+  yc?: number // yellowCards
+  rc?: number // redCards
+  fk?: number // freeKicks
+  of?: number // offsides
 }
 
 export interface MatchDetailsStats {
-  homeTeam: MatchDetailsStatsTeam
-  awayTeam: MatchDetailsStatsTeam
+  ht: {
+    // homeTeam
+    v: number // version
+    st: MatchDetailsTeamStats // stats
+  }
+  at: {
+    // awayTeam
+    v: number
+    st: MatchDetailsTeamStats
+  }
+}
+
+export type MatchEventType =
+  | 'GOAL'
+  | 'PENALTY_GOAL'
+  | 'OWN_GOAL'
+  | 'YELLOW_CARD'
+  | 'RED_CARD'
+  | 'SUBSTITUTION'
+
+export interface MatchDetailsEvent {
+  id: string
+  min: number // minute
+  tp: MatchEventType // type
+  tm: 'home' | 'away' // team
+  pl?: string // player name (optional for some events)
+  pl2?: string // second player (for substitution: player in)
+}
+
+export interface MatchDetailsEvents {
+  v: number // version (for entire event list)
+  ev: MatchDetailsEvent[] // events
 }
 
 export interface MatchDetailsBroadcast {
-  status: 'not_available'
+  st: 'not_available' | 'available' // status
+  url?: string // broadcast URL if available
 }

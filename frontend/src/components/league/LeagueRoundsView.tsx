@@ -615,33 +615,8 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
                       cardClasses.push('live-activated')
                     }
                     const scoreClassName = `league-match-score${isScoreUpdated ? ' score-updated' : ''}`
-                    const openMatchDetails = () => {
-                      window.location.assign(`/matches/${match.id}`)
-                    }
-                    const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault()
-                        openMatchDetails()
-                      }
-                    }
-                    const handleHomeClick = (event: React.MouseEvent<HTMLButtonElement>) => {
-                      event.stopPropagation()
-                      openTeamView(match.homeClub.id)
-                    }
-                    const handleAwayClick = (event: React.MouseEvent<HTMLButtonElement>) => {
-                      event.stopPropagation()
-                      openTeamView(match.awayClub.id)
-                    }
                     return (
-                      <div
-                        className={cardClasses.join(' ')}
-                        key={match.id}
-                        role="button"
-                        tabIndex={0}
-                        onClick={openMatchDetails}
-                        onKeyDown={handleKeyDown}
-                        aria-label={`Открыть страницу деталей матча ${homeName} — ${awayName}`}
-                      >
+                      <div className={cardClasses.join(' ')} key={match.id}>
                         <div className="league-match-top">
                           <span className="match-datetime">{descriptor.dateTime}</span>
                           {descriptor.badge && (
@@ -653,7 +628,7 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
                             <button
                               type="button"
                               className="club-logo-button"
-                              onClick={handleHomeClick}
+                              onClick={() => openTeamView(match.homeClub.id)}
                               aria-label={`Открыть страницу клуба ${match.homeClub.name}`}
                             >
                               {match.homeClub.logoUrl ? (
@@ -681,7 +656,7 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
                             <button
                               type="button"
                               className="club-logo-button"
-                              onClick={handleAwayClick}
+                              onClick={() => openTeamView(match.awayClub.id)}
                               aria-label={`Открыть страницу клуба ${match.awayClub.name}`}
                             >
                               {match.awayClub.logoUrl ? (

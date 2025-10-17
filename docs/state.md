@@ -82,15 +82,6 @@
 - `fetchClubSummary` валидирует форму, достижения и статистику клуба перед записью в store, чтобы избежать рендера невалидных данных.
 - При ошибке запроса сводки флаг `teamSummaryErrors[clubId]` получает код ошибки, polling останавливается до ручного перезапроса.
 
-### Экран деталей матча (`frontend/src/store/matchDetailsStore.ts`)
-
-- `matchId` — активный матч страницы `/matches/:id`. Ресурсы (`header`, `lineups`, `events`, `stats`, `broadcast`) хранят `data`, `version`, `loaded`, `loading`, `error`.
-- `initialize(matchId)` сбрасывает состояние, делает первичный `fetchHeader(force)` и `fetchLineups(force)`.
-- Запросы отправляются через `matchDetailsApi`, всегда прикладывают `If-None-Match`; при `304` только обновляется `loaded`, индикатор загрузки снимается без замены ссылок.
-- `lineups` и `stats` сравнивают версии по командам (`homeTeam.version`, `awayTeam.version`) и переиспользуют неизменившиеся объекты, чтобы не триггерить лишние перерисовки.
-- Polling: `header` — каждые 10 сек в статусе `LIVE`; `lineups` — каждые 10 мин в статусах `SCHEDULED/POSTPONED`; `events` и `stats` — каждые 10 сек, когда вкладка активна и матч `LIVE`; `broadcast` не опрашивается повторно (TTL 1 день).
-- Вкладка «Статистика» скрывается на клиенте, если матч `FINISHED` и с момента `matchDateTime` прошло >3 часов (~2 ч игра + 1 ч постгрейс) — это синхронизировано с серверным 404 после удаления статистики.
-
 ## HTTP клиент (`frontend/src/api/httpClient.ts`)
 
 - Каждому запросу передаём `If-None-Match`, если известна версия (`W/"{cacheKey}:{version}"`). Сервер сопоставляет ключ и возвращает `304`, если fingerprint payload не изменился.

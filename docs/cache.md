@@ -88,12 +88,9 @@ MATCH_WINDOW_POST_GRACE_MINUTES=30
 
 ### Match Details (split static / live)
 
-* `pub:md:{id}:header` — **LIVE: 10s**, **SCHEDULED/POSTPONED: 5 min**, **FINISHED: 3h**; содержит счёт, статус, место проведения.
-* `pub:md:{id}:lineups` — **LIVE/SCHEDULED: 10 min**, **FINISHED: 3h**; хранит версии по командам, чтобы обновлять только изменившиеся списки.
-* `pub:md:{id}:events` — **LIVE: 10s**, **SCHEDULED: 5 min**, **FINISHED: 3h**; общий список событий с версией для ETag.
-* `pub:md:{id}:stats` — **LIVE: 10s**, **SCHEDULED: 5 min**, **FINISHED: 3h**; данные удаляются спустя 1 час после завершения матча, после чего endpoint отвечает `404`.
-* `pub:md:{id}:broadcast` — заглушка, TTL **1 day**.
-* Версии bump'ятся автоматически при смене payload; SWR используется с коэффициентом ×2 (кроме broadcast).
+* `md:{match_id}:meta` — статичная часть: **10 min** (или дольше вне окна).
+* `md:{match_id}:live` — live‑поля (score, events): **3–5s** в окне; автоудаление через 3 часа после окончания.
+* `etag:md:{match_id}` — atomic bump при изменениях.
 
 ### Predictions
 

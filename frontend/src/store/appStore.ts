@@ -13,6 +13,7 @@ import type {
   MatchDetailsLineups,
   MatchDetailsStats,
   MatchDetailsEvents,
+  MatchStatus,
 } from '@shared/types'
 import { leagueApi } from '../api/leagueApi'
 import { clubApi } from '../api/clubApi'
@@ -33,7 +34,9 @@ type TeamViewState = {
 type MatchDetailsState = {
   open: boolean
   matchId?: string
+  seasonId?: number
   activeTab: MatchDetailsTab
+  snapshot?: LeagueMatchView
   header?: MatchDetailsHeader
   lineups?: MatchDetailsLineups
   stats?: MatchDetailsStats
@@ -61,7 +64,9 @@ const INITIAL_TEAM_VIEW: TeamViewState = {
 const INITIAL_MATCH_DETAILS: MatchDetailsState = {
   open: false,
   matchId: undefined,
+  seasonId: undefined,
   activeTab: 'lineups',
+  snapshot: undefined,
   loadingHeader: false,
   loadingLineups: false,
   loadingStats: false,
@@ -395,6 +400,167 @@ const mergeStatsResponse = (
   }
 }
 
+type MatchHeaderSyncPayload = {
+  status: MatchStatus
+  homeScore: number
+  awayScore: number
+  hasPenalty: boolean
+  penaltyHome: number | null
+  penaltyAway: number | null
+}
+
+const extractHeaderSyncPayload = (header: MatchDetailsHeader): MatchHeaderSyncPayload => {
+  const hasPenalty = Boolean(header.ps)
+  return {
+    status: header.st,
+    homeScore: header.ht.sc,
+    awayScore: header.at.sc,
+    hasPenalty,
+    penaltyHome: hasPenalty ? header.ph ?? null : null,
+    penaltyAway: hasPenalty ? header.pa ?? null : null,
+  }
+}
+
+const applySummaryToMatchView = (
+  match: LeagueMatchView,
+  summary: MatchHeaderSyncPayload
+): LeagueMatchView => {
+  const nextPenaltyHome = summary.hasPenalty ? summary.penaltyHome : null
+  const nextPenaltyAway = summary.hasPenalty ? summary.penaltyAway : null
+
+  if (
+    match.status === summary.status &&
+    match.homeScore === summary.homeScore &&
+    match.awayScore === summary.awayScore &&
+    match.hasPenaltyShootout === summary.hasPenalty &&
+    match.penaltyHomeScore === nextPenaltyHome &&
+    match.penaltyAwayScore === nextPenaltyAway
+  ) {
+    return match
+  }
+
+  return {
+    ...match,
+    status: summary.status,
+    homeScore: summary.homeScore,
+    awayScore: summary.awayScore,
+    hasPenaltyShootout: summary.hasPenalty,
+    penaltyHomeScore: nextPenaltyHome,
+    penaltyAwayScore: nextPenaltyAway,
+  }
+}
+
+const syncScheduleCollectionWithHeader = (
+  collection: LeagueRoundCollection,
+  matchId: string,
+  summary: MatchHeaderSyncPayload
+): LeagueRoundCollection => {
+  let changed = false
+  const nextRounds: LeagueRoundMatches[] = []
+
+  for (const round of collection.rounds) {
+    let matchesChanged = false
+    const nextMatches: LeagueMatchView[] = []
+
+    for (const match of round.matches) {
+      if (match.id !== matchId) {
+        nextMatches.push(match)
+        continue
+      }
+
+      if (summary.status === 'FINISHED') {
+        matchesChanged = true
+        changed = true
+        continue
+      }
+
+      const updatedMatch = applySummaryToMatchView(match, summary)
+      if (updatedMatch !== match) {
+        matchesChanged = true
+        changed = true
+        nextMatches.push(updatedMatch)
+      } else {
+        nextMatches.push(match)
+      }
+    }
+
+    if (!matchesChanged) {
+      nextRounds.push(round)
+      continue
+    }
+
+    if (summary.status === 'FINISHED' && nextMatches.length === 0) {
+      continue
+    }
+
+    nextRounds.push({
+      ...round,
+      matches: nextMatches,
+    })
+  }
+
+  if (!changed) {
+    return collection
+  }
+
+  return {
+    ...collection,
+    rounds: nextRounds,
+  }
+}
+
+const syncResultsCollectionWithHeader = (
+  collection: LeagueRoundCollection,
+  matchId: string,
+  summary: MatchHeaderSyncPayload
+): LeagueRoundCollection => {
+  let changed = false
+  const nextRounds = collection.rounds.map(round => {
+    let matchesChanged = false
+    const nextMatches = round.matches.map(match => {
+      if (match.id !== matchId) {
+        return match
+      }
+      const updatedMatch = applySummaryToMatchView(match, summary)
+      if (updatedMatch !== match) {
+        matchesChanged = true
+        changed = true
+        return updatedMatch
+      }
+      return match
+    })
+
+    if (!matchesChanged) {
+      return round
+    }
+
+    return {
+      ...round,
+      matches: nextMatches,
+    }
+  })
+
+  if (!changed) {
+    return collection
+  }
+
+  return {
+    ...collection,
+    rounds: nextRounds,
+  }
+}
+
+const syncSnapshotWithHeader = (
+  snapshot: LeagueMatchView | undefined,
+  matchId: string,
+  summary: MatchHeaderSyncPayload
+): LeagueMatchView | undefined => {
+  if (!snapshot || snapshot.id !== matchId) {
+    return snapshot
+  }
+  return applySummaryToMatchView(snapshot, summary)
+}
+
 let leaguePollingTimer: number | null = null
 let teamPollingTimer: number | null = null
 let teamPollingClubId: number | null = null
@@ -580,7 +746,7 @@ interface AppState {
   fetchClubSummary: (clubId: number, options?: { force?: boolean }) => Promise<FetchResult>
   ensureTeamPolling: () => void
   stopTeamPolling: () => void
-  openMatchDetails: (matchId: string) => void
+  openMatchDetails: (matchId: string, snapshot?: LeagueMatchView, seasonId?: number) => void
   closeMatchDetails: () => void
   setMatchDetailsTab: (tab: MatchDetailsTab) => void
   fetchMatchHeader: (matchId: string, options?: { force?: boolean }) => Promise<FetchResult>
@@ -1204,22 +1370,30 @@ export const useAppStore = create<AppState>((set, get) => ({
     clearTeamPolling()
     set({ teamPollingAttached: false, teamPollingClubId: undefined })
   },
-  openMatchDetails: matchId => {
-    console.log('[Store] openMatchDetails called with matchId:', matchId)
+  openMatchDetails: (matchId, snapshot, seasonId) => {
+    const state = get()
+    state.stopLeaguePolling()
+    const resolvedSeasonId = seasonId ?? state.matchDetails.seasonId ?? state.selectedSeasonId ?? state.activeSeasonId
     set({
       matchDetails: {
         ...INITIAL_MATCH_DETAILS,
         open: true,
         matchId,
+        seasonId: resolvedSeasonId,
+        snapshot,
       },
     })
-    console.log('[Store] matchDetails.open set to true')
     void get().fetchMatchHeader(matchId)
-    void get().fetchMatchLineups(matchId) // Pre-load default tab
+    void get().fetchMatchLineups(matchId)
+    if (snapshot?.status === 'LIVE' || snapshot?.status === 'FINISHED') {
+      void get().fetchMatchEvents(matchId)
+      void get().fetchMatchStats(matchId)
+    }
   },
   closeMatchDetails: () => {
     get().stopMatchDetailsPolling()
     set({ matchDetails: { ...INITIAL_MATCH_DETAILS }, matchDetailsPollingAttached: false })
+    get().ensureLeaguePolling()
   },
   setMatchDetailsTab: tab => {
     set(prev => ({
@@ -1270,15 +1444,85 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { ok: true }
     }
 
-    set(prev => ({
-      matchDetails: {
-        ...prev.matchDetails,
-        header: response.data,
-        headerEtag: response.version,
-        loadingHeader: false,
-        errorHeader: undefined,
-      },
-    }))
+    const previousStatus = state.matchDetails.header?.st ?? state.matchDetails.snapshot?.status
+    const seasonIdForFetch =
+      state.matchDetails.seasonId ?? state.selectedSeasonId ?? state.activeSeasonId
+    const summary = extractHeaderSyncPayload(response.data)
+
+    set(prev => {
+      const targetSeasonId =
+        prev.matchDetails.seasonId ?? prev.selectedSeasonId ?? prev.activeSeasonId
+
+      let schedulesMap = prev.schedules
+      let resultsMap = prev.results
+      let scheduleChanged = false
+      let resultsChanged = false
+
+      if (targetSeasonId) {
+        const currentSchedule = prev.schedules[targetSeasonId]
+        if (currentSchedule) {
+          const patchedSchedule = syncScheduleCollectionWithHeader(
+            currentSchedule,
+            matchId,
+            summary
+          )
+          if (patchedSchedule !== currentSchedule) {
+            schedulesMap = { ...prev.schedules, [targetSeasonId]: patchedSchedule }
+            scheduleChanged = true
+          }
+        }
+
+        const currentResults = prev.results[targetSeasonId]
+        if (currentResults) {
+          const patchedResults = syncResultsCollectionWithHeader(
+            currentResults,
+            matchId,
+            summary
+          )
+          if (patchedResults !== currentResults) {
+            resultsMap = { ...prev.results, [targetSeasonId]: patchedResults }
+            resultsChanged = true
+          }
+        }
+      }
+
+      if (scheduleChanged) {
+        writeToStorage('schedules', schedulesMap)
+      }
+      if (resultsChanged) {
+        writeToStorage('results', resultsMap)
+      }
+
+      const nextSnapshot = syncSnapshotWithHeader(prev.matchDetails.snapshot, matchId, summary)
+
+      return {
+        ...prev,
+        schedules: scheduleChanged ? schedulesMap : prev.schedules,
+        results: resultsChanged ? resultsMap : prev.results,
+        matchDetails: {
+          ...prev.matchDetails,
+          header: response.data,
+          headerEtag: response.version,
+          loadingHeader: false,
+          errorHeader: undefined,
+          snapshot: nextSnapshot,
+        },
+      }
+    })
+    const headerStatus = response.data.st
+    if (headerStatus === 'LIVE' || headerStatus === 'FINISHED') {
+      const current = get().matchDetails
+      if (!current.events && !current.loadingEvents) {
+        void get().fetchMatchEvents(matchId)
+      }
+      if (!current.stats && !current.loadingStats) {
+        void get().fetchMatchStats(matchId)
+      }
+    }
+    if (headerStatus === 'FINISHED' && previousStatus !== 'FINISHED' && seasonIdForFetch) {
+      void get().fetchLeagueSchedule({ seasonId: seasonIdForFetch, force: true })
+      void get().fetchLeagueResults({ seasonId: seasonIdForFetch, force: true })
+    }
     get().ensureMatchDetailsPolling()
     return { ok: true }
   },

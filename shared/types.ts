@@ -251,15 +251,28 @@ export interface MatchDetailsHeader {
   st: MatchStatus // status
   dt: string // matchDateTime (ISO)
   min?: number // currentMinute (only for LIVE)
+  loc?: {
+    city?: string
+    stadium?: string
+  }
+  rd?: {
+    label?: string | null
+    type?: 'REGULAR' | 'PLAYOFF' | null
+  }
+  ps?: boolean // has penalty shootout
+  ph?: number | null // penalty home score
+  pa?: number | null // penalty away score
   ht: {
     // homeTeam
     n: string // name
+    sn?: string // shortName
     lg?: string // logo URL
     sc: number // score
   }
   at: {
     // awayTeam
     n: string
+    sn?: string
     lg?: string
     sc: number
   }

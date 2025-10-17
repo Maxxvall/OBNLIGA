@@ -53,7 +53,7 @@ const matchPublicRoutes: FastifyPluginCallback = (server, _opts, done) => {
       const lineups = await fetchMatchLineups(id)
 
       if (!lineups) {
-        return reply.code(404).send({ error: 'Match not found' })
+        return reply.code(404).send({ ok: false, error: 'Match not found' })
       }
 
       const etag = `"${Buffer.from(JSON.stringify(lineups)).toString('base64').slice(0, 16)}"`
@@ -80,7 +80,7 @@ const matchPublicRoutes: FastifyPluginCallback = (server, _opts, done) => {
       const stats = await fetchMatchStats(id)
 
       if (!stats) {
-        return reply.code(404).send({ error: 'Match not found' })
+        return reply.code(404).send({ ok: false, error: 'Match not found' })
       }
 
       const etag = `"${Buffer.from(JSON.stringify(stats)).toString('base64').slice(0, 16)}"`

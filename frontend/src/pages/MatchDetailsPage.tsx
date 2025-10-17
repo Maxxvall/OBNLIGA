@@ -1,31 +1,124 @@
-import React, { useEffect } from 'react'
+import React from 'react'
 import { useAppStore } from '../store/appStore'
-import type { MatchDetailsLineups, MatchDetailsStats, MatchDetailsEvents } from '@shared/types'
+import type {
+  MatchDetailsLineups,
+  MatchDetailsStats,
+  MatchDetailsEvents,
+  MatchStatus,
+  LeagueMatchLocation,
+} from '@shared/types'
 import '../styles/matchDetails.css'
 
-const TIME_FORMATTER = new Intl.DateTimeFormat('ru-RU', {
+const DATE_TIME_FORMATTER = new Intl.DateTimeFormat('ru-RU', {
   day: '2-digit',
   month: '2-digit',
-  year: 'numeric',
+  year: '2-digit',
   hour: '2-digit',
   minute: '2-digit',
 })
+
+const formatMatchDateLabel = (iso?: string | null): string => {
+  if (!iso) {
+    return 'Дата уточняется'
+  }
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) {
+    return 'Дата уточняется'
+  }
+  return DATE_TIME_FORMATTER.format(date)
+}
+
+const buildLocationLabel = (
+  loc?: { city?: string; stadium?: string },
+  fallback?: LeagueMatchLocation | null
+): string => {
+  const parts: string[] = []
+  if (loc) {
+    if (loc.city) parts.push(loc.city)
+    if (loc.stadium) parts.push(loc.stadium)
+  }
+  if (!parts.length && fallback) {
+    if (fallback.city) parts.push(fallback.city)
+    if (fallback.stadiumName) parts.push(fallback.stadiumName)
+  }
+  const normalized = parts
+    .map(part => (part ? part.trim() : ''))
+    .filter((part): part is string => Boolean(part && part.length))
+  if (!normalized.length) {
+    return 'Локация уточняется'
+  }
+  return normalized.join(' · ')
+}
+
+type StatusBadge = { label: string; tone: 'live' | 'scheduled' | 'finished' | 'postponed' }
+
+const getStatusBadge = (status?: MatchStatus): StatusBadge | null => {
+  switch (status) {
+    case 'LIVE':
+      return { label: 'Матч идёт', tone: 'live' }
+    case 'FINISHED':
+      return { label: 'Завершён', tone: 'finished' }
+    case 'POSTPONED':
+      return { label: 'Перенесён', tone: 'postponed' }
+    case 'SCHEDULED':
+      return { label: 'Запланирован', tone: 'scheduled' }
+    default:
+      return null
+  }
+}
+
+const shouldShowStatsTab = (status?: MatchStatus, matchDateIso?: string | null): boolean => {
+  if (!status) {
+    return false
+  }
+  if (status === 'LIVE') {
+    return true
+  }
+  if (status !== 'FINISHED') {
+    return false
+  }
+  if (!matchDateIso) {
+    return false
+  }
+  const matchStart = new Date(matchDateIso)
+  if (Number.isNaN(matchStart.getTime())) {
+    return false
+  }
+  matchStart.setHours(matchStart.getHours() + 3)
+  return Date.now() <= matchStart.getTime()
+}
 
 export const MatchDetailsPage: React.FC = () => {
   const matchDetails = useAppStore(state => state.matchDetails)
   const closeMatchDetails = useAppStore(state => state.closeMatchDetails)
   const setMatchDetailsTab = useAppStore(state => state.setMatchDetailsTab)
 
-  const { header, lineups, stats, events, activeTab } = matchDetails
+  const { header, lineups, stats, events, activeTab, snapshot } = matchDetails
 
-  // No cleanup useEffect needed - closeMatchDetails is called from back button onClick
+  const [homeScoreAnimated, setHomeScoreAnimated] = React.useState(false)
+  const [awayScoreAnimated, setAwayScoreAnimated] = React.useState(false)
+  const previousScoresRef = React.useRef<{ home: number | null; away: number | null }>(
+    { home: null, away: null }
+  )
+  const scoreTimersRef = React.useRef<{ home?: number; away?: number }>({})
+
+  React.useEffect(() => () => {
+    const timers = scoreTimersRef.current
+    if (typeof timers.home === 'number') {
+      window.clearTimeout(timers.home)
+      timers.home = undefined
+    }
+    if (typeof timers.away === 'number') {
+      window.clearTimeout(timers.away)
+      timers.away = undefined
+    }
+  }, [])
 
   if (!matchDetails.open || !matchDetails.matchId) {
     return null
   }
 
-  // Show loading if header is not yet loaded
-  if (!header) {
+  if (!header && !snapshot) {
     return (
       <div className="match-details-page">
         <div className="match-details-container">
@@ -37,19 +130,87 @@ export const MatchDetailsPage: React.FC = () => {
     )
   }
 
-  const matchDate = new Date(header.dt)
-  const dateStr = TIME_FORMATTER.format(matchDate)
+  const status: MatchStatus | undefined = header?.st ?? snapshot?.status
+  const matchDateIso = header?.dt ?? snapshot?.matchDateTime
+  const dateLabel = formatMatchDateLabel(matchDateIso)
 
-  const shouldShowStats = () => {
-    if (header.st === 'LIVE') return true
-    if (header.st !== 'FINISHED') return false
-    const now = Date.now()
-    const matchEnd = new Date(header.dt)
-    matchEnd.setHours(matchEnd.getHours() + 3) // 2h match + 1h grace
-    return now <= matchEnd.getTime()
-  }
+  const homeName = header?.ht.n ?? snapshot?.homeClub.name ?? '—'
+  const homeShort = header?.ht.sn ?? snapshot?.homeClub.shortName ?? undefined
+  const homeLogo = header?.ht.lg ?? snapshot?.homeClub.logoUrl ?? undefined
 
-  const showStatsTab = shouldShowStats()
+  const awayName = header?.at.n ?? snapshot?.awayClub.name ?? '—'
+  const awayShort = header?.at.sn ?? snapshot?.awayClub.shortName ?? undefined
+  const awayLogo = header?.at.lg ?? snapshot?.awayClub.logoUrl ?? undefined
+
+  const showNumericScore = status === 'LIVE' || status === 'FINISHED'
+  const homeScoreValue = showNumericScore
+    ? header?.ht.sc ?? snapshot?.homeScore ?? 0
+    : null
+  const awayScoreValue = showNumericScore
+    ? header?.at.sc ?? snapshot?.awayScore ?? 0
+    : null
+  const homeScoreDisplay = homeScoreValue !== null ? String(homeScoreValue) : '—'
+  const awayScoreDisplay = awayScoreValue !== null ? String(awayScoreValue) : '—'
+
+  React.useEffect(() => {
+    const timers = scoreTimersRef.current
+    const previous = previousScoresRef.current
+
+    if (homeScoreValue === null) {
+      if (previous.home !== null && typeof timers.home === 'number') {
+        window.clearTimeout(timers.home)
+        timers.home = undefined
+      }
+      if (previous.home !== null) {
+        setHomeScoreAnimated(false)
+      }
+    } else if (previous.home !== null && homeScoreValue !== previous.home) {
+      setHomeScoreAnimated(true)
+      if (typeof timers.home === 'number') {
+        window.clearTimeout(timers.home)
+      }
+      timers.home = window.setTimeout(() => {
+        setHomeScoreAnimated(false)
+        timers.home = undefined
+      }, 700)
+    }
+
+    if (awayScoreValue === null) {
+      if (previous.away !== null && typeof timers.away === 'number') {
+        window.clearTimeout(timers.away)
+        timers.away = undefined
+      }
+      if (previous.away !== null) {
+        setAwayScoreAnimated(false)
+      }
+    } else if (previous.away !== null && awayScoreValue !== previous.away) {
+      setAwayScoreAnimated(true)
+      if (typeof timers.away === 'number') {
+        window.clearTimeout(timers.away)
+      }
+      timers.away = window.setTimeout(() => {
+        setAwayScoreAnimated(false)
+        timers.away = undefined
+      }, 700)
+    }
+
+    previousScoresRef.current = { home: homeScoreValue, away: awayScoreValue }
+  }, [homeScoreValue, awayScoreValue])
+
+  const penaltyHome = header?.ph ?? snapshot?.penaltyHomeScore ?? null
+  const penaltyAway = header?.pa ?? snapshot?.penaltyAwayScore ?? null
+  const hasPenalty =
+    (header?.ps ?? snapshot?.hasPenaltyShootout ?? false) &&
+    penaltyHome !== null &&
+    penaltyAway !== null
+  const penaltyLabel = hasPenalty ? `Пенальти ${penaltyHome}:${penaltyAway}` : null
+
+  const minuteLabel = status === 'LIVE' && typeof header?.min === 'number' ? `${header.min}'` : null
+
+  const locationLabel = buildLocationLabel(header?.loc, snapshot?.location ?? null)
+  const roundLabel = header?.rd?.label ?? snapshot?.series?.stageName ?? null
+  const badge = getStatusBadge(status)
+  const showStatsTab = shouldShowStatsTab(status, matchDateIso)
 
   return (
     <div className="match-details-page">
@@ -59,33 +220,54 @@ export const MatchDetailsPage: React.FC = () => {
           ←
         </button>
         <div className="match-header-content">
+          <div className="match-header-top">
+            <div className="match-meta">
+              {roundLabel && <span className="match-round">{roundLabel}</span>}
+              <span className="match-date">{dateLabel}</span>
+              <span className="match-location">{locationLabel}</span>
+            </div>
+            {badge && <span className={`badge badge-${badge.tone}`}>{badge.label}</span>}
+          </div>
           <div className="match-teams">
             <div className="team home">
-              {header.ht.lg && <img src={header.ht.lg} alt={header.ht.n} className="team-logo" />}
-              <span className="team-name">{header.ht.n}</span>
+              {homeLogo && <img src={homeLogo} alt={homeName} className="team-logo" />}
+              <div className="team-labels">
+                <span className="team-name">{homeName}</span>
+                {homeShort && homeShort !== homeName && (
+                  <span className="team-short">{homeShort}</span>
+                )}
+              </div>
             </div>
             <div className="match-score">
-              <span className="score">{header.ht.sc}</span>
-              <span className="separator">:</span>
-              <span className="score">{header.at.sc}</span>
+              <div className="score-main">
+                <span className={`score${homeScoreAnimated ? ' score-animate' : ''}`}>
+                  {homeScoreDisplay}
+                </span>
+                <span className="separator">:</span>
+                <span className={`score${awayScoreAnimated ? ' score-animate' : ''}`}>
+                  {awayScoreDisplay}
+                </span>
+              </div>
+              {(penaltyLabel || minuteLabel) && (
+                <div className="score-meta">
+                  {penaltyLabel && <span className="score-detail">{penaltyLabel}</span>}
+                  {minuteLabel && <span className="match-minute">{minuteLabel}</span>}
+                </div>
+              )}
             </div>
             <div className="team away">
-              <span className="team-name">{header.at.n}</span>
-              {header.at.lg && <img src={header.at.lg} alt={header.at.n} className="team-logo" />}
+              <div className="team-labels">
+                <span className="team-name">{awayName}</span>
+                {awayShort && awayShort !== awayName && (
+                  <span className="team-short">{awayShort}</span>
+                )}
+              </div>
+              {awayLogo && <img src={awayLogo} alt={awayName} className="team-logo" />}
             </div>
-          </div>
-          <div className="match-meta">
-            <span className="match-date">{dateStr}</span>
-            {header.st === 'LIVE' && header.min !== undefined && (
-              <span className="match-minute">{header.min}'</span>
-            )}
-            {header.st === 'LIVE' && <span className="badge badge-live">Матч идёт</span>}
-            {header.st === 'FINISHED' && <span className="badge badge-finished">Завершён</span>}
-            {header.st === 'SCHEDULED' && <span className="badge badge-scheduled">Запланирован</span>}
-            {header.st === 'POSTPONED' && <span className="badge badge-postponed">Перенесён</span>}
           </div>
         </div>
       </div>
+      <div className="match-details-separator" aria-hidden="true" />
 
       {/* Tabs */}
       <div className="match-details-tabs">

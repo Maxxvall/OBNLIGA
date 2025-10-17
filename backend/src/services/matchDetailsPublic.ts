@@ -13,8 +13,19 @@ type MatchDetailsHeader = {
   st: 'SCHEDULED' | 'LIVE' | 'POSTPONED' | 'FINISHED'
   dt: string
   min?: number
-  ht: { n: string; lg?: string; sc: number }
-  at: { n: string; lg?: string; sc: number }
+  loc?: {
+    city?: string
+    stadium?: string
+  }
+  rd?: {
+    label?: string | null
+    type?: 'REGULAR' | 'PLAYOFF' | null
+  }
+  ps?: boolean
+  ph?: number | null
+  pa?: number | null
+  ht: { n: string; sn?: string; lg?: string; sc: number }
+  at: { n: string; sn?: string; lg?: string; sc: number }
 }
 
 type MatchDetailsLineups = {
@@ -45,27 +56,14 @@ type MatchDetailsBroadcast = {
 }
 
 const REDIS_PREFIX = 'pub:md:'
-const TTL_LIVE_SECONDS = 10
-const TTL_FINISHED_SECONDS = 3 * 60 * 60 // 3 hours
-const TTL_SCHEDULED_SECONDS = 10 * 60 // 10 minutes
+const TTL_HEADER_SECONDS = 6
+const TTL_LINEUPS_SECONDS = 15 * 60
+const TTL_STATS_SECONDS = 8
+const TTL_EVENTS_SECONDS = 6
 const TTL_BROADCAST_SECONDS = 24 * 60 * 60 // 1 day
 
 const mapMatchStatus = (status: MatchStatus): MatchDetailsHeader['st'] => {
   return status as MatchDetailsHeader['st']
-}
-
-const getTTLForStatus = (status: MatchStatus): number => {
-  switch (status) {
-    case 'LIVE':
-      return TTL_LIVE_SECONDS
-    case 'FINISHED':
-      return TTL_FINISHED_SECONDS
-    case 'POSTPONED':
-      return TTL_SCHEDULED_SECONDS
-    case 'SCHEDULED':
-    default:
-      return TTL_SCHEDULED_SECONDS
-  }
 }
 
 const calculateVersion = (updatedAt: Date): number => {
@@ -95,16 +93,33 @@ export async function fetchMatchHeader(
         matchDateTime: true,
         homeScore: true,
         awayScore: true,
+        hasPenaltyShootout: true,
+        penaltyHomeScore: true,
+        penaltyAwayScore: true,
         updatedAt: true,
+        round: {
+          select: {
+            label: true,
+            roundType: true,
+          },
+        },
+        stadium: {
+          select: {
+            name: true,
+            city: true,
+          },
+        },
         homeClub: {
           select: {
             name: true,
+            shortName: true,
             logoUrl: true,
           },
         },
         awayClub: {
           select: {
             name: true,
+            shortName: true,
             logoUrl: true,
           },
         },
@@ -115,17 +130,36 @@ export async function fetchMatchHeader(
 
     const status = mapMatchStatus(match.status)
     const currentMin = getCurrentMinute(match.matchDateTime, match.status)
+    const location = match.stadium
+      ? {
+        city: match.stadium.city ?? undefined,
+        stadium: match.stadium.name ?? undefined,
+      }
+      : undefined
+    const roundInfo = match.round
+      ? {
+        label: match.round.label,
+        type: match.round.roundType,
+      }
+      : undefined
     
     const header: MatchDetailsHeader = {
       st: status,
       dt: match.matchDateTime.toISOString(),
+      loc: location,
+      rd: roundInfo,
+      ps: match.hasPenaltyShootout,
+      ph: match.hasPenaltyShootout ? match.penaltyHomeScore : undefined,
+      pa: match.hasPenaltyShootout ? match.penaltyAwayScore : undefined,
       ht: {
         n: match.homeClub.name,
+        sn: match.homeClub.shortName ?? undefined,
         lg: match.homeClub.logoUrl || undefined,
         sc: match.homeScore,
       },
       at: {
         n: match.awayClub.name,
+        sn: match.awayClub.shortName ?? undefined,
         lg: match.awayClub.logoUrl || undefined,
         sc: match.awayScore,
       },
@@ -136,7 +170,7 @@ export async function fetchMatchHeader(
     }
 
     return header
-  }, { ttlSeconds: TTL_SCHEDULED_SECONDS })
+  }, { ttlSeconds: TTL_HEADER_SECONDS, staleWhileRevalidateSeconds: TTL_HEADER_SECONDS * 2, lockTimeoutSeconds: 4 })
 
   return result
 }
@@ -155,6 +189,7 @@ export async function fetchMatchLineups(
       select: {
         status: true,
         updatedAt: true,
+        seasonId: true,
         homeTeamId: true,
         awayTeamId: true,
         lineups: {
@@ -165,6 +200,7 @@ export async function fetchMatchLineups(
           },
           select: {
             clubId: true,
+            personId: true,
             person: {
               select: {
                 firstName: true,
@@ -184,16 +220,10 @@ export async function fetchMatchLineups(
     const homeVersion = calculateVersion(match.updatedAt)
     const awayVersion = calculateVersion(match.updatedAt)
 
-    // Получаем номера футболок из SeasonRoster
-    const seasonId = (await prisma.match.findUnique({
-      where: { id: BigInt(matchId) },
-      select: { seasonId: true },
-    }))?.seasonId
-
-    const roster = seasonId
+    const roster = match.seasonId
       ? await prisma.seasonRoster.findMany({
           where: {
-            seasonId,
+            seasonId: match.seasonId,
             clubId: { in: [match.homeTeamId, match.awayTeamId] },
           },
           select: {
@@ -210,7 +240,7 @@ export async function fetchMatchLineups(
       .map((lp, idx) => ({
         fn: lp.person.firstName,
         ln: lp.person.lastName,
-        sn: 0, // Placeholder: нужно получить из roster
+        sn: shirtNumbers.get(lp.personId) ?? 0,
       }))
 
     const awayPlayers = match.lineups
@@ -218,7 +248,7 @@ export async function fetchMatchLineups(
       .map((lp, idx) => ({
         fn: lp.person.firstName,
         ln: lp.person.lastName,
-        sn: 0, // Placeholder: нужно получить из roster
+        sn: shirtNumbers.get(lp.personId) ?? 0,
       }))
 
     const lineups: MatchDetailsLineups = {
@@ -233,7 +263,7 @@ export async function fetchMatchLineups(
     }
 
     return lineups
-  }, { ttlSeconds: TTL_SCHEDULED_SECONDS })
+  }, { ttlSeconds: TTL_LINEUPS_SECONDS, staleWhileRevalidateSeconds: TTL_LINEUPS_SECONDS * 2, lockTimeoutSeconds: 6 })
 
   return result
 }
@@ -299,7 +329,7 @@ export async function fetchMatchStats(
     }
 
     return stats
-  }, { ttlSeconds: TTL_SCHEDULED_SECONDS })
+  }, { ttlSeconds: TTL_STATS_SECONDS, staleWhileRevalidateSeconds: TTL_STATS_SECONDS * 2, lockTimeoutSeconds: 6 })
 
   return result
 }
@@ -377,7 +407,7 @@ export async function fetchMatchEvents(
     }
 
     return result
-  }, { ttlSeconds: TTL_SCHEDULED_SECONDS })
+  }, { ttlSeconds: TTL_EVENTS_SECONDS, staleWhileRevalidateSeconds: TTL_EVENTS_SECONDS * 2, lockTimeoutSeconds: 6 })
 
   return result
 }

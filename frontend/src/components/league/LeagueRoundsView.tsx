@@ -617,7 +617,12 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
                     }
                     const scoreClassName = `league-match-score${isScoreUpdated ? ' score-updated' : ''}`
                     return (
-                      <div className={cardClasses.join(' ')} key={match.id} onClick={() => openMatchDetails(match.id)} style={{ cursor: 'pointer' }}>
+                      <div
+                        className={cardClasses.join(' ')}
+                        key={match.id}
+                        onClick={() => openMatchDetails(match.id, match, data?.season.id)}
+                        style={{ cursor: 'pointer' }}
+                      >
                         <div className="league-match-top">
                           <span className="match-datetime">{descriptor.dateTime}</span>
                           {descriptor.badge && (

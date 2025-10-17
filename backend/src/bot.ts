@@ -49,16 +49,16 @@ if (token) {
 
   botInstance.command('start', async ctx => {
     const name = ctx.from?.first_name || 'игрок'
-    const keyboard = new InlineKeyboard().url('Открыть WebApp', webAppUrl)
-    await ctx.reply(`Привет, ${name}! Добро пожаловать в Футбольную Лига WebApp.`)
-    await ctx.reply('Нажмите кнопку, чтобы открыть WebApp:', { reply_markup: keyboard })
+    const keyboard = new InlineKeyboard().url('Открыть Приложение', webAppUrl)
+    await ctx.reply(`Привет, ${name}! Добро пожаловать в Футбольную Лигу.`)
+    await ctx.reply('Нажмите кнопку, чтобы открыть Приложение:', { reply_markup: keyboard })
   })
 
   botInstance.on('message', async ctx => {
     if (ctx.message && 'text' in ctx.message) {
       const text = ctx.message.text
       if (text === '/help') {
-        await ctx.reply('Отправьте /start чтобы получить ссылку на WebApp')
+        await ctx.reply('Отправьте /start чтобы получить ссылку на Приложение')
       } else {
         await ctx.reply('Я пока маленький бот — отправьте /start')
       }

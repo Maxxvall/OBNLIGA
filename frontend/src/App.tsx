@@ -5,6 +5,7 @@ import Profile from './Profile'
 import { NewsSection } from './components/NewsSection'
 import LeaguePage from './pages/LeaguePage'
 import { TeamView } from './components/team/TeamView'
+import { MatchDetailsPage } from './pages/MatchDetailsPage'
 import { useAppStore } from './store/appStore'
 
 export default function App() {
@@ -15,6 +16,9 @@ export default function App() {
   const setTab = useAppStore(state => state.setTab)
   const tapLeagueNav = useAppStore(state => state.tapLeagueNav)
   const leagueMenuOpen = useAppStore(state => state.leagueMenuOpen)
+  const matchDetailsOpen = useAppStore(state => state.matchDetails.open)
+
+  console.log('[App] matchDetailsOpen:', matchDetailsOpen)
 
   useEffect(() => {
     const duration = 1600 // splash duration in ms
@@ -127,6 +131,7 @@ export default function App() {
         </nav>
       )}
       <TeamView />
+      {matchDetailsOpen && <MatchDetailsPage />}
     </div>
   )
 }

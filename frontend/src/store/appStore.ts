@@ -9,14 +9,20 @@ import type {
   LeagueStatsCategory,
   LeaguePlayerLeaderboardEntry,
   ClubSummaryResponse,
+  MatchDetailsHeader,
+  MatchDetailsLineups,
+  MatchDetailsStats,
+  MatchDetailsEvents,
 } from '@shared/types'
 import { leagueApi } from '../api/leagueApi'
 import { clubApi } from '../api/clubApi'
+import { matchApi } from '../api/matchApi'
 import { readFromStorage, writeToStorage } from '../utils/leaguePersistence'
 
 export type UITab = 'home' | 'league' | 'predictions' | 'leaderboard' | 'shop' | 'profile'
 export type LeagueSubTab = 'table' | 'schedule' | 'results' | 'stats'
 export type TeamSubTab = 'overview' | 'matches' | 'squad'
+export type MatchDetailsTab = 'lineups' | 'events' | 'stats' | 'broadcast'
 
 type TeamViewState = {
   open: boolean
@@ -24,10 +30,42 @@ type TeamViewState = {
   activeTab: TeamSubTab
 }
 
+type MatchDetailsState = {
+  open: boolean
+  matchId?: string
+  activeTab: MatchDetailsTab
+  header?: MatchDetailsHeader
+  lineups?: MatchDetailsLineups
+  stats?: MatchDetailsStats
+  events?: MatchDetailsEvents
+  headerEtag?: string
+  lineupsEtag?: string
+  statsEtag?: string
+  eventsEtag?: string
+  loadingHeader: boolean
+  loadingLineups: boolean
+  loadingStats: boolean
+  loadingEvents: boolean
+  errorHeader?: string
+  errorLineups?: string
+  errorStats?: string
+  errorEvents?: string
+}
+
 const INITIAL_TEAM_VIEW: TeamViewState = {
   open: false,
   clubId: undefined,
   activeTab: 'overview',
+}
+
+const INITIAL_MATCH_DETAILS: MatchDetailsState = {
+  open: false,
+  matchId: undefined,
+  activeTab: 'lineups',
+  loadingHeader: false,
+  loadingLineups: false,
+  loadingStats: false,
+  loadingEvents: false,
 }
 
 const SEASONS_TTL_MS = 55_000
@@ -40,6 +78,7 @@ const DOUBLE_TAP_THRESHOLD_MS = 280
 
 const LEAGUE_POLL_INTERVAL_MS = 10_000
 const TEAM_POLL_INTERVAL_MS = 20_000
+const MATCH_DETAILS_POLL_INTERVAL_MS = 10_000
 const hasWindow = typeof window !== 'undefined'
 
 const areCompetitionsEqual = (
@@ -520,6 +559,8 @@ interface AppState {
   teamSummaryErrors: Record<number, string | undefined>
   teamPollingAttached: boolean
   teamPollingClubId?: number
+  matchDetails: MatchDetailsState
+  matchDetailsPollingAttached: boolean
   setTab: (tab: UITab) => void
   setLeagueSubTab: (tab: LeagueSubTab) => void
   toggleLeagueMenu: (force?: boolean) => void
@@ -539,6 +580,15 @@ interface AppState {
   fetchClubSummary: (clubId: number, options?: { force?: boolean }) => Promise<FetchResult>
   ensureTeamPolling: () => void
   stopTeamPolling: () => void
+  openMatchDetails: (matchId: string) => void
+  closeMatchDetails: () => void
+  setMatchDetailsTab: (tab: MatchDetailsTab) => void
+  fetchMatchHeader: (matchId: string, options?: { force?: boolean }) => Promise<FetchResult>
+  fetchMatchLineups: (matchId: string, options?: { force?: boolean }) => Promise<FetchResult>
+  fetchMatchStats: (matchId: string, options?: { force?: boolean }) => Promise<FetchResult>
+  fetchMatchEvents: (matchId: string, options?: { force?: boolean }) => Promise<FetchResult>
+  ensureMatchDetailsPolling: () => void
+  stopMatchDetailsPolling: () => void
 }
 
 const orderSeasons = (items: LeagueSeasonSummary[]) =>
@@ -683,6 +733,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   teamSummaryErrors: {},
   teamPollingAttached: false,
   teamPollingClubId: undefined,
+  matchDetails: { ...INITIAL_MATCH_DETAILS },
+  matchDetailsPollingAttached: false,
   setTab: tab => {
     set(state => ({
       currentTab: tab,
@@ -1152,5 +1204,261 @@ export const useAppStore = create<AppState>((set, get) => ({
     clearTeamPolling()
     set({ teamPollingAttached: false, teamPollingClubId: undefined })
   },
+  openMatchDetails: matchId => {
+    console.log('[Store] openMatchDetails called with matchId:', matchId)
+    set({
+      matchDetails: {
+        ...INITIAL_MATCH_DETAILS,
+        open: true,
+        matchId,
+      },
+    })
+    console.log('[Store] matchDetails.open set to true')
+    void get().fetchMatchHeader(matchId)
+    void get().fetchMatchLineups(matchId) // Pre-load default tab
+  },
+  closeMatchDetails: () => {
+    get().stopMatchDetailsPolling()
+    set({ matchDetails: { ...INITIAL_MATCH_DETAILS }, matchDetailsPollingAttached: false })
+  },
+  setMatchDetailsTab: tab => {
+    set(prev => ({
+      matchDetails: prev.matchDetails.open
+        ? { ...prev.matchDetails, activeTab: tab }
+        : prev.matchDetails,
+    }))
+    const state = get()
+    const matchId = state.matchDetails.matchId
+    if (!matchId) return
+
+    // Lazy load data for the tab
+    if (tab === 'lineups' && !state.matchDetails.lineups) {
+      void get().fetchMatchLineups(matchId)
+    } else if (tab === 'events' && !state.matchDetails.events) {
+      void get().fetchMatchEvents(matchId)
+    } else if (tab === 'stats' && !state.matchDetails.stats) {
+      void get().fetchMatchStats(matchId)
+    }
+  },
+  fetchMatchHeader: async (matchId, options) => {
+    const state = get()
+    if (state.matchDetails.loadingHeader && !options?.force) {
+      return { ok: true }
+    }
+
+    set(prev => ({
+      matchDetails: { ...prev.matchDetails, loadingHeader: true, errorHeader: undefined },
+    }))
+
+    const response = await matchApi.fetchHeader(matchId, {
+      etag: state.matchDetails.headerEtag,
+    })
+
+    if (!response.ok) {
+      set(prev => ({
+        matchDetails: { ...prev.matchDetails, loadingHeader: false, errorHeader: response.error },
+      }))
+      return { ok: false }
+    }
+
+    if (!('data' in response)) {
+      // 304 Not Modified - data is still fresh
+      set(prev => ({
+        matchDetails: { ...prev.matchDetails, loadingHeader: false },
+      }))
+      get().ensureMatchDetailsPolling()
+      return { ok: true }
+    }
+
+    set(prev => ({
+      matchDetails: {
+        ...prev.matchDetails,
+        header: response.data,
+        headerEtag: response.version,
+        loadingHeader: false,
+        errorHeader: undefined,
+      },
+    }))
+    get().ensureMatchDetailsPolling()
+    return { ok: true }
+  },
+  fetchMatchLineups: async (matchId, options) => {
+    const state = get()
+    if (state.matchDetails.loadingLineups && !options?.force) {
+      return { ok: true }
+    }
+
+    set(prev => ({
+      matchDetails: { ...prev.matchDetails, loadingLineups: true, errorLineups: undefined },
+    }))
+
+    const response = await matchApi.fetchLineups(matchId, {
+      etag: state.matchDetails.lineupsEtag,
+    })
+
+    if (!response.ok) {
+      set(prev => ({
+        matchDetails: {
+          ...prev.matchDetails,
+          loadingLineups: false,
+          errorLineups: response.error,
+        },
+      }))
+      return { ok: false }
+    }
+
+    if (!('data' in response)) {
+      set(prev => ({
+        matchDetails: { ...prev.matchDetails, loadingLineups: false },
+      }))
+      return { ok: true }
+    }
+
+    set(prev => ({
+      matchDetails: {
+        ...prev.matchDetails,
+        lineups: response.data,
+        lineupsEtag: response.version,
+        loadingLineups: false,
+        errorLineups: undefined,
+      },
+    }))
+    return { ok: true }
+  },
+  fetchMatchStats: async (matchId, options) => {
+    const state = get()
+    if (state.matchDetails.loadingStats && !options?.force) {
+      return { ok: true }
+    }
+
+    set(prev => ({
+      matchDetails: { ...prev.matchDetails, loadingStats: true, errorStats: undefined },
+    }))
+
+    const response = await matchApi.fetchStats(matchId, {
+      etag: state.matchDetails.statsEtag,
+    })
+
+    if (!response.ok) {
+      set(prev => ({
+        matchDetails: { ...prev.matchDetails, loadingStats: false, errorStats: response.error },
+      }))
+      return { ok: false }
+    }
+
+    if (!('data' in response)) {
+      set(prev => ({
+        matchDetails: { ...prev.matchDetails, loadingStats: false },
+      }))
+      return { ok: true }
+    }
+
+    set(prev => ({
+      matchDetails: {
+        ...prev.matchDetails,
+        stats: response.data,
+        statsEtag: response.version,
+        loadingStats: false,
+        errorStats: undefined,
+      },
+    }))
+    return { ok: true }
+  },
+  fetchMatchEvents: async (matchId, options) => {
+    const state = get()
+    if (state.matchDetails.loadingEvents && !options?.force) {
+      return { ok: true }
+    }
+
+    set(prev => ({
+      matchDetails: { ...prev.matchDetails, loadingEvents: true, errorEvents: undefined },
+    }))
+
+    const response = await matchApi.fetchEvents(matchId, {
+      etag: state.matchDetails.eventsEtag,
+    })
+
+    if (!response.ok) {
+      set(prev => ({
+        matchDetails: { ...prev.matchDetails, loadingEvents: false, errorEvents: response.error },
+      }))
+      return { ok: false }
+    }
+
+    if (!('data' in response)) {
+      set(prev => ({
+        matchDetails: { ...prev.matchDetails, loadingEvents: false },
+      }))
+      return { ok: true }
+    }
+
+    set(prev => ({
+      matchDetails: {
+        ...prev.matchDetails,
+        events: response.data,
+        eventsEtag: response.version,
+        loadingEvents: false,
+        errorEvents: undefined,
+      },
+    }))
+    return { ok: true }
+  },
+  ensureMatchDetailsPolling: () => {
+    const state = get()
+    if (!state.matchDetails.open || !state.matchDetails.matchId) {
+      get().stopMatchDetailsPolling()
+      return
+    }
+
+    const isLive = state.matchDetails.header?.st === 'LIVE'
+    if (!isLive) {
+      get().stopMatchDetailsPolling()
+      return
+    }
+
+    if (state.matchDetailsPollingAttached) {
+      return
+    }
+
+    startMatchDetailsPolling(get)
+    set({ matchDetailsPollingAttached: true })
+  },
+  stopMatchDetailsPolling: () => {
+    clearMatchDetailsPolling()
+    set({ matchDetailsPollingAttached: false })
+  },
 }))
+
+// Match Details Polling
+let matchDetailsPollingIntervalId: number | undefined
+
+function startMatchDetailsPolling(get: () => AppState) {
+  clearMatchDetailsPolling()
+  matchDetailsPollingIntervalId = window.setInterval(() => {
+    const state = get()
+    if (!state.matchDetails.open || !state.matchDetails.matchId) {
+      clearMatchDetailsPolling()
+      return
+    }
+    const isLive = state.matchDetails.header?.st === 'LIVE'
+    if (!isLive) {
+      clearMatchDetailsPolling()
+      return
+    }
+    void get().fetchMatchHeader(state.matchDetails.matchId, { force: false })
+    if (state.matchDetails.activeTab === 'events') {
+      void get().fetchMatchEvents(state.matchDetails.matchId, { force: false })
+    }
+    if (state.matchDetails.activeTab === 'stats') {
+      void get().fetchMatchStats(state.matchDetails.matchId, { force: false })
+    }
+  }, MATCH_DETAILS_POLL_INTERVAL_MS)
+}
+
+function clearMatchDetailsPolling() {
+  if (matchDetailsPollingIntervalId !== undefined) {
+    clearInterval(matchDetailsPollingIntervalId)
+    matchDetailsPollingIntervalId = undefined
+  }
+}
 

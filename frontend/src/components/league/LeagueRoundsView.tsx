@@ -358,6 +358,7 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
   lastUpdated,
 }) => {
   const openTeamView = useAppStore(state => state.openTeamView)
+  const openMatchDetails = useAppStore(state => state.openMatchDetails)
   const tablesBySeason = useAppStore(state => state.tables)
   const resultsBySeason = useAppStore(state => state.results)
   const { liveHighlightIds, scoreHighlightIds } = useMatchAnimations(mode, data)
@@ -616,7 +617,7 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
                     }
                     const scoreClassName = `league-match-score${isScoreUpdated ? ' score-updated' : ''}`
                     return (
-                      <div className={cardClasses.join(' ')} key={match.id}>
+                      <div className={cardClasses.join(' ')} key={match.id} onClick={() => openMatchDetails(match.id)} style={{ cursor: 'pointer' }}>
                         <div className="league-match-top">
                           <span className="match-datetime">{descriptor.dateTime}</span>
                           {descriptor.badge && (
@@ -628,7 +629,7 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
                             <button
                               type="button"
                               className="club-logo-button"
-                              onClick={() => openTeamView(match.homeClub.id)}
+                              onClick={(e) => { e.stopPropagation(); openTeamView(match.homeClub.id); }}
                               aria-label={`Открыть страницу клуба ${match.homeClub.name}`}
                             >
                               {match.homeClub.logoUrl ? (
@@ -656,7 +657,7 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
                             <button
                               type="button"
                               className="club-logo-button"
-                              onClick={() => openTeamView(match.awayClub.id)}
+                              onClick={(e) => { e.stopPropagation(); openTeamView(match.awayClub.id); }}
                               aria-label={`Открыть страницу клуба ${match.awayClub.name}`}
                             >
                               {match.awayClub.logoUrl ? (

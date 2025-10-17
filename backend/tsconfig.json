@@ -8,11 +8,10 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "outDir": "dist",
-    "rootDir": "src",
     "resolveJsonModule": true,
     "types": ["node"],
     "baseUrl": ".",
-    "rootDirs": ["src", "../shared"],
+    "rootDirs": ["src", "../shared"],  // ← ТОЛЬКО ЭТОТ ПАРАМЕТР (без rootDir!)
     "paths": {
       "@shared/*": ["../shared/*"]
     }

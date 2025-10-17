@@ -10,6 +10,11 @@ yarn-error.log*
 dist/
 build/
 
+# Compiled shared files (use .ts sources only)
+shared/**/*.js
+shared/**/*.d.ts
+!shared/**/*.test.js
+
 # Environment variables
 .env
 .env.local

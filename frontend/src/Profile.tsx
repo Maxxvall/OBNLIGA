@@ -69,6 +69,23 @@ interface TelegramWindow extends Window {
   }
 }
 
+type DevTelegramUserConfig = {
+  id: number
+  firstName?: string
+  lastName?: string
+  username?: string
+  photoUrl?: string
+}
+
+function isAscii(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    if (value.charCodeAt(index) > 0x7f) {
+      return false
+    }
+  }
+  return true
+}
+
 const CACHE_TTL = 5 * 60 * 1000 // 5 минут
 const CACHE_KEY = 'obnliga_profile_cache'
 const PROFILE_REFRESH_INTERVAL_MS = 90_000
@@ -158,85 +175,120 @@ export default function Profile() {
       const backendRaw = import.meta.env.VITE_BACKEND_URL ?? ''
       const backend = backendRaw || ''
       const meUrl = backend ? `${backend.replace(/\/$/, '')}/api/auth/me` : '/api/auth/me'
+      const initUrl = backend
+        ? `${backend.replace(/\/$/, '')}/api/auth/telegram-init`
+        : '/api/auth/telegram-init'
+
+      const authenticateUsingPayload = async (
+        userPayload: TelegramUserPayload,
+        initDataOverride: string | undefined,
+        source: 'telegram' | 'dev'
+      ) => {
+        console.log(`[Profile] authenticateUsingPayload via ${source}`, userPayload)
+        if (!userRef.current) {
+          setUser(prev =>
+            prev ?? {
+              telegramId: String(userPayload.id),
+              username: userPayload.username ?? null,
+              firstName: userPayload.first_name ?? null,
+              photoUrl: userPayload.photo_url ?? null,
+              createdAt: new Date().toISOString(),
+            }
+          )
+        }
+
+        const initDataValue =
+          typeof initDataOverride === 'string' && initDataOverride.length > 0
+            ? initDataOverride
+            : JSON.stringify({
+                user: {
+                  id: userPayload.id,
+                  first_name: userPayload.first_name,
+                  last_name: userPayload.last_name,
+                  username: userPayload.username,
+                  photo_url: userPayload.photo_url,
+                  language_code: userPayload.language_code,
+                },
+              })
+
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+        if (initDataValue.length > 0 && isAscii(initDataValue)) {
+          headers['X-Telegram-Init-Data'] = initDataValue
+        }
+        if (!skipCache && cached?.etag) {
+          headers['If-None-Match'] = cached.etag
+        }
+
+        const response = await fetch(initUrl, {
+          method: 'POST',
+          headers,
+          credentials: 'include',
+          body: JSON.stringify({ initData: initDataValue }),
+        })
+
+        if (response.status === 304) {
+          if (cached?.data) {
+            setCachedProfile(cached.data, response.headers.get('ETag') ?? cached.etag)
+            setUser(cached.data)
+          }
+          console.log('[Profile] using cached profile (304 Not Modified)')
+          return true
+        }
+
+        if (response.ok) {
+          const responseBody = (await response.json()) as unknown
+          const sessionToken = readTokenFromResponse(responseBody)
+          if (sessionToken) {
+            localStorage.setItem('session', sessionToken)
+          }
+
+          const profileUser = readProfileUser(responseBody)
+          if (profileUser) {
+            const etag = response.headers.get('ETag') ?? undefined
+            setCachedProfile(profileUser, etag)
+            setUser(profileUser)
+            return true
+          }
+          console.warn('[Profile] auth response received, но данные профиля отсутствуют')
+          setUser(null)
+        } else {
+          console.error(
+            `[Profile] ${source} auth failed:`,
+            response.status,
+            await response.text()
+          )
+          setUser(null)
+        }
+
+        return false
+      }
 
       // 1) Check if we're inside Telegram WebApp first and try to authenticate
       try {
         const telegramWindow = window as TelegramWindow
         const tg = telegramWindow.Telegram?.WebApp
         const unsafe = tg?.initDataUnsafe?.user
+        const devConfig = resolveDevTelegramUser()
+
         if (tg && unsafe) {
           console.log('Telegram user data:', unsafe)
-          if (!userRef.current) {
-            setUser(prev =>
-              prev ?? {
-                telegramId: String(unsafe.id),
-                username: unsafe.username ?? null,
-                firstName: unsafe.first_name ?? null,
-                photoUrl: unsafe.photo_url ?? null,
-                createdAt: new Date().toISOString(),
-              }
-            )
-          }
-
-          const initUrl = backend
-            ? `${backend.replace(/\/$/, '')}/api/auth/telegram-init`
-            : '/api/auth/telegram-init'
-
-          let initDataValue = tg.initData
-          if (!initDataValue) {
-            initDataValue = JSON.stringify({
-              user: {
-                id: unsafe.id,
-                first_name: unsafe.first_name,
-                last_name: unsafe.last_name,
-                username: unsafe.username,
-                photo_url: unsafe.photo_url,
-                language_code: unsafe.language_code,
-              },
-            })
-          }
-
-          console.log('Sending initData to backend')
-          const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-          if (typeof initDataValue === 'string' && initDataValue.length > 0) {
-            headers['X-Telegram-Init-Data'] = initDataValue
-          }
-          if (!skipCache && cached?.etag) {
-            headers['If-None-Match'] = cached.etag
-          }
-
-          const r = await fetch(initUrl, {
-            method: 'POST',
-            headers,
-            credentials: 'include',
-            body: JSON.stringify({ initData: initDataValue }),
-          })
-
-          if (r.status === 304) {
-            if (cached?.data) {
-              setCachedProfile(cached.data, r.headers.get('ETag') ?? cached.etag)
-              setUser(cached.data)
-            }
-            console.log('Using cached profile (304 Not Modified)')
+          const success = await authenticateUsingPayload(unsafe, tg.initData, 'telegram')
+          if (success) {
             return
-          } else if (r.ok) {
-            const responseBody = (await r.json()) as unknown
-            console.log('Backend response:', responseBody)
-            const sessionToken = readTokenFromResponse(responseBody)
-            if (sessionToken) {
-              localStorage.setItem('session', sessionToken)
-            }
+          }
+        }
 
-            const profileUser = readProfileUser(responseBody)
-            if (profileUser) {
-              const etag = r.headers.get('ETag') ?? undefined
-              setCachedProfile(profileUser, etag)
-              setUser(profileUser)
-              return
-            }
-          } else {
-            console.error('Backend auth failed:', await r.text())
-            setUser(null)
+        if (devConfig) {
+          const devPayload: TelegramUserPayload = {
+            id: devConfig.id,
+            first_name: devConfig.firstName,
+            last_name: devConfig.lastName,
+            username: devConfig.username,
+            photo_url: devConfig.photoUrl,
+          }
+          const success = await authenticateUsingPayload(devPayload, undefined, 'dev')
+          if (success) {
+            return
           }
         }
       } catch (e) {
@@ -706,4 +758,29 @@ function translateVerificationError(code: string): string {
     return 'Сессия истекла. Авторизуйтесь и попробуйте снова.'
   }
   return 'Не удалось отправить запрос. Попробуйте позже.'
+}
+
+function resolveDevTelegramUser(): DevTelegramUserConfig | null {
+  if (!import.meta.env.DEV) {
+    return null
+  }
+
+  const rawId = import.meta.env.VITE_DEV_TELEGRAM_ID
+  if (!rawId) {
+    return null
+  }
+
+  const numericId = Number(rawId)
+  if (!Number.isFinite(numericId) || numericId <= 0) {
+    console.warn('[Profile] VITE_DEV_TELEGRAM_ID задан, но имеет недопустимое значение')
+    return null
+  }
+
+  return {
+    id: Math.trunc(numericId),
+    firstName: import.meta.env.VITE_DEV_TELEGRAM_FIRST_NAME,
+    lastName: import.meta.env.VITE_DEV_TELEGRAM_LAST_NAME,
+    username: import.meta.env.VITE_DEV_TELEGRAM_USERNAME,
+    photoUrl: import.meta.env.VITE_DEV_TELEGRAM_PHOTO_URL,
+  }
 }

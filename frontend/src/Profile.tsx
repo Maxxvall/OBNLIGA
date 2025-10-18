@@ -1,13 +1,42 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import './profile.css'
 
+type LeaguePlayerStatus = 'NONE' | 'PENDING' | 'VERIFIED'
+
+interface LeaguePlayerProfile {
+  id: number
+  firstName: string
+  lastName: string
+}
+
+interface LeaguePlayerStats {
+  matches: number
+  goals: number
+  assists: number
+  penaltyGoals: number
+  yellowCards: number
+  redCards: number
+}
+
+interface StatItem {
+  key: string
+  label: string
+  value: number
+}
+
 interface ProfileUser {
   telegramId?: string
   username?: string | null
   firstName?: string | null
   photoUrl?: string | null
-  createdAt?: string
-  updatedAt?: string
+  createdAt?: string | null
+  updatedAt?: string | null
+  leaguePlayerStatus?: LeaguePlayerStatus
+  leaguePlayerRequestedAt?: string | null
+  leaguePlayerVerifiedAt?: string | null
+  leaguePlayerId?: number | null
+  leaguePlayer?: LeaguePlayerProfile | null
+  leaguePlayerStats?: LeaguePlayerStats | null
 }
 
 interface CacheEntry {
@@ -47,6 +76,9 @@ const PROFILE_REFRESH_INTERVAL_MS = 90_000
 export default function Profile() {
   const [user, setUser] = useState<Nullable<ProfileUser>>(null)
   const [loading, setLoading] = useState<boolean>(false)
+  const [showVerifyModal, setShowVerifyModal] = useState(false)
+  const [verifyLoading, setVerifyLoading] = useState(false)
+  const [verifyError, setVerifyError] = useState<string | null>(null)
   const isFetchingRef = useRef(false)
   const userRef = useRef<Nullable<ProfileUser>>(null)
 
@@ -261,46 +293,206 @@ export default function Profile() {
     return () => window.clearInterval(timer)
   }, [loadProfile])
 
+  const status: LeaguePlayerStatus =
+    user && isLeagueStatus(user.leaguePlayerStatus) ? user.leaguePlayerStatus : 'NONE'
+  const isVerified = status === 'VERIFIED'
+  const playerName = user?.leaguePlayer ? formatLeaguePlayerName(user.leaguePlayer) : null
+
+  const statsList: StatItem[] =
+    isVerified && user?.leaguePlayerStats
+      ? [
+          { key: 'matches', label: 'МАТЧИ', value: user.leaguePlayerStats.matches },
+          { key: 'goals', label: 'ГОЛЫ', value: user.leaguePlayerStats.goals },
+          { key: 'assists', label: 'ПАСЫ', value: user.leaguePlayerStats.assists },
+          { key: 'penaltyGoals', label: 'ПЕНАЛЬТИ', value: user.leaguePlayerStats.penaltyGoals },
+          { key: 'yellowCards', label: 'ЖЁЛТЫЕ', value: user.leaguePlayerStats.yellowCards },
+          { key: 'redCards', label: 'КРАСНЫЕ', value: user.leaguePlayerStats.redCards },
+        ]
+      : []
+
+  const statusMessage = (() => {
+    if (status === 'VERIFIED') {
+      return playerName ? `Подтверждён игрок лиги: ${playerName}` : 'Подтверждён игрок лиги.'
+    }
+    if (status === 'PENDING') {
+      return 'Заявка на подтверждение отправлена. Ожидайте решения администратора.'
+    }
+    return 'Подтвердите статус игрока лиги, чтобы открыть персональную статистику.'
+  })()
+
+  useEffect(() => {
+    if (status !== 'NONE') {
+      setShowVerifyModal(false)
+      setVerifyLoading(false)
+      setVerifyError(null)
+    }
+  }, [status])
+
+  const submitVerificationRequest = useCallback(async () => {
+    if (verifyLoading) return
+
+    const token = localStorage.getItem('session')
+    if (!token) {
+      setVerifyError('Сессия не найдена. Авторизуйтесь и попробуйте снова.')
+      return
+    }
+
+    setVerifyLoading(true)
+    setVerifyError(null)
+
+    try {
+      const backendRaw = import.meta.env.VITE_BACKEND_URL ?? ''
+      const backend = backendRaw || ''
+      const verifyUrl = backend
+        ? `${backend.replace(/\/$/, '')}/api/users/league-player/request`
+        : '/api/users/league-player/request'
+
+      const response = await fetch(verifyUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      })
+
+      const text = await response.text()
+      let parsed: unknown = null
+      if (text) {
+        try {
+          parsed = JSON.parse(text) as unknown
+        } catch {
+          parsed = null
+        }
+      }
+
+      if (!response.ok) {
+        const errorCode =
+          parsed && typeof parsed === 'object' && 'error' in (parsed as Record<string, unknown>)
+            ? (parsed as Record<string, unknown>).error
+            : response.statusText
+        setVerifyError(translateVerificationError(typeof errorCode === 'string' ? errorCode : ''))
+        return
+      }
+
+      const profile = readProfileUser(parsed)
+      if (profile) {
+        setCachedProfile(profile)
+        setUser(profile)
+      }
+      setShowVerifyModal(false)
+    } catch (err) {
+      setVerifyError('Не удалось отправить запрос. Попробуйте позже.')
+    } finally {
+      setVerifyLoading(false)
+    }
+  }, [verifyLoading])
+
   return (
     <div className="profile-container">
-      <div className="profile-header">
-        <div className="avatar-section">
-          {user && user.photoUrl ? (
-            <img
-              src={user.photoUrl}
-              alt={user.username || user.firstName || 'avatar'}
-              className="profile-avatar"
-            />
+      <div className="profile-wrapper">
+        <div className="profile-header">
+          <div className="avatar-section">
+            {user && user.photoUrl ? (
+              <img
+                src={user.photoUrl}
+                alt={user.username || user.firstName || 'avatar'}
+                className="profile-avatar"
+              />
+            ) : (
+              <div className="profile-avatar placeholder">{loading ? '⏳' : '👤'}</div>
+            )}
+            {isVerified ? (
+              <div className="verified-indicator" title="Подтверждён игрок лиги">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M9.5 16.2 5.3 12l1.4-1.4 2.8 2.79 7.2-7.19 1.4 1.41-8.6 8.59z" fill="currentColor" />
+                </svg>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="profile-info">
+            <h1 className="profile-name">
+              {loading ? 'Загрузка...' : user?.username || user?.firstName || 'Гость'}
+            </h1>
+            <div className={`profile-status-message status-${status.toLowerCase()}`}>
+              {statusMessage}
+            </div>
+            {playerName ? <div className="league-player-name">{playerName}</div> : null}
+            {status === 'NONE' ? (
+              <div className="verification-actions">
+                <button
+                  type="button"
+                  className="verify-button"
+                  onClick={() => {
+                    setVerifyError(null)
+                    setShowVerifyModal(true)
+                  }}
+                  disabled={verifyLoading}
+                >
+                  {verifyLoading ? 'Отправляем…' : 'Подтвердить статус игрока'}
+                </button>
+              </div>
+            ) : null}
+            {status === 'PENDING' ? (
+              <div className="verification-note">
+                Запрос отправлен. Мы сообщим, когда администратор подтвердит статус.
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className={`profile-stats ${isVerified ? 'with-data' : 'empty'}`}>
+          {isVerified && statsList.length ? (
+            statsList.map(item => (
+              <div className="stat-item" key={item.key}>
+                <div className="stat-value">{item.value}</div>
+                <div className="stat-label">{item.label}</div>
+              </div>
+            ))
           ) : (
-            <div className="profile-avatar placeholder">{loading ? '⏳' : '👤'}</div>
-          )}
-          <div className="status-indicator online"></div>
-        </div>
-
-        <div className="profile-info">
-          <h1 className="profile-name">
-            {loading ? 'Загрузка...' : user?.username || user?.firstName || 'Гость'}
-          </h1>
-          {user?.telegramId && <div className="profile-id">ID: {user.telegramId}</div>}
-          {user?.createdAt && (
-            <div className="profile-joined">Участник с {formatDate(user.createdAt)}</div>
+            <div className="stats-placeholder">
+              <p>Статистика появится после подтверждения администратора.</p>
+            </div>
           )}
         </div>
-      </div>
 
-      <div className="profile-stats">
-        <div className="stat-item">
-          <div className="stat-value">0</div>
-          <div className="stat-label">Матчи</div>
-        </div>
-        <div className="stat-item">
-          <div className="stat-value">0</div>
-          <div className="stat-label">Голы</div>
-        </div>
-        <div className="stat-item">
-          <div className="stat-value">0</div>
-          <div className="stat-label">Рейтинг</div>
-        </div>
+        {showVerifyModal ? (
+          <div className="verify-modal-backdrop" role="dialog" aria-modal="true">
+            <div className="verify-modal">
+              <h2>Подтвердить статус игрока</h2>
+              <p>
+                Подтвердить участие можно один раз. Запрос поступит в админ-панель, где выберут
+                вашу карточку игрока.
+              </p>
+              {verifyError ? <div className="verify-modal-error">{verifyError}</div> : null}
+              <div className="verify-modal-actions">
+                <button
+                  type="button"
+                  className="verify-cancel"
+                  onClick={() => {
+                    if (!verifyLoading) {
+                      setShowVerifyModal(false)
+                      setVerifyError(null)
+                    }
+                  }}
+                  disabled={verifyLoading}
+                >
+                  Отменить
+                </button>
+                <button
+                  type="button"
+                  className="verify-submit"
+                  onClick={() => submitVerificationRequest()}
+                  disabled={verifyLoading}
+                >
+                  {verifyLoading ? 'Отправляем…' : 'Отправить запрос'}
+                </button>
+              </div>
+              <p className="verify-note">После подтверждения станет доступна полная статистика.</p>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   )
@@ -308,6 +500,41 @@ export default function Profile() {
 
 function isNullableString(value: unknown): value is string | null | undefined {
   return value === undefined || value === null || typeof value === 'string'
+}
+
+function getNullableString(value: unknown): string | null | undefined {
+  if (value === undefined || value === null) {
+    return value as undefined | null
+  }
+  return typeof value === 'string' ? value : undefined
+}
+
+function isLeagueStatus(value: unknown): value is LeaguePlayerStatus {
+  return value === 'NONE' || value === 'PENDING' || value === 'VERIFIED'
+}
+
+function isLeaguePlayerProfile(value: unknown): value is LeaguePlayerProfile {
+  if (!value || typeof value !== 'object') return false
+  const record = value as Record<string, unknown>
+  return (
+    typeof record.id === 'number' &&
+    typeof record.firstName === 'string' &&
+    typeof record.lastName === 'string'
+  )
+}
+
+function isLeaguePlayerStats(value: unknown): value is LeaguePlayerStats {
+  if (!value || typeof value !== 'object') return false
+  const record = value as Record<string, unknown>
+  const keys: Array<keyof LeaguePlayerStats> = [
+    'matches',
+    'goals',
+    'assists',
+    'penaltyGoals',
+    'yellowCards',
+    'redCards',
+  ]
+  return keys.every(key => typeof record[key] === 'number')
 }
 
 function isProfileUser(value: unknown): value is ProfileUser {
@@ -322,16 +549,56 @@ function isProfileUser(value: unknown): value is ProfileUser {
   return true
 }
 
+function normalizeProfilePayload(value: unknown): ProfileUser | null {
+  if (!isProfileUser(value)) return null
+  const record = value as ProfileUser & Record<string, unknown>
+  const normalized: ProfileUser = {
+    telegramId: record.telegramId,
+    username: record.username ?? null,
+    firstName: record.firstName ?? null,
+    photoUrl: record.photoUrl ?? null,
+    createdAt: record.createdAt ?? null,
+    updatedAt: record.updatedAt ?? null,
+  }
+
+  if (isLeagueStatus(record.leaguePlayerStatus)) {
+    normalized.leaguePlayerStatus = record.leaguePlayerStatus
+  }
+
+  if (typeof record.leaguePlayerId === 'number') {
+    normalized.leaguePlayerId = record.leaguePlayerId
+  }
+
+  const requestedAt = getNullableString((record as Record<string, unknown>).leaguePlayerRequestedAt)
+  if (requestedAt !== undefined) {
+    normalized.leaguePlayerRequestedAt = requestedAt ?? null
+  }
+
+  const verifiedAt = getNullableString((record as Record<string, unknown>).leaguePlayerVerifiedAt)
+  if (verifiedAt !== undefined) {
+    normalized.leaguePlayerVerifiedAt = verifiedAt ?? null
+  }
+
+  const leaguePlayerRaw = (record as Record<string, unknown>).leaguePlayer
+  normalized.leaguePlayer = isLeaguePlayerProfile(leaguePlayerRaw) ? leaguePlayerRaw : null
+
+  const statsRaw = (record as Record<string, unknown>).leaguePlayerStats
+  normalized.leaguePlayerStats = isLeaguePlayerStats(statsRaw) ? statsRaw : null
+
+  return normalized
+}
+
 function readProfileUser(payload: unknown): ProfileUser | null {
   if (!payload || typeof payload !== 'object') return null
   const record = payload as Record<string, unknown>
-  if ('user' in record && isProfileUser(record.user)) {
-    return record.user
+  if ('user' in record) {
+    const candidate = (record as { user?: unknown }).user
+    const normalized = normalizeProfilePayload(candidate)
+    if (normalized) {
+      return normalized
+    }
   }
-  if (isProfileUser(payload)) {
-    return payload
-  }
-  return null
+  return normalizeProfilePayload(payload)
 }
 
 function readTokenFromResponse(payload: unknown): string | null {
@@ -340,18 +607,26 @@ function readTokenFromResponse(payload: unknown): string | null {
   return typeof token === 'string' ? token : null
 }
 
-function formatDate(dt?: string) {
-  if (!dt) return ''
-  try {
-    const d = new Date(dt)
-    // Convert to Moscow time (UTC+3) and format dd.mm.yyyy
-    const ms = d.getTime() + 3 * 60 * 60 * 1000
-    const md = new Date(ms)
-    const day = String(md.getUTCDate()).padStart(2, '0')
-    const month = String(md.getUTCMonth() + 1).padStart(2, '0')
-    const year = md.getUTCFullYear()
-    return `${day}.${month}.${year}`
-  } catch (e) {
-    return dt
+function formatLeaguePlayerName(player: LeaguePlayerProfile): string {
+  return `${player.firstName} ${player.lastName}`.trim()
+}
+
+function translateVerificationError(code: string): string {
+  const normalized = code.trim().toLowerCase()
+  if (!normalized) {
+    return 'Не удалось отправить запрос. Попробуйте позже.'
   }
+  if (normalized.includes('already_verified')) {
+    return 'Профиль уже подтверждён как игрок лиги.'
+  }
+  if (normalized.includes('verification_pending')) {
+    return 'Заявка уже отправлена. Ожидайте решения администратора.'
+  }
+  if (normalized.includes('user_not_found')) {
+    return 'Пользователь не найден. Авторизуйтесь заново.'
+  }
+  if (normalized.includes('invalid_token') || normalized.includes('no_token')) {
+    return 'Сессия истекла. Авторизуйтесь и попробуйте снова.'
+  }
+  return 'Не удалось отправить запрос. Попробуйте позже.'
 }

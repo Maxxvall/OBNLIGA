@@ -1107,10 +1107,70 @@
   color: var(--neon-cyan);
 }
 
+.table-actions .accent {
+  background: linear-gradient(135deg, rgba(0, 150, 255, 0.28), rgba(0, 220, 255, 0.18));
+  color: #d8f6ff;
+}
+
+.table-actions .accent:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(0, 170, 255, 0.4), rgba(0, 240, 255, 0.26));
+  color: #ffffff;
+}
+
+.table-actions .accent:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+}
+
+.table-actions .accent.pulse {
+  animation: confirmPulse 1.8s ease-in-out infinite;
+}
+
 .table-actions .danger,
 .list-actions .danger {
   background: rgba(255, 77, 130, 0.2);
   color: var(--danger);
+}
+
+@keyframes confirmPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(0, 200, 255, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(0, 200, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 200, 255, 0);
+  }
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.status-badge.none {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+}
+
+.status-badge.pending {
+  background: rgba(255, 175, 64, 0.2);
+  color: #ffd79a;
+}
+
+.status-badge.verified {
+  background: rgba(0, 200, 255, 0.24);
+  color: #8feeff;
 }
 
 .link-button {

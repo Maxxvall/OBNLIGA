@@ -23,6 +23,8 @@ export interface Person {
   clubs?: Club[]
 }
 
+export type LeaguePlayerStatus = 'NONE' | 'PENDING' | 'VERIFIED'
+
 export interface Stadium {
   id: number
   name: string
@@ -324,6 +326,11 @@ export interface AppUser {
   lastLoginDate?: string | null
   currentStreak: number
   totalPredictions: number
+  leaguePlayerStatus: LeaguePlayerStatus
+  leaguePlayerRequestedAt?: string | null
+  leaguePlayerVerifiedAt?: string | null
+  leaguePlayerId?: number | null
+  leaguePlayer?: Person | null
 }
 
 export interface Prediction {

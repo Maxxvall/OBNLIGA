@@ -6,6 +6,7 @@ import {
   validate as validateInitData,
   validate3rd as validateInitDataSignature,
 } from '@tma.js/init-data-node'
+import { PlayerClubCareerStats } from '@prisma/client'
 import { serializePrisma, isSerializedAppUserPayload } from '../utils/serialization'
 import { defaultCache } from '../cache'
 
@@ -44,6 +45,33 @@ type RequestWithSessionCookie = FastifyRequest & {
   cookies?: {
     session?: string
   }
+}
+
+type LeaguePlayerStatsPayload = {
+  matches: number
+  goals: number
+  assists: number
+  penaltyGoals: number
+  yellowCards: number
+  redCards: number
+}
+
+function aggregateCareerStats(rows: PlayerClubCareerStats[]): LeaguePlayerStatsPayload | null {
+  if (!rows.length) {
+    return null
+  }
+
+  return rows.reduce<LeaguePlayerStatsPayload>(
+    (acc, row) => ({
+      matches: acc.matches + row.totalMatches,
+      goals: acc.goals + row.totalGoals,
+      assists: acc.assists + row.totalAssists,
+      penaltyGoals: acc.penaltyGoals + row.penaltyGoals,
+      yellowCards: acc.yellowCards + row.yellowCards,
+      redCards: acc.redCards + row.redCards,
+    }),
+    { matches: 0, goals: 0, assists: 0, penaltyGoals: 0, yellowCards: 0, redCards: 0 }
+  )
 }
 
 export default async function (server: FastifyInstance) {
@@ -287,13 +315,34 @@ export default async function (server: FastifyInstance) {
       const u = await defaultCache.get(
         cacheKey,
         async () => {
-          return await prisma.appUser.findUnique({ where: { telegramId: BigInt(sub) } })
+          return await prisma.appUser.findUnique({
+            where: { telegramId: BigInt(sub) },
+            include: {
+              leaguePlayer: true,
+            },
+          })
         },
         300
       ) // 5 minutes TTL
 
       if (!u) return reply.status(404).send({ error: 'not_found' })
-      const serializedUser = serializePrisma(u)
+      const serializedUser = serializePrisma(u) as Record<string, unknown>
+
+      const leaguePlayerId = u.leaguePlayerId
+      if (typeof leaguePlayerId === 'number') {
+        try {
+          const career = await prisma.playerClubCareerStats.findMany({
+            where: { personId: leaguePlayerId },
+          })
+          const aggregated = aggregateCareerStats(career)
+          if (aggregated) {
+            serializedUser.leaguePlayerStats = aggregated
+          }
+        } catch (err) {
+          request.log.error({ err, leaguePlayerId }, 'failed to load league player stats')
+        }
+      }
+
       const origin = (request.headers.origin as string) || '*'
       reply.header('Access-Control-Allow-Origin', origin)
       reply.header('Access-Control-Allow-Credentials', 'true')

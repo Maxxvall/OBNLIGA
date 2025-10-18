@@ -56,6 +56,7 @@ model Person {
   refereedMatches Match[] @relation("match_referee")
   refereedFriendlyMatches FriendlyMatch[] @relation("friendly_match_referee")
   clubAffiliations ClubPlayer[]
+  linkedAppUsers AppUser[] @relation("AppUserLeaguePlayer")
 
   @@map("person")
 }
@@ -459,14 +460,25 @@ model AppUser {
   lastLoginDate  DateTime? @map("last_login_date")
   currentStreak  Int      @map("current_streak") @default(0)
   totalPredictions Int    @map("total_predictions") @default(0)
+  leaguePlayerStatus   LeaguePlayerStatus @map("league_player_status") @default(NONE)
+  leaguePlayerRequestedAt DateTime? @map("league_player_requested_at")
+  leaguePlayerVerifiedAt DateTime? @map("league_player_verified_at")
+  leaguePlayerId Int? @map("league_player_id")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   predictions Prediction[]
   achievements UserAchievement[]
+  leaguePlayer Person? @relation("AppUserLeaguePlayer", fields: [leaguePlayerId], references: [id])
 
   @@map("app_user")
+}
+
+enum LeaguePlayerStatus {
+  NONE
+  PENDING
+  VERIFIED
 }
 
 model Prediction {

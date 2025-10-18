@@ -117,6 +117,7 @@ const ERROR_DICTIONARY: Record<string, string> = {
   person_has_history: 'У игрока есть история матчей — удаление невозможно.',
   person_is_not_player: 'Выбранная персона не является игроком.',
   personid_required: 'Выберите игрока.',
+  person_not_found: 'Игрок не найден в базе.',
   transfer_payload_empty: 'Добавьте переходы в список.',
   transfer_invalid_person: 'Выберите корректного игрока.',
   transfer_invalid_club: 'Выберите корректный клуб.',
@@ -144,8 +145,12 @@ const ERROR_DICTIONARY: Record<string, string> = {
   too_many_names: 'Слишком много имён в списке.',
   update_failed: 'Не удалось сохранить изменения.',
   userid_required: 'Укажите пользователя.',
+  user_not_found: 'Пользователь не найден.',
   status_update_invalid: 'Некорректный статус матча.',
   status_transition_invalid: 'Такой переход статуса невозможен.',
+  league_player_already_linked: 'Игрок уже привязан к другому пользователю.',
+  already_verified: 'Пользователь уже подтверждён как игрок лиги.',
+  verification_pending: 'Заявка уже ожидает подтверждения.',
 }
 
 const normalizeErrorKey = (value: string): string =>

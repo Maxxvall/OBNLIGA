@@ -1,7 +1,8 @@
-import { FastifyInstance } from 'fastify'
+import { FastifyInstance, FastifyRequest } from 'fastify'
 import prisma from '../db'
 import { serializePrisma, isSerializedAppUserPayload } from '../utils/serialization'
 import { defaultCache } from '../cache'
+import jwt from 'jsonwebtoken'
 
 type UserUpsertBody = {
   userId?: string | number | bigint
@@ -11,6 +12,29 @@ type UserUpsertBody = {
 
 type UserParams = {
   userId?: string
+}
+
+type RequestWithSessionCookie = FastifyRequest & {
+  cookies?: Record<string, string>
+}
+
+const JWT_SECRET = process.env.JWT_SECRET || process.env.TELEGRAM_BOT_TOKEN || 'dev-secret'
+
+function extractSessionToken(request: FastifyRequest): string | null {
+  const authHeader = request.headers.authorization
+  if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+    const tokenCandidate = authHeader.slice(7).trim()
+    if (tokenCandidate) {
+      return tokenCandidate
+    }
+  }
+
+  const cookieToken = (request as RequestWithSessionCookie).cookies?.session
+  if (typeof cookieToken === 'string' && cookieToken.trim()) {
+    return cookieToken.trim()
+  }
+
+  return null
 }
 
 export default async function (server: FastifyInstance) {
@@ -83,7 +107,12 @@ export default async function (server: FastifyInstance) {
       const u = await defaultCache.get(
         cacheKey,
         async () => {
-          return await prisma.appUser.findUnique({ where: { telegramId: BigInt(userId) } })
+          return await prisma.appUser.findUnique({
+            where: { telegramId: BigInt(userId) },
+            include: {
+              leaguePlayer: true,
+            },
+          })
         },
         300
       ) // 5 minutes TTL
@@ -93,6 +122,67 @@ export default async function (server: FastifyInstance) {
     } catch (err) {
       server.log.error({ err }, 'user fetch failed')
       return reply.status(500).send({ error: 'internal' })
+    }
+  })
+
+  server.post('/api/users/league-player/request', async (request, reply) => {
+    const token = extractSessionToken(request)
+    if (!token) {
+      return reply.status(401).send({ ok: false, error: 'no_token' })
+    }
+
+    let subject: string | undefined
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET)
+      subject =
+        typeof decoded === 'string'
+          ? decoded
+          : typeof decoded === 'object' && typeof decoded?.sub === 'string'
+          ? decoded.sub
+          : undefined
+    } catch (err) {
+      request.log.warn({ err }, 'league player request: token verification failed')
+      return reply.status(401).send({ ok: false, error: 'invalid_token' })
+    }
+
+    if (!subject) {
+      return reply.status(401).send({ ok: false, error: 'invalid_token' })
+    }
+
+    const cacheKey = `user:${subject}`
+
+    try {
+      const user = await prisma.appUser.findUnique({
+        where: { telegramId: BigInt(subject) },
+      })
+
+      if (!user) {
+        return reply.status(404).send({ ok: false, error: 'user_not_found' })
+      }
+
+      if (user.leaguePlayerStatus === 'VERIFIED') {
+        return reply.status(400).send({ ok: false, error: 'already_verified' })
+      }
+
+      if (user.leaguePlayerStatus === 'PENDING') {
+        return reply.status(409).send({ ok: false, error: 'verification_pending' })
+      }
+
+      const updated = await prisma.appUser.update({
+        where: { id: user.id },
+        data: {
+          leaguePlayerStatus: 'PENDING',
+          leaguePlayerRequestedAt: new Date(),
+        },
+        include: { leaguePlayer: true },
+      })
+
+      await defaultCache.invalidate(cacheKey)
+
+      return reply.send({ ok: true, user: serializePrisma(updated) })
+    } catch (err) {
+      request.log.error({ err }, 'league player request failed')
+      return reply.status(500).send({ ok: false, error: 'internal' })
     }
   })
 }

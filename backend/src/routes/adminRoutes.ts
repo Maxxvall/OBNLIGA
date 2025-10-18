@@ -3332,6 +3332,9 @@ export default async function (server: FastifyInstance) {
       admin.get('/users', async (_request, reply) => {
         const users = await prisma.appUser.findMany({
           orderBy: { createdAt: 'desc' },
+          include: {
+            leaguePlayer: true,
+          },
         })
         return sendSerialized(reply, users)
       })
@@ -3350,8 +3353,62 @@ export default async function (server: FastifyInstance) {
             currentStreak: body.currentStreak ?? undefined,
             totalPredictions: body.totalPredictions ?? undefined,
           },
+          include: {
+            leaguePlayer: true,
+          },
         })
+        await defaultCache.invalidate(`user:${user.telegramId.toString()}`)
         return sendSerialized(reply, user)
+      })
+
+      admin.post('/users/:userId/league-player', async (request, reply) => {
+        const userId = parseNumericId((request.params as any).userId, 'userId')
+        const body = request.body as { personId?: number }
+
+        if (!body?.personId) {
+          return reply.status(400).send({ ok: false, error: 'personid_required' })
+        }
+
+        const person = await prisma.person.findUnique({ where: { id: body.personId } })
+        if (!person) {
+          return reply.status(404).send({ ok: false, error: 'person_not_found' })
+        }
+        if (!person.isPlayer) {
+          return reply.status(400).send({ ok: false, error: 'person_is_not_player' })
+        }
+
+        const user = await prisma.appUser.findUnique({ where: { id: userId } })
+        if (!user) {
+          return reply.status(404).send({ ok: false, error: 'user_not_found' })
+        }
+
+        const existingLink = await prisma.appUser.findFirst({
+          where: {
+            leaguePlayerId: body.personId,
+            NOT: { id: userId },
+          },
+        })
+
+        if (existingLink) {
+          return reply.status(409).send({ ok: false, error: 'league_player_already_linked' })
+        }
+
+        const updated = await prisma.appUser.update({
+          where: { id: userId },
+          data: {
+            leaguePlayerId: body.personId,
+            leaguePlayerStatus: 'VERIFIED',
+            leaguePlayerVerifiedAt: new Date(),
+            leaguePlayerRequestedAt: user.leaguePlayerRequestedAt ?? new Date(),
+          },
+          include: {
+            leaguePlayer: true,
+          },
+        })
+
+        await defaultCache.invalidate(`user:${updated.telegramId.toString()}`)
+
+        return sendSerialized(reply, updated)
       })
 
       admin.get('/predictions', async (request, reply) => {

@@ -354,6 +354,7 @@ export default function Profile() {
           'Content-Type': 'application/json',
         },
         credentials: 'include',
+        body: JSON.stringify({}),
       })
 
       const text = await response.text()

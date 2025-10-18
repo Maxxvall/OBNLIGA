@@ -410,37 +410,6 @@ export default function Profile() {
     return []
   }, [isVerified, user?.leaguePlayerCareer])
 
-  type CareerTotals = {
-    matches: number
-    yellowCards: number
-    redCards: number
-    assists: number
-    goals: number
-  }
-
-  const careerTotals: CareerTotals | null = useMemo(() => {
-    if (!isVerified) {
-      return null
-    }
-    if (user?.leaguePlayerStats) {
-      const { matches, yellowCards, redCards, assists, goals } = user.leaguePlayerStats
-      return { matches, yellowCards, redCards, assists, goals }
-    }
-    if (!careerRows.length) {
-      return null
-    }
-    return careerRows.reduce<CareerTotals>(
-      (acc, entry) => ({
-        matches: acc.matches + entry.matches,
-        yellowCards: acc.yellowCards + entry.yellowCards,
-        redCards: acc.redCards + entry.redCards,
-        assists: acc.assists + entry.assists,
-        goals: acc.goals + entry.goals,
-      }),
-      { matches: 0, yellowCards: 0, redCards: 0, assists: 0, goals: 0 }
-    )
-  }, [careerRows, isVerified, user?.leaguePlayerStats])
-
   const renderCareerRange = useCallback((entry: LeaguePlayerCareerEntry): string => {
     const hasStart = typeof entry.fromYear === 'number'
     const hasEnd = typeof entry.toYear === 'number'
@@ -469,73 +438,44 @@ export default function Profile() {
       <section className="profile-section">
         <div className="profile-card">
           <header className="profile-card-header">
-            <div>
-              <h2>Карьера игрока</h2>
-              <p className="profile-card-hint">Статистика обновляется автоматически после подтверждения матчей.</p>
-            </div>
-            {careerTotals ? (
-              <div className="profile-card-summary">
-                <span>Матчи: {careerTotals.matches}</span>
-                <span>Пасы: {careerTotals.assists}</span>
-                <span>Голы: {careerTotals.goals}</span>
-              </div>
-            ) : null}
+            <h2>Карьера игрока</h2>
           </header>
           <div className="profile-table-wrapper">
             {careerRows.length ? (
-              <table className="profile-career-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Год</th>
-                    <th scope="col">Команда</th>
-                    <th scope="col">Матчи</th>
-                    <th scope="col">ЖК</th>
-                    <th scope="col">КК</th>
-                    <th scope="col">Пасы</th>
-                    <th scope="col">Голы</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <div className="profile-career-scroll">
+                <div className="profile-career-grid" role="table" aria-label="Карьера игрока">
+                  <div className="profile-career-row head" role="row">
+                    <div className="col-year" role="columnheader">Год</div>
+                    <div className="col-club" role="columnheader">Лого</div>
+                    <div className="col-stat" role="columnheader">М</div>
+                    <div className="col-stat" role="columnheader">ЖК</div>
+                    <div className="col-stat" role="columnheader">КК</div>
+                    <div className="col-stat" role="columnheader">П</div>
+                    <div className="col-stat" role="columnheader">Г</div>
+                  </div>
                   {careerRows.map(entry => (
-                    <tr key={`${entry.clubId}-${renderCareerRange(entry)}`}>
-                      <td data-label="Год">{renderCareerRange(entry)}</td>
-                      <td data-label="Команда">
-                        <div className="profile-club-cell">
-                          {entry.clubLogoUrl ? (
-                            <span className="club-logo" style={{ backgroundImage: `url(${entry.clubLogoUrl})` }} aria-hidden="true" />
-                          ) : (
-                            <span className="club-logo placeholder" aria-hidden="true">⚽</span>
-                          )}
-                          <div className="club-names">
-                            <span className="club-name">{entry.clubName}</span>
-                            {entry.clubShortName && entry.clubShortName !== entry.clubName ? (
-                              <span className="club-short">{entry.clubShortName}</span>
-                            ) : null}
-                          </div>
-                        </div>
-                      </td>
-                      <td data-label="Матчи">{entry.matches}</td>
-                      <td data-label="ЖК">{entry.yellowCards}</td>
-                      <td data-label="КК">{entry.redCards}</td>
-                      <td data-label="Пасы">{entry.assists}</td>
-                      <td data-label="Голы">{entry.goals}</td>
-                    </tr>
+                    <div
+                      className="profile-career-row"
+                      role="row"
+                      key={`${entry.clubId}-${entry.fromYear ?? 'start'}-${entry.toYear ?? 'current'}-${entry.matches}`}
+                    >
+                      <div className="col-year" role="cell">{renderCareerRange(entry)}</div>
+                      <div className="col-club" role="cell">
+                        {entry.clubLogoUrl ? (
+                          <span className="career-club-logo" style={{ backgroundImage: `url(${entry.clubLogoUrl})` }} aria-hidden="true" />
+                        ) : (
+                          <span className="career-club-logo placeholder" aria-hidden="true">⚽</span>
+                        )}
+                      </div>
+                      <div className="col-stat" role="cell">{entry.matches}</div>
+                      <div className="col-stat" role="cell">{entry.yellowCards}</div>
+                      <div className="col-stat" role="cell">{entry.redCards}</div>
+                      <div className="col-stat" role="cell">{entry.assists}</div>
+                      <div className="col-stat" role="cell">{entry.goals}</div>
+                    </div>
                   ))}
-                </tbody>
-                {careerTotals ? (
-                  <tfoot>
-                    <tr>
-                      <th scope="row">Итого</th>
-                      <td aria-label="Команда" />
-                      <td aria-label="Матчи">{careerTotals.matches}</td>
-                      <td aria-label="ЖК">{careerTotals.yellowCards}</td>
-                      <td aria-label="КК">{careerTotals.redCards}</td>
-                      <td aria-label="Пасы">{careerTotals.assists}</td>
-                      <td aria-label="Голы">{careerTotals.goals}</td>
-                    </tr>
-                  </tfoot>
-                ) : null}
-              </table>
+                </div>
+              </div>
             ) : (
               <div className="profile-table-placeholder">
                 <p>Записи карьеры появятся после первых сыгранных матчей в подтверждённом статусе игрока.</p>
@@ -545,7 +485,7 @@ export default function Profile() {
         </div>
       </section>
     )
-  }, [careerRows, careerTotals, isVerified, renderCareerRange])
+  }, [careerRows, isVerified, renderCareerRange])
 
   const statusMessage = (() => {
     if (status === 'PENDING') {
@@ -633,28 +573,27 @@ export default function Profile() {
         <div className="profile-header">
           <div className="profile-hero-card">
             <div className="avatar-section">
-              {user && user.photoUrl ? (
-                <img
-                  src={user.photoUrl}
-                  alt={displayName}
-                  className="profile-avatar"
-                />
-              ) : (
-                <div className="profile-avatar placeholder">{loading ? '⏳' : '👤'}</div>
-              )}
-              {isVerified ? (
-                <div className="verified-indicator" title="Подтверждён игрок лиги">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M9.5 16.2 5.3 12l1.4-1.4 2.8 2.79 7.2-7.19 1.4 1.41-8.6 8.59z" fill="currentColor" />
-                  </svg>
-                </div>
-              ) : null}
+              <div className="profile-avatar-wrapper">
+                {user && user.photoUrl ? (
+                  <img
+                    src={user.photoUrl}
+                    alt={displayName}
+                    className="profile-avatar"
+                  />
+                ) : (
+                  <div className="profile-avatar placeholder">{loading ? '⏳' : '👤'}</div>
+                )}
+                {isVerified ? (
+                  <div className="verified-indicator" title="Подтверждён игрок лиги">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M9.5 16.2 5.3 12l1.4-1.4 2.8 2.79 7.2-7.19 1.4 1.41-8.6 8.59z" fill="currentColor" />
+                    </svg>
+                  </div>
+                ) : null}
+              </div>
               <div className="profile-display-name">
                 {loading ? 'Загрузка...' : displayName}
               </div>
-              {user?.username && user.username !== displayName ? (
-                <div className="profile-username">@{user.username}</div>
-              ) : null}
             </div>
 
             <div
@@ -666,11 +605,7 @@ export default function Profile() {
                 <div className={`profile-status-message status-${status.toLowerCase()}`}>
                   {statusMessage}
                 </div>
-              ) : (
-                <div className="profile-status-message status-empty">
-                  Проверенный профиль показывает динамическую статистику по каждому клубу.
-                </div>
-              )}
+              ) : null}
               {status === 'NONE' ? (
                 <div className="verification-actions">
                   <button

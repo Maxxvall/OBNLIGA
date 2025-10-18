@@ -323,8 +323,9 @@
 
 .team-form-compact {
   display: flex;
-  gap: 6px;
+  gap: 12px;
   overflow-x: auto;
+  justify-content: center;
 }
 
 .team-form-item {

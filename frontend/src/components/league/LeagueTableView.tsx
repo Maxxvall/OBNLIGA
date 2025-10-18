@@ -29,7 +29,7 @@ export const LeagueTableView: React.FC<LeagueTableViewProps> = ({
   const openTeamView = useAppStore(state => state.openTeamView)
 
   const standings = table?.standings ?? []
-  const groups = table?.groups ?? null
+  const groups = table?.groups ?? undefined
 
   const standingsByClubId = React.useMemo(() => {
     const map = new Map<number, LeagueTableResponse['standings'][number]>()
@@ -39,21 +39,94 @@ export const LeagueTableView: React.FC<LeagueTableViewProps> = ({
     return map
   }, [standings])
 
-  const groupSections = React.useMemo<Array<{ meta: LeagueTableGroup; entries: LeagueTableResponse['standings'][number][] }>>(
-    () => {
-      if (!groups || groups.length === 0) {
-        return []
+  const hasServerGroups = Array.isArray(groups) && groups.length > 0
+
+  const fallbackGroupSections = React.useMemo<
+    Array<{ meta: LeagueTableGroup; entries: LeagueTableResponse['standings'][number][] }>
+  >(() => {
+    if (hasServerGroups) {
+      return []
+    }
+
+    const grouped = new Map<
+      number,
+      { label: string | null; entries: LeagueTableResponse['standings'][number][] }
+    >()
+
+    standings.forEach(entry => {
+      const index = entry.groupIndex
+      if (index === null || index === undefined) {
+        return
       }
+      const bucket = grouped.get(index)
+      if (bucket) {
+        bucket.entries.push(entry)
+        if (!bucket.label && entry.groupLabel) {
+          bucket.label = entry.groupLabel
+        }
+      } else {
+        grouped.set(index, {
+          label: entry.groupLabel ?? null,
+          entries: [entry],
+        })
+      }
+    })
 
-      return groups.map(group => {
-        const entries = group.clubIds
-          .map(clubId => standingsByClubId.get(clubId))
-          .filter((entry): entry is LeagueTableResponse['standings'][number] => Boolean(entry))
+    if (grouped.size === 0) {
+      return []
+    }
 
-        return { meta: group, entries }
+    return Array.from(grouped.entries())
+      .sort((left, right) => left[0] - right[0])
+      .map(([groupIndex, bucket]) => {
+        const sortedEntries = bucket.entries
+          .slice()
+          .sort((leftEntry, rightEntry) => {
+            if (rightEntry.points !== leftEntry.points) {
+              return rightEntry.points - leftEntry.points
+            }
+            const leftDiff = leftEntry.goalDifference
+            const rightDiff = rightEntry.goalDifference
+            if (rightDiff !== leftDiff) {
+              return rightDiff - leftDiff
+            }
+            if (rightEntry.goalsFor !== leftEntry.goalsFor) {
+              return rightEntry.goalsFor - leftEntry.goalsFor
+            }
+            return leftEntry.clubName.localeCompare(rightEntry.clubName, 'ru')
+          })
+        return {
+          meta: {
+            groupIndex,
+            label: bucket.label ?? '',
+            qualifyCount: 0,
+            clubIds: sortedEntries.map(entry => entry.clubId),
+          },
+          entries: sortedEntries,
+        }
       })
+  }, [hasServerGroups, standings])
+
+  const groupSections = React.useMemo<
+    Array<{ meta: LeagueTableGroup; entries: LeagueTableResponse['standings'][number][] }>
+  >(
+    () => {
+      if (hasServerGroups && groups) {
+        return groups
+          .map(group => {
+            const entries = group.clubIds
+              .map(clubId => standingsByClubId.get(clubId))
+              .filter((entry): entry is LeagueTableResponse['standings'][number] => Boolean(entry))
+            if (entries.length === 0) {
+              return null
+            }
+            return { meta: group, entries }
+          })
+          .filter((section): section is { meta: LeagueTableGroup; entries: LeagueTableResponse['standings'][number][] } => section !== null)
+      }
+      return fallbackGroupSections
     },
-    [groups, standingsByClubId]
+    [fallbackGroupSections, groups, hasServerGroups, standingsByClubId]
   )
   const hasGroups = groupSections.length > 0
 

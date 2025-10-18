@@ -1,4 +1,4 @@
-export const PUBLIC_LEAGUE_TABLE_KEY = 'public:league:table'
+export const PUBLIC_LEAGUE_TABLE_KEY = 'public:league:table:v2'
 export const PUBLIC_LEAGUE_SCHEDULE_KEY = 'public:league:schedule'
 export const PUBLIC_LEAGUE_RESULTS_KEY = 'public:league:results'
 export const PUBLIC_LEAGUE_STATS_KEY = 'public:league:stats'

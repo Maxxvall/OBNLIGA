@@ -288,7 +288,7 @@ const seasonStatsCacheKey = (seasonId: number, suffix: string) => `season:${seas
 const competitionStatsCacheKey = (competitionId: number, suffix: string) =>
   `competition:${competitionId}:${suffix}`
 const PUBLIC_LEAGUE_SEASONS_KEY = 'public:league:seasons'
-const PUBLIC_LEAGUE_TABLE_KEY = 'public:league:table'
+const PUBLIC_LEAGUE_TABLE_KEY = 'public:league:table:v2'
 const PUBLIC_LEAGUE_TABLE_TTL_SECONDS = 300
 const leagueStatsCacheKey = (suffix: string) => `league:${suffix}`
 

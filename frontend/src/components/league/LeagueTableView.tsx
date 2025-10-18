@@ -28,6 +28,35 @@ export const LeagueTableView: React.FC<LeagueTableViewProps> = ({
 }) => {
   const openTeamView = useAppStore(state => state.openTeamView)
 
+  const standings = table?.standings ?? []
+  const groups = table?.groups ?? null
+
+  const standingsByClubId = React.useMemo(() => {
+    const map = new Map<number, LeagueTableResponse['standings'][number]>()
+    standings.forEach(entry => {
+      map.set(entry.clubId, entry)
+    })
+    return map
+  }, [standings])
+
+  const groupSections = React.useMemo<Array<{ meta: LeagueTableGroup; entries: LeagueTableResponse['standings'][number][] }>>(
+    () => {
+      if (!groups || groups.length === 0) {
+        return []
+      }
+
+      return groups.map(group => {
+        const entries = group.clubIds
+          .map(clubId => standingsByClubId.get(clubId))
+          .filter((entry): entry is LeagueTableResponse['standings'][number] => Boolean(entry))
+
+        return { meta: group, entries }
+      })
+    },
+    [groups, standingsByClubId]
+  )
+  const hasGroups = groupSections.length > 0
+
   const isInitialLoading = loading && !table
   if (isInitialLoading) {
     return (
@@ -59,28 +88,9 @@ export const LeagueTableView: React.FC<LeagueTableViewProps> = ({
     )
   }
 
-  const { season, standings } = table
+  const { season } = table
   const updatedLabel = lastUpdated ? `Обновлено в ${formatTime(lastUpdated)}` : 'Актуальные данные'
   const isRefreshing = loading && Boolean(table)
-
-  const standingsByClubId = React.useMemo(() => {
-    const map = new Map<number, LeagueTableResponse['standings'][number]>()
-    standings.forEach(entry => {
-      map.set(entry.clubId, entry)
-    })
-    return map
-  }, [standings])
-
-  const groupSections: Array<{ meta: LeagueTableGroup; entries: LeagueTableResponse['standings'][number][] }> = []
-  if (table.groups) {
-    table.groups.forEach(group => {
-      const entries = group.clubIds
-        .map(clubId => standingsByClubId.get(clubId))
-        .filter((entry): entry is LeagueTableResponse['standings'][number] => Boolean(entry))
-      groupSections.push({ meta: group, entries })
-    })
-  }
-  const hasGroups = groupSections.length > 0
 
   const renderHeaderRow = () => (
     <div role="row" className="league-table-row head">

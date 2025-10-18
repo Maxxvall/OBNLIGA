@@ -305,11 +305,10 @@ export default function Profile() {
     isVerified && user?.leaguePlayerStats
       ? [
           { key: 'matches', label: 'МАТЧИ', value: user.leaguePlayerStats.matches },
-          { key: 'goals', label: 'ГОЛЫ', value: user.leaguePlayerStats.goals },
+          { key: 'yellowCards', label: 'ЖК', value: user.leaguePlayerStats.yellowCards },
+          { key: 'redCards', label: 'КК', value: user.leaguePlayerStats.redCards },
           { key: 'assists', label: 'ПАСЫ', value: user.leaguePlayerStats.assists },
-          { key: 'penaltyGoals', label: 'ПЕНАЛЬТИ', value: user.leaguePlayerStats.penaltyGoals },
-          { key: 'yellowCards', label: 'ЖЁЛТЫЕ', value: user.leaguePlayerStats.yellowCards },
-          { key: 'redCards', label: 'КРАСНЫЕ', value: user.leaguePlayerStats.redCards },
+          { key: 'goals', label: 'ГОЛЫ', value: user.leaguePlayerStats.goals },
         ]
       : []
 

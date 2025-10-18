@@ -6,7 +6,7 @@ import {
   validate as validateInitData,
   validate3rd as validateInitDataSignature,
 } from '@tma.js/init-data-node'
-import { PlayerClubCareerStats } from '@prisma/client'
+import type { Prisma } from '@prisma/client'
 import { createHash } from 'crypto'
 import { serializePrisma, isSerializedAppUserPayload } from '../utils/serialization'
 import { defaultCache, type CacheFetchOptions } from '../cache'
@@ -113,23 +113,120 @@ type LeaguePlayerStatsPayload = {
   yellowCards: number
   redCards: number
 }
+type SerializedProfilePayload = Record<string, unknown> & {
+  leaguePlayerStats?: LeaguePlayerStatsPayload | null
+}
 
-function aggregateCareerStats(rows: PlayerClubCareerStats[]): LeaguePlayerStatsPayload | null {
-  if (!rows.length) {
+type NormalizedField = {
+  defined: boolean
+  value: string | null
+}
+
+type LoggerLike = {
+  error?: (obj: unknown, msg?: string) => void
+}
+
+function normalizeIncomingField(value: unknown): NormalizedField {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed.length) {
+      return { defined: true, value: null }
+    }
+    return { defined: true, value: trimmed }
+  }
+
+  if (value === null) {
+    return { defined: true, value: null }
+  }
+
+  return { defined: false, value: null }
+}
+
+async function loadLeaguePlayerStats(personId: number): Promise<LeaguePlayerStatsPayload | null> {
+  const aggregated = await prisma.playerClubCareerStats.aggregate({
+    where: { personId },
+    _sum: {
+      totalMatches: true,
+      totalGoals: true,
+      totalAssists: true,
+      penaltyGoals: true,
+      yellowCards: true,
+      redCards: true,
+    },
+  })
+
+  const sums = aggregated._sum
+  if (!sums) {
     return null
   }
 
-  return rows.reduce<LeaguePlayerStatsPayload>(
-    (acc, row) => ({
-      matches: acc.matches + row.totalMatches,
-      goals: acc.goals + row.totalGoals,
-      assists: acc.assists + row.totalAssists,
-      penaltyGoals: acc.penaltyGoals + row.penaltyGoals,
-      yellowCards: acc.yellowCards + row.yellowCards,
-      redCards: acc.redCards + row.redCards,
-    }),
-    { matches: 0, goals: 0, assists: 0, penaltyGoals: 0, yellowCards: 0, redCards: 0 }
-  )
+  const matches = sums.totalMatches ?? 0
+  const goals = sums.totalGoals ?? 0
+  const assists = sums.totalAssists ?? 0
+  const penaltyGoals = sums.penaltyGoals ?? 0
+  const yellowCards = sums.yellowCards ?? 0
+  const redCards = sums.redCards ?? 0
+
+  const hasStats =
+    matches > 0 || goals > 0 || assists > 0 || penaltyGoals > 0 || yellowCards > 0 || redCards > 0
+
+  if (!hasStats) {
+    return null
+  }
+
+  return {
+    matches,
+    goals,
+    assists,
+    penaltyGoals,
+    yellowCards,
+    redCards,
+  }
+}
+
+async function loadSerializedUserPayload(
+  telegramId: string,
+  logger?: LoggerLike
+): Promise<SerializedProfilePayload | null> {
+  let numericTelegramId: bigint
+  try {
+    numericTelegramId = BigInt(telegramId)
+  } catch {
+    return null
+  }
+
+  const user = await prisma.appUser.findUnique({
+    where: { telegramId: numericTelegramId },
+    include: {
+      leaguePlayer: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+        },
+      },
+    },
+  })
+
+  if (!user) {
+    return null
+  }
+
+  const serializedUser = serializePrisma(user) as SerializedProfilePayload
+
+  if (typeof user.leaguePlayerId === 'number') {
+    try {
+      const stats = await loadLeaguePlayerStats(user.leaguePlayerId)
+      serializedUser.leaguePlayerStats = stats
+    } catch (err) {
+      logger?.error?.({ err, leaguePlayerId: user.leaguePlayerId }, 'profile stats aggregation failed')
+      serializedUser.leaguePlayerStats = null
+    }
+  } else {
+    serializedUser.leaguePlayerStats = null
+  }
+
+  return serializedUser
 }
 
 export default async function (server: FastifyInstance) {
@@ -272,29 +369,73 @@ export default async function (server: FastifyInstance) {
     if (!userId) return reply.status(400).send({ error: 'user id missing' })
 
     try {
-      const user = await prisma.appUser.upsert({
-        where: { telegramId: BigInt(userId) },
-        create: {
-          telegramId: BigInt(userId),
-          username,
-          firstName: firstName || null,
-          photoUrl: photoUrl || null,
-        },
-        update: {
-          username,
-          firstName: firstName || undefined,
-          photoUrl: photoUrl || undefined,
-        },
+      const usernameField = normalizeIncomingField(username)
+      const firstNameField = normalizeIncomingField(firstName)
+      const photoUrlField = normalizeIncomingField(photoUrl)
+
+      const numericTelegramId = BigInt(userId)
+      const existingUser = await prisma.appUser.findUnique({
+        where: { telegramId: numericTelegramId },
       })
 
-      const serializedUser = serializePrisma(user)
+      let userRecord = existingUser
+      let cacheNeedsRefresh = false
+
+      if (!existingUser) {
+        userRecord = await prisma.appUser.create({
+          data: {
+            telegramId: numericTelegramId,
+            username: usernameField.value,
+            firstName: firstNameField.value,
+            photoUrl: photoUrlField.value,
+          },
+        })
+        cacheNeedsRefresh = true
+      } else {
+        const updateData: Prisma.AppUserUpdateInput = {}
+
+        if (usernameField.defined && existingUser.username !== usernameField.value) {
+          updateData.username = usernameField.value
+        }
+        if (firstNameField.defined && existingUser.firstName !== firstNameField.value) {
+          updateData.firstName = firstNameField.value
+        }
+        if (photoUrlField.defined && existingUser.photoUrl !== photoUrlField.value) {
+          updateData.photoUrl = photoUrlField.value
+        }
+
+        if (Object.keys(updateData).length > 0) {
+          userRecord = await prisma.appUser.update({
+            where: { telegramId: numericTelegramId },
+            data: updateData,
+          })
+          cacheNeedsRefresh = true
+        }
+      }
+
+      if (!userRecord) {
+        server.log.error({ userId }, 'telegram-init: failed to resolve user record after upsert')
+        return reply.status(500).send({ error: 'user_resolution_failed' })
+      }
+
       const userCacheKey = `user:${userId}`
-      await defaultCache.set(userCacheKey, serializedUser, PROFILE_CACHE_OPTIONS)
-      const { version: profileVersion } = await defaultCache.getWithMeta(
-        userCacheKey,
-        async () => serializedUser,
-        PROFILE_CACHE_OPTIONS
-      )
+
+      if (cacheNeedsRefresh) {
+        await defaultCache.invalidate(userCacheKey)
+      }
+
+      const { value: serializedUser, version: profileVersion } =
+        await defaultCache.getWithMeta<SerializedProfilePayload>(
+          userCacheKey,
+          async () => {
+            const payload = await loadSerializedUserPayload(userId, server.log)
+            if (payload) {
+              return payload
+            }
+            return serializePrisma(userRecord) as SerializedProfilePayload
+          },
+          PROFILE_CACHE_OPTIONS
+        )
 
       const origin = (request.headers.origin as string) || '*'
       const etag = buildProfileEtag(userId, profileVersion, serializedUser)
@@ -342,7 +483,9 @@ export default async function (server: FastifyInstance) {
 
       // Create a JWT session token (short lived) and set as httpOnly cookie
       const jwtSecret = process.env.JWT_SECRET || process.env.TELEGRAM_BOT_TOKEN || 'dev-secret'
-      const token = jwt.sign({ sub: String(user.telegramId), username: user.username }, jwtSecret, {
+      const tokenPayloadUsername =
+        typeof userRecord.username === 'string' ? userRecord.username : undefined
+      const token = jwt.sign({ sub: String(userRecord.telegramId), username: tokenPayloadUsername }, jwtSecret, {
         expiresIn: '7d',
       })
 
@@ -389,35 +532,30 @@ export default async function (server: FastifyInstance) {
 
       // Use cache for user data (5 min TTL + SWR)
       const cacheKey = `user:${sub}`
-      const { value: u, version: profileVersion } = await defaultCache.getWithMeta(
-        cacheKey,
-        async () => {
-          return await prisma.appUser.findUnique({
-            where: { telegramId: BigInt(sub) },
-            include: {
-              leaguePlayer: true,
-            },
-          })
-        },
-        PROFILE_CACHE_OPTIONS
-      )
 
-      if (!u) return reply.status(404).send({ error: 'not_found' })
-      const serializedUser = serializePrisma(u) as Record<string, unknown>
-
-      const leaguePlayerId = u.leaguePlayerId
-      if (typeof leaguePlayerId === 'number') {
-        try {
-          const career = await prisma.playerClubCareerStats.findMany({
-            where: { personId: leaguePlayerId },
-          })
-          const aggregated = aggregateCareerStats(career)
-          if (aggregated) {
-            serializedUser.leaguePlayerStats = aggregated
-          }
-        } catch (err) {
-          request.log.error({ err, leaguePlayerId }, 'failed to load league player stats')
+      let serializedUser: SerializedProfilePayload
+      let profileVersion: number
+      try {
+        const result = await defaultCache.getWithMeta<SerializedProfilePayload>(
+          cacheKey,
+          async () => {
+            const payload = await loadSerializedUserPayload(sub, request.log)
+            if (!payload) {
+              throw new Error('profile_not_found')
+            }
+            return payload
+          },
+          PROFILE_CACHE_OPTIONS
+        )
+        serializedUser = result.value
+        profileVersion = result.version
+      } catch (loadErr) {
+        if (loadErr instanceof Error && loadErr.message === 'profile_not_found') {
+          await defaultCache.invalidate(cacheKey)
+          return reply.status(404).send({ error: 'not_found' })
         }
+        request.log.error({ err: loadErr, userId: sub }, 'failed to load cached profile payload')
+        return reply.status(500).send({ error: 'internal' })
       }
 
       const origin = (request.headers.origin as string) || '*'

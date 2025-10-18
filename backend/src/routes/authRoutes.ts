@@ -7,10 +7,68 @@ import {
   validate3rd as validateInitDataSignature,
 } from '@tma.js/init-data-node'
 import { PlayerClubCareerStats } from '@prisma/client'
+import { createHash } from 'crypto'
 import { serializePrisma, isSerializedAppUserPayload } from '../utils/serialization'
-import { defaultCache } from '../cache'
+import { defaultCache, type CacheFetchOptions } from '../cache'
 
 const INIT_DATA_MAX_AGE_SEC = 24 * 60 * 60
+const PROFILE_CACHE_TTL_SECONDS = 5 * 60
+const PROFILE_CACHE_OPTIONS: CacheFetchOptions = {
+  ttlSeconds: PROFILE_CACHE_TTL_SECONDS,
+  staleWhileRevalidateSeconds: PROFILE_CACHE_TTL_SECONDS * 2,
+  lockTimeoutSeconds: 10,
+}
+
+function buildProfileEtag(userId: string, version: number, payload: unknown): string {
+  const hash = createHash('sha1').update(JSON.stringify(payload ?? null)).digest('hex')
+  return `W/"user:${userId}:v${version}:${hash}"`
+}
+
+function normalizeWeakEtag(value: string): string {
+  const trimmed = value.trim()
+  if (trimmed.length >= 2 && trimmed[1] === '/' && (trimmed[0] === 'W' || trimmed[0] === 'w')) {
+    return trimmed.slice(2)
+  }
+  return trimmed
+}
+
+function stripEtagQuotes(value: string): string {
+  const trimmed = value.trim()
+  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    return trimmed.slice(1, -1)
+  }
+  return trimmed
+}
+
+function etagMatches(etag: string, header: string | undefined): boolean {
+  if (!header) {
+    return false
+  }
+
+  const normalizedEtag = stripEtagQuotes(normalizeWeakEtag(etag))
+  const candidates = header
+    .split(',')
+    .map(candidate => candidate.trim())
+    .filter(candidate => candidate.length > 0)
+
+  if (candidates.includes('*')) {
+    return true
+  }
+
+  return candidates.some(candidate => {
+    const normalizedCandidate = stripEtagQuotes(normalizeWeakEtag(candidate))
+    return normalizedCandidate === normalizedEtag
+  })
+}
+
+function applyProfileCacheHeaders(reply: FastifyReply, origin: string, etag: string) {
+  reply.header('Access-Control-Allow-Origin', origin)
+  reply.header('Access-Control-Allow-Credentials', 'true')
+  reply.header('Cache-Control', 'private, max-age=0, must-revalidate')
+  reply.header('Access-Control-Expose-Headers', 'ETag, Cache-Control')
+  reply.header('ETag', etag)
+  reply.header('Vary', 'Authorization, Cookie, X-Telegram-Init-Data')
+}
 
 type TelegramInitBody =
   | string
@@ -81,7 +139,10 @@ export default async function (server: FastifyInstance) {
     reply.header('Access-Control-Allow-Origin', origin)
     reply.header('Access-Control-Allow-Credentials', 'true')
     reply.header('Access-Control-Allow-Methods', 'POST, OPTIONS')
-    reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    reply.header(
+      'Access-Control-Allow-Headers',
+      'Content-Type, Authorization, X-Telegram-Init-Data, If-None-Match'
+    )
     reply.header('Access-Control-Max-Age', '600')
     return reply.status(204).send()
   })
@@ -90,7 +151,7 @@ export default async function (server: FastifyInstance) {
     reply.header('Access-Control-Allow-Origin', origin)
     reply.header('Access-Control-Allow-Credentials', 'true')
     reply.header('Access-Control-Allow-Methods', 'GET, OPTIONS')
-    reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, If-None-Match')
     reply.header('Access-Control-Max-Age', '600')
     return reply.status(204).send()
   })
@@ -150,7 +211,7 @@ export default async function (server: FastifyInstance) {
           'telegram-init: accepted JSON user payload without signature (dev fallback)'
         )
         server.log.info(
-          { userId, username, photoUrl, verificationMethod },
+          { userId, username, firstName, photoUrl, verificationMethod },
           'telegram-init: initData processed via JSON payload'
         )
       } else {
@@ -191,7 +252,7 @@ export default async function (server: FastifyInstance) {
         }
 
         server.log.info(
-          { userId, username, photoUrl, verificationMethod },
+          { userId, username, firstName, photoUrl, verificationMethod },
           'telegram-init: initData verified'
         )
       }
@@ -226,37 +287,57 @@ export default async function (server: FastifyInstance) {
         },
       })
 
-      // Invalidate cache after upsert
+      const serializedUser = serializePrisma(user)
       const userCacheKey = `user:${userId}`
-      await defaultCache.invalidate(userCacheKey)
+      await defaultCache.set(userCacheKey, serializedUser, PROFILE_CACHE_OPTIONS)
+      const { version: profileVersion } = await defaultCache.getWithMeta(
+        userCacheKey,
+        async () => serializedUser,
+        PROFILE_CACHE_OPTIONS
+      )
 
-      // Publish real-time updates для WebSocket subscribers
-      try {
-        const userPayload = serializePrisma(user)
+      const origin = (request.headers.origin as string) || '*'
+      const etag = buildProfileEtag(userId, profileVersion, serializedUser)
+      const ifNoneMatchHeader = request.headers['if-none-match'] as string | undefined
 
-        if (!isSerializedAppUserPayload(userPayload)) {
-          server.log.warn({ userPayload }, 'Unexpected user payload shape after serialization')
-        } else {
-          const realtimePayload = {
-            type: 'profile_updated' as const,
-            telegramId: userPayload.telegramId,
-            username: userPayload.username,
-            firstName: userPayload.firstName,
-            photoUrl: userPayload.photoUrl,
-            updatedAt: userPayload.updatedAt,
+      applyProfileCacheHeaders(reply, origin, etag)
+
+      const isNotModified = etagMatches(etag, ifNoneMatchHeader)
+
+      if (!isNotModified) {
+        // Publish real-time updates для WebSocket subscribers
+        try {
+          if (!isSerializedAppUserPayload(serializedUser)) {
+            server.log.warn(
+              { userPayload: serializedUser },
+              'Unexpected user payload shape after serialization'
+            )
+          } else {
+            const realtimePayload = {
+              type: 'profile_updated' as const,
+              telegramId: serializedUser.telegramId,
+              username: serializedUser.username,
+              firstName: serializedUser.firstName,
+              photoUrl: serializedUser.photoUrl,
+              updatedAt: serializedUser.updatedAt,
+            }
+
+            // Персональный топик пользователя
+            await server.publishTopic(`user:${userId}`, realtimePayload)
+
+            // Глобальный топик профилей (для админки, статистики и т.д.)
+            await server.publishTopic('profile', realtimePayload)
+
+            server.log.info({ userId }, 'Published profile updates to WebSocket topics')
           }
-
-          // Персональный топик пользователя
-          await server.publishTopic(`user:${userId}`, realtimePayload)
-
-          // Глобальный топик профилей (для админки, статистики и т.д.)
-          await server.publishTopic('profile', realtimePayload)
-
-          server.log.info({ userId }, 'Published profile updates to WebSocket topics')
+        } catch (wsError) {
+          server.log.warn({ err: wsError }, 'Failed to publish WebSocket updates')
+          // Не прерываем выполнение, WebSocket не критичен для auth flow
         }
-      } catch (wsError) {
-        server.log.warn({ err: wsError }, 'Failed to publish WebSocket updates')
-        // Не прерываем выполнение, WebSocket не критичен для auth flow
+      }
+
+      if (isNotModified) {
+        return reply.status(304).send()
       }
 
       // Create a JWT session token (short lived) and set as httpOnly cookie
@@ -278,10 +359,6 @@ export default async function (server: FastifyInstance) {
         // fallback: send token in body only
       }
 
-      const serializedUser = serializePrisma(user)
-      const origin = (request.headers.origin as string) || '*'
-      reply.header('Access-Control-Allow-Origin', origin)
-      reply.header('Access-Control-Allow-Credentials', 'true')
       return reply.send({ ok: true, user: serializedUser, token })
     } catch (err) {
       server.log.error({ err }, 'telegram-init upsert failed')
@@ -310,9 +387,9 @@ export default async function (server: FastifyInstance) {
           : undefined
       if (!sub) return reply.status(401).send({ error: 'bad_token' })
 
-      // Use cache for user data (5 min TTL)
+      // Use cache for user data (5 min TTL + SWR)
       const cacheKey = `user:${sub}`
-      const u = await defaultCache.get(
+      const { value: u, version: profileVersion } = await defaultCache.getWithMeta(
         cacheKey,
         async () => {
           return await prisma.appUser.findUnique({
@@ -322,8 +399,8 @@ export default async function (server: FastifyInstance) {
             },
           })
         },
-        300
-      ) // 5 minutes TTL
+        PROFILE_CACHE_OPTIONS
+      )
 
       if (!u) return reply.status(404).send({ error: 'not_found' })
       const serializedUser = serializePrisma(u) as Record<string, unknown>
@@ -344,8 +421,15 @@ export default async function (server: FastifyInstance) {
       }
 
       const origin = (request.headers.origin as string) || '*'
-      reply.header('Access-Control-Allow-Origin', origin)
-      reply.header('Access-Control-Allow-Credentials', 'true')
+      const etag = buildProfileEtag(sub, profileVersion, serializedUser)
+      const ifNoneMatchHeader = request.headers['if-none-match'] as string | undefined
+
+      applyProfileCacheHeaders(reply, origin, etag)
+
+      if (etagMatches(etag, ifNoneMatchHeader)) {
+        return reply.status(304).send()
+      }
+
       return reply.send({ ok: true, user: serializedUser })
     } catch (e) {
       const msg = e instanceof Error ? e.message : undefined

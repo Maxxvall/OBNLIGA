@@ -204,10 +204,11 @@ export default function Profile() {
 
           if (r.status === 304) {
             if (cached?.data) {
+              setCachedProfile(cached.data, r.headers.get('ETag') ?? cached.etag)
               setUser(cached.data)
-              console.log('Using cached profile (304 Not Modified)')
-              return
             }
+            console.log('Using cached profile (304 Not Modified)')
+            return
           } else if (r.ok) {
             const responseBody = (await r.json()) as unknown
             console.log('Backend response:', responseBody)
@@ -246,10 +247,11 @@ export default function Profile() {
 
           if (resp.status === 304) {
             if (cached?.data) {
+              setCachedProfile(cached.data, resp.headers.get('ETag') ?? cached.etag)
               setUser(cached.data)
-              console.log('Using cached profile (304 Not Modified)')
-              return
             }
+            console.log('Using cached profile (304 Not Modified)')
+            return
           } else if (resp.ok) {
             const payload = (await resp.json()) as unknown
             console.log('Token-based profile load:', payload)
@@ -397,7 +399,7 @@ export default function Profile() {
             {user && user.photoUrl ? (
               <img
                 src={user.photoUrl}
-                alt={user.username || user.firstName || 'avatar'}
+                alt={user.firstName || user.username || 'avatar'}
                 className="profile-avatar"
               />
             ) : (
@@ -414,7 +416,7 @@ export default function Profile() {
 
           <div className="profile-info">
             <h1 className="profile-name">
-              {loading ? 'Загрузка...' : user?.username || user?.firstName || 'Гость'}
+              {loading ? 'Загрузка...' : user?.firstName || user?.username || 'Гость'}
             </h1>
             <div className={`profile-status-message status-${status.toLowerCase()}`}>
               {statusMessage}

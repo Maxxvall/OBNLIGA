@@ -12,7 +12,6 @@ type LeagueStatsViewProps = {
   loading: boolean
   error?: string
   onRetry: () => void
-  lastUpdated?: number
 }
 
 type ColumnConfig = {
@@ -121,22 +120,6 @@ const CATEGORY_CONFIG: Record<LeagueStatsCategory, CategoryConfig> = {
   },
 }
 
-const formatUpdatedAt = (generatedAt?: string, fallback?: number): string | undefined => {
-  if (generatedAt) {
-    const stamp = new Date(generatedAt)
-    if (!Number.isNaN(stamp.getTime())) {
-      return stamp.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-    }
-  }
-  if (fallback) {
-    const stamp = new Date(fallback)
-    if (!Number.isNaN(stamp.getTime())) {
-      return stamp.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-    }
-  }
-  return undefined
-}
-
 const formatPlayerName = (entry: LeaguePlayerLeaderboardEntry): string => {
   const last = entry.lastName?.trim() ?? ''
   const first = entry.firstName?.trim() ?? ''
@@ -158,7 +141,6 @@ export const LeagueStatsView: React.FC<LeagueStatsViewProps> = ({
   loading,
   error,
   onRetry,
-  lastUpdated,
 }) => {
   const [activeIndex, setActiveIndex] = useState(0)
   const openTeamView = useAppStore(state => state.openTeamView)
@@ -174,11 +156,6 @@ export const LeagueStatsView: React.FC<LeagueStatsViewProps> = ({
     }
     return stats.leaderboards[activeCategory] ?? []
   }, [stats, activeCategory])
-
-  const updatedLabel = useMemo(
-    () => formatUpdatedAt(stats?.generatedAt, lastUpdated),
-    [stats?.generatedAt, lastUpdated]
-  )
 
   const isInitialLoading = loading && !stats
   const isRefreshing = loading && Boolean(stats)
@@ -253,9 +230,6 @@ export const LeagueStatsView: React.FC<LeagueStatsViewProps> = ({
             &gt;
           </button>
         </div>
-        <span className="muted stats-updated">
-          {updatedLabel ?? 'Актуальные данные'}
-        </span>
       </header>
 
       <div className={`stats-table ${metricsClass}`} role="table">

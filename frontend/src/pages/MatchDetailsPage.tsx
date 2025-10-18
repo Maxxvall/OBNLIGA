@@ -9,14 +9,6 @@ import type {
 } from '@shared/types'
 import '../styles/matchDetails.css'
 
-const DATE_TIME_FORMATTER = new Intl.DateTimeFormat('ru-RU', {
-  day: '2-digit',
-  month: '2-digit',
-  year: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-})
-
 const formatMatchDateLabel = (iso?: string | null): string => {
   if (!iso) {
     return 'Дата уточняется'
@@ -25,7 +17,12 @@ const formatMatchDateLabel = (iso?: string | null): string => {
   if (Number.isNaN(date.getTime())) {
     return 'Дата уточняется'
   }
-  return DATE_TIME_FORMATTER.format(date)
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const year = String(date.getFullYear()).slice(-2)
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${day}.${month}.${year} ${hours}:${minutes}`
 }
 
 const buildLocationLabel = (
@@ -54,16 +51,16 @@ type StatusBadge = { label: string; tone: 'live' | 'scheduled' | 'finished' | 'p
 
 const getStatusBadge = (status?: MatchStatus): StatusBadge | null => {
   switch (status) {
-    case 'LIVE':
-      return { label: 'Матч идёт', tone: 'live' }
-    case 'FINISHED':
-      return { label: 'Завершён', tone: 'finished' }
-    case 'POSTPONED':
-      return { label: 'Перенесён', tone: 'postponed' }
-    case 'SCHEDULED':
-      return { label: 'Запланирован', tone: 'scheduled' }
-    default:
-      return null
+  case 'LIVE':
+    return { label: 'Матч идёт', tone: 'live' }
+  case 'FINISHED':
+    return { label: 'Завершён', tone: 'finished' }
+  case 'POSTPONED':
+    return { label: 'Перенесён', tone: 'postponed' }
+  case 'SCHEDULED':
+    return { label: 'Запланирован', tone: 'scheduled' }
+  default:
+    return null
   }
 }
 
@@ -209,11 +206,9 @@ export const MatchDetailsPage: React.FC = () => {
   }
 
   const homeName = header?.ht.n ?? snapshot?.homeClub.name ?? '—'
-  const homeShort = header?.ht.sn ?? snapshot?.homeClub.shortName ?? undefined
   const homeLogo = header?.ht.lg ?? snapshot?.homeClub.logoUrl ?? undefined
 
   const awayName = header?.at.n ?? snapshot?.awayClub.name ?? '—'
-  const awayShort = header?.at.sn ?? snapshot?.awayClub.shortName ?? undefined
   const awayLogo = header?.at.lg ?? snapshot?.awayClub.logoUrl ?? undefined
 
   const penaltyHome = header?.ph ?? snapshot?.penaltyHomeScore ?? null
@@ -249,13 +244,8 @@ export const MatchDetailsPage: React.FC = () => {
             </div>
             <div className="match-teams">
               <div className="team home">
+                <span className="team-name">{homeName}</span>
                 {homeLogo && <img src={homeLogo} alt={homeName} className="team-logo" />}
-                <div className="team-labels">
-                  <span className="team-name">{homeName}</span>
-                  {homeShort && homeShort !== homeName && (
-                    <span className="team-short">{homeShort}</span>
-                  )}
-                </div>
               </div>
               <div className="match-score">
                 <div className="score-main">
@@ -275,12 +265,7 @@ export const MatchDetailsPage: React.FC = () => {
                 )}
               </div>
               <div className="team away">
-                <div className="team-labels">
-                  <span className="team-name">{awayName}</span>
-                  {awayShort && awayShort !== awayName && (
-                    <span className="team-short">{awayShort}</span>
-                  )}
-                </div>
+                <span className="team-name">{awayName}</span>
                 {awayLogo && <img src={awayLogo} alt={awayName} className="team-logo" />}
               </div>
             </div>

@@ -10,7 +10,7 @@ const TAB_CONFIG: Array<{ key: TeamSubTab; label: string }> = [
   { key: 'squad', label: 'Состав' },
 ]
 
-const formatDateTime = (value?: string) => {
+const formatFormDate = (value?: string) => {
   if (!value) {
     return ''
   }
@@ -18,13 +18,9 @@ const formatDateTime = (value?: string) => {
   if (Number.isNaN(date.getTime())) {
     return value
   }
-  return date.toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  return `${day}.${month}`
 }
 
 const FORM_LABEL: Record<ClubSummaryResponse['form'][number]['result'], string> = {
@@ -113,7 +109,7 @@ const renderForm = (summary: ClubSummaryResponse) => {
       {summary.form.map(entry => {
         const tone = FORM_TONE[entry.result]
         const resultLabel = FORM_LABEL[entry.result]
-        const formattedDate = formatDateTime(entry.matchDateTime).split(' ').slice(0, 1).join(' ')
+        const formattedDate = formatFormDate(entry.matchDateTime)
         return (
           <div key={entry.matchId} className="team-form-item">
             <span className="team-form-date-compact">{formattedDate}</span>

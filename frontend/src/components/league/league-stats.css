@@ -3,7 +3,7 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
-  padding: 18px 20px 22px;
+  padding: 18px 10px 22px;
   border-radius: 16px;
   background: rgba(12, 20, 36, 0.82);
   border: 1px solid rgba(0, 240, 255, 0.16);
@@ -169,7 +169,7 @@
 }
 
 .col-metric {
-  font-size: 13px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
   color: rgba(229, 244, 255, 0.86);
 }
@@ -245,7 +245,6 @@
 
 @media (max-width: 540px) {
   .league-stats {
-    padding: 16px;
     gap: 16px;
   }
 
@@ -282,7 +281,7 @@
   }
 
   .stats-row.metrics-4 {
-    grid-template-columns: 28px minmax(0, 1.3fr) minmax(56px, 0.7fr) repeat(4, minmax(0, 0.5fr));
+    grid-template-columns: 12px minmax(0, 1.3fr) minmax(56px, 0.7fr) repeat(4, minmax(0, 0.4fr));
   }
 
   .stats-row.metrics-3 {

@@ -7,16 +7,6 @@ type LeagueTableViewProps = {
   loading: boolean
   error?: string
   onRetry: () => void
-  lastUpdated?: number
-}
-
-const formatTime = (value?: number): string => {
-  if (!value) return ''
-  const date = new Date(value)
-  return date.toLocaleTimeString('ru-RU', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
 }
 
 export const LeagueTableView: React.FC<LeagueTableViewProps> = ({
@@ -24,11 +14,13 @@ export const LeagueTableView: React.FC<LeagueTableViewProps> = ({
   loading,
   error,
   onRetry,
-  lastUpdated,
 }) => {
   const openTeamView = useAppStore(state => state.openTeamView)
 
-  const standings = table?.standings ?? []
+  const standings = React.useMemo(
+    () => table?.standings ?? [],
+    [table]
+  )
   const groups = table?.groups ?? undefined
 
   const standingsByClubId = React.useMemo(() => {
@@ -162,7 +154,6 @@ export const LeagueTableView: React.FC<LeagueTableViewProps> = ({
   }
 
   const { season } = table
-  const updatedLabel = lastUpdated ? `Обновлено в ${formatTime(lastUpdated)}` : 'Актуальные данные'
   const isRefreshing = loading && Boolean(table)
 
   const renderHeaderRow = () => (
@@ -253,7 +244,6 @@ export const LeagueTableView: React.FC<LeagueTableViewProps> = ({
           <h2>{season.name}</h2>
           <p>{season.competition.name}</p>
         </div>
-        <span className="muted">{updatedLabel}</span>
       </header>
       {hasGroups ? (
         <div className="league-table-groups">

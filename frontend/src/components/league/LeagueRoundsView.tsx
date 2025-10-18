@@ -9,7 +9,6 @@ type LeagueRoundsViewProps = {
   loading: boolean
   error?: string
   onRetry: () => void
-  lastUpdated?: number
 }
 
 type PlayoffPodiumSummary = {
@@ -126,17 +125,6 @@ const buildMatchDescriptor = (match: LeagueMatchView, mode: 'schedule' | 'result
     modifier: undefined,
     series: buildSeriesDescriptor(match, mode),
   }
-}
-
-const formatUpdatedLabel = (timestamp?: number): string => {
-  if (!timestamp) {
-    return 'Актуальные данные'
-  }
-  const date = new Date(timestamp)
-  if (Number.isNaN(date.getTime())) {
-    return 'Актуальные данные'
-  }
-  return `Обновлено в ${TIME_FORMATTER.format(date)}`
 }
 
 const getEmptyMessage = (mode: 'schedule' | 'results'): string => {
@@ -355,7 +343,6 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
   loading,
   error,
   onRetry,
-  lastUpdated,
 }) => {
   const openTeamView = useAppStore(state => state.openTeamView)
   const openMatchDetails = useAppStore(state => state.openMatchDetails)
@@ -509,7 +496,6 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
     ((playoffState.hasSeries && playoffState.allSeriesFinished && playoffState.summary) ||
       (allowTableFallback && podium.length >= 3))
   const headerTitle = mode === 'schedule' ? 'Календарь матчей' : 'Результаты'
-  const updatedLabel = formatUpdatedLabel(lastUpdated)
   const isRefreshing = loading && Boolean(data)
 
   return (
@@ -523,7 +509,6 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
           <h2>{headerTitle}</h2>
           <p>{season.name}</p>
         </div>
-        <span className="muted">{updatedLabel}</span>
       </header>
 
       {rounds.length === 0 ? (

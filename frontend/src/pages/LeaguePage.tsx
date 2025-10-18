@@ -99,10 +99,6 @@ const LeaguePage: React.FC = () => {
   const statsErrors = useAppStore(state => state.errors.stats)
   const leagueMenuOpen = useAppStore(state => state.leagueMenuOpen)
   const closeLeagueMenu = useAppStore(state => state.closeLeagueMenu)
-  const tableFetchedAt = useAppStore(state => state.tableFetchedAt)
-  const scheduleFetchedAt = useAppStore(state => state.scheduleFetchedAt)
-  const resultsFetchedAt = useAppStore(state => state.resultsFetchedAt)
-  const statsFetchedAt = useAppStore(state => state.statsFetchedAt)
   const tables = useAppStore(state => state.tables)
   const schedules = useAppStore(state => state.schedules)
   const results = useAppStore(state => state.results)
@@ -201,13 +197,9 @@ const LeaguePage: React.FC = () => {
   }, [seasons])
 
   const table = selectedSeasonId ? tables[selectedSeasonId] : undefined
-  const lastUpdated = selectedSeasonId ? tableFetchedAt[selectedSeasonId] : undefined
   const scheduleData = selectedSeasonId ? schedules[selectedSeasonId] : undefined
-  const scheduleUpdatedAt = selectedSeasonId ? scheduleFetchedAt[selectedSeasonId] : undefined
   const resultsData = selectedSeasonId ? results[selectedSeasonId] : undefined
-  const resultsUpdatedAt = selectedSeasonId ? resultsFetchedAt[selectedSeasonId] : undefined
   const statsData = selectedSeasonId ? stats[selectedSeasonId] : undefined
-  const statsUpdatedAt = selectedSeasonId ? statsFetchedAt[selectedSeasonId] : undefined
 
   useEffect(() => {
     setExpandedCities(prev => {
@@ -568,7 +560,6 @@ const LeaguePage: React.FC = () => {
             loading={loadingTable}
             error={tableErrors}
             onRetry={handleForceReload}
-            lastUpdated={lastUpdated}
           />
         ) : leagueSubTab === 'schedule' ? (
           <LeagueRoundsView
@@ -577,7 +568,6 @@ const LeaguePage: React.FC = () => {
             loading={loadingSchedule}
             error={scheduleErrors}
             onRetry={handleScheduleReload}
-            lastUpdated={scheduleUpdatedAt}
           />
         ) : leagueSubTab === 'results' ? (
           <LeagueRoundsView
@@ -586,7 +576,6 @@ const LeaguePage: React.FC = () => {
             loading={loadingResults}
             error={resultsErrors}
             onRetry={handleResultsReload}
-            lastUpdated={resultsUpdatedAt}
           />
         ) : leagueSubTab === 'stats' ? (
           <LeagueStatsView
@@ -594,7 +583,6 @@ const LeaguePage: React.FC = () => {
             loading={loadingStats}
             error={statsErrors}
             onRetry={handleStatsReload}
-            lastUpdated={statsUpdatedAt}
           />
         ) : (
           <Placeholder message="Раздел скоро появится." />

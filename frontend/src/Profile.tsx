@@ -127,13 +127,14 @@ export default function Profile() {
     }
   }
 
-  const loadProfile = useCallback(async (opts?: { background?: boolean }) => {
+  const loadProfile = useCallback(async (opts?: { background?: boolean; skipCache?: boolean }) => {
     if (isFetchingRef.current) {
       return
     }
 
     const isBackground = Boolean(opts?.background)
-    const cached = getCachedProfile()
+    const skipCache = Boolean(opts?.skipCache)
+    const cached = skipCache ? null : getCachedProfile()
     if (!isBackground && cached?.data) {
       setUser(cached.data)
       console.log('Loaded profile from cache')
@@ -191,7 +192,7 @@ export default function Profile() {
           if (typeof initDataValue === 'string' && initDataValue.length > 0) {
             headers['X-Telegram-Init-Data'] = initDataValue
           }
-          if (cached?.etag) {
+          if (!skipCache && cached?.etag) {
             headers['If-None-Match'] = cached.etag
           }
 
@@ -239,7 +240,7 @@ export default function Profile() {
         const token = localStorage.getItem('session')
         if (token) {
           const headers: Record<string, string> = { Authorization: `Bearer ${token}` }
-          if (cached?.etag) {
+          if (!skipCache && cached?.etag) {
             headers['If-None-Match'] = cached.etag
           }
 
@@ -313,13 +314,13 @@ export default function Profile() {
       : []
 
   const statusMessage = (() => {
-    if (status === 'VERIFIED') {
-      return playerName ? `Подтверждён игрок лиги: ${playerName}` : 'Подтверждён игрок лиги.'
-    }
     if (status === 'PENDING') {
       return 'Заявка на подтверждение отправлена. Ожидайте решения администратора.'
     }
-    return 'Подтвердите статус игрока лиги, чтобы открыть персональную статистику.'
+    if (status === 'NONE') {
+      return 'Подтвердите статус игрока лиги, чтобы открыть персональную статистику.'
+    }
+    return null
   })()
 
   useEffect(() => {
@@ -380,16 +381,17 @@ export default function Profile() {
 
       const profile = readProfileUser(parsed)
       if (profile) {
-        setCachedProfile(profile)
         setUser(profile)
       }
+      localStorage.removeItem(CACHE_KEY)
+      void loadProfile({ skipCache: true })
       setShowVerifyModal(false)
     } catch (err) {
       setVerifyError('Не удалось отправить запрос. Попробуйте позже.')
     } finally {
       setVerifyLoading(false)
     }
-  }, [verifyLoading])
+  }, [verifyLoading, loadProfile])
 
   return (
     <div className="profile-container">
@@ -416,12 +418,30 @@ export default function Profile() {
 
           <div className="profile-info">
             <h1 className="profile-name">
-              {loading ? 'Загрузка...' : user?.firstName || user?.username || 'Гость'}
+              {loading ? 'Загрузка...' : user?.username || user?.firstName || 'Гость'}
             </h1>
-            <div className={`profile-status-message status-${status.toLowerCase()}`}>
-              {statusMessage}
-            </div>
+            {statusMessage ? (
+              <div className={`profile-status-message status-${status.toLowerCase()}`}>
+                {statusMessage}
+              </div>
+            ) : null}
             {playerName ? <div className="league-player-name">{playerName}</div> : null}
+            {status === 'VERIFIED' ? (
+              <div className={`profile-stats ${statsList.length ? 'with-data' : 'empty'}`}>
+                {statsList.length ? (
+                  statsList.map(item => (
+                    <div className="stat-item" key={item.key}>
+                      <div className="stat-value">{item.value}</div>
+                      <div className="stat-label">{item.label}</div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="stats-placeholder">
+                    <p>Статистика появится автоматически, как только появятся данные матчей.</p>
+                  </div>
+                )}
+              </div>
+            ) : null}
             {status === 'NONE' ? (
               <div className="verification-actions">
                 <button
@@ -443,21 +463,6 @@ export default function Profile() {
               </div>
             ) : null}
           </div>
-        </div>
-
-        <div className={`profile-stats ${isVerified ? 'with-data' : 'empty'}`}>
-          {isVerified && statsList.length ? (
-            statsList.map(item => (
-              <div className="stat-item" key={item.key}>
-                <div className="stat-value">{item.value}</div>
-                <div className="stat-label">{item.label}</div>
-              </div>
-            ))
-          ) : (
-            <div className="stats-placeholder">
-              <p>Статистика появится после подтверждения администратора.</p>
-            </div>
-          )}
         </div>
 
         {showVerifyModal ? (

@@ -94,7 +94,6 @@
   padding: 16px 18px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
   transition: border-color 200ms ease, box-shadow 200ms ease;
 }
 
@@ -273,7 +272,6 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
   font-size: 13px;
   letter-spacing: 0.4px;
   color: rgba(255, 230, 255, 0.88);

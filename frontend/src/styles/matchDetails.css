@@ -15,7 +15,6 @@
 }
 
 .match-details-shell {
-  width: min(100%, 880px);
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -41,7 +40,6 @@
 }
 
 .match-details-header {
-  width: 100%;
   margin: 0;
   padding: 1.4rem 1.6rem;
   background: rgba(12, 18, 32, 0.9);
@@ -93,6 +91,7 @@
   gap: 0.35rem;
   color: rgba(196, 206, 223, 0.82);
   font-size: 0.85rem;
+  align-items: center;
 }
 
 .match-round {
@@ -288,7 +287,6 @@
 /* Tabs */
 .match-details-tabs {
   display: flex;
-  width: 100%;
   margin: 0;
   background: rgba(11, 17, 30, 0.88);
   border: 1px solid rgba(255, 255, 255, 0.05);
@@ -331,7 +329,6 @@
 .match-details-content {
   flex: 1;
   overflow-y: auto;
-  width: 100%;
     margin: 0;
   padding: 1.8rem 1.6rem 2.4rem;
   background: rgba(9, 15, 28, 0.82);
@@ -394,12 +391,7 @@
     gap: 0.6rem;
   }
 
-  .badge {
-    align-self: flex-start;
-  }
-
   .match-teams {
-    flex-direction: column;
     align-items: stretch;
     gap: 1rem;
   }
@@ -693,13 +685,8 @@
 }
 
 @media (max-width: 400px) {
-  .match-details-page {
-    padding: 0.75rem 0.25rem 1.1rem;
-  }
 
   .match-details-header {
-    margin: 0 0.75rem;
-    padding: 1rem;
     flex-direction: column;
     align-items: stretch;
     gap: 0.85rem;
@@ -707,7 +694,7 @@
 
   .match-header-top {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: center;
     gap: 0.5rem;
   }
 
@@ -716,16 +703,12 @@
   }
 
   .match-teams {
-    flex-direction: column;
     align-items: stretch;
     gap: 0.75rem;
   }
 
   .match-score {
-    order: -1;
-    width: 100%;
     padding: 0.85rem 1rem;
-    background: rgba(255, 255, 255, 0.04);
     border-radius: 16px;
   }
 
@@ -760,7 +743,6 @@
   }
 
   .match-details-tabs {
-    margin: 0 0.75rem;
     flex-wrap: wrap;
     border-radius: 0 0 12px 12px;
   }
@@ -772,7 +754,6 @@
   }
 
   .match-details-content {
-    margin: 0 0.75rem 1rem;
     padding: 1.2rem 1rem 1.6rem;
   }
 

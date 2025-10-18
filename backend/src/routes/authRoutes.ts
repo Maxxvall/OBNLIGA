@@ -113,8 +113,23 @@ type LeaguePlayerStatsPayload = {
   yellowCards: number
   redCards: number
 }
+type LeaguePlayerCareerEntryPayload = {
+  clubId: number
+  clubName: string
+  clubShortName: string
+  clubLogoUrl: string | null
+  fromYear: number | null
+  toYear: number | null
+  matches: number
+  goals: number
+  assists: number
+  penaltyGoals: number
+  yellowCards: number
+  redCards: number
+}
 type SerializedProfilePayload = Record<string, unknown> & {
   leaguePlayerStats?: LeaguePlayerStatsPayload | null
+  leaguePlayerCareer?: LeaguePlayerCareerEntryPayload[] | null
 }
 
 type NormalizedField = {
@@ -184,6 +199,287 @@ async function loadLeaguePlayerStats(personId: number): Promise<LeaguePlayerStat
   }
 }
 
+type RosterSeasonSnapshot = {
+  startDate: Date
+  endDate: Date
+  isActive: boolean
+}
+
+type MatchBounds = {
+  firstDate: Date | null
+  lastDate: Date | null
+}
+
+function pickMinDate(values: Date[]): Date | null {
+  let candidate: Date | null = null
+  values.forEach(value => {
+    if (!(value instanceof Date)) {
+      return
+    }
+    const time = value.getTime()
+    if (Number.isNaN(time)) {
+      return
+    }
+    if (!candidate || time < candidate.getTime()) {
+      candidate = value
+    }
+  })
+  return candidate
+}
+
+function pickMaxDate(values: Date[]): Date | null {
+  let candidate: Date | null = null
+  values.forEach(value => {
+    if (!(value instanceof Date)) {
+      return
+    }
+    const time = value.getTime()
+    if (Number.isNaN(time)) {
+      return
+    }
+    if (!candidate || time > candidate.getTime()) {
+      candidate = value
+    }
+  })
+  return candidate
+}
+
+function yearFromDate(value: Date | null): number | null {
+  if (!value) {
+    return null
+  }
+  return value.getUTCFullYear()
+}
+
+async function loadLeaguePlayerCareer(personId: number): Promise<LeaguePlayerCareerEntryPayload[]> {
+  const [careerRows, rosterRows] = await Promise.all([
+    prisma.playerClubCareerStats.findMany({
+      where: { personId },
+      include: {
+        club: {
+          select: {
+            id: true,
+            name: true,
+            shortName: true,
+            logoUrl: true,
+          },
+        },
+      },
+    }),
+    prisma.seasonRoster.findMany({
+      where: { personId },
+      select: {
+        clubId: true,
+        registrationDate: true,
+        club: {
+          select: {
+            id: true,
+            name: true,
+            shortName: true,
+            logoUrl: true,
+          },
+        },
+        season: {
+          select: {
+            startDate: true,
+            endDate: true,
+            isActive: true,
+          },
+        },
+      },
+    }),
+  ])
+
+  const careerByClub = new Map<number, typeof careerRows[number]>
+  careerRows.forEach(row => {
+    careerByClub.set(row.clubId, row)
+  })
+
+  const rosterByClub = new Map<
+    number,
+    {
+      club:
+        | {
+            id: number
+            name: string
+            shortName: string
+            logoUrl: string | null
+          }
+        | null
+      seasons: RosterSeasonSnapshot[]
+      registrations: Date[]
+    }
+  >()
+
+  rosterRows.forEach(row => {
+    const existing = rosterByClub.get(row.clubId)
+    const seasonSnapshot: RosterSeasonSnapshot = {
+      startDate: row.season.startDate,
+      endDate: row.season.endDate,
+      isActive: row.season.isActive,
+    }
+    if (existing) {
+      existing.seasons.push(seasonSnapshot)
+      existing.registrations.push(row.registrationDate)
+    } else {
+      rosterByClub.set(row.clubId, {
+        club: row.club,
+        seasons: [seasonSnapshot],
+        registrations: [row.registrationDate],
+      })
+    }
+  })
+
+  const clubIds = new Set<number>()
+  careerRows.forEach(row => clubIds.add(row.clubId))
+  rosterRows.forEach(row => clubIds.add(row.clubId))
+
+  const clubIdsWithMatches = Array.from(clubIds).filter(clubId => {
+    const careerRow = careerByClub.get(clubId)
+    const matches = careerRow?.totalMatches ?? 0
+    return matches > 0
+  })
+
+  const matchBoundEntries = await Promise.all(
+    clubIdsWithMatches.map(async clubId => {
+      const [firstMatch, lastMatch] = await Promise.all([
+        prisma.match.findFirst({
+          where: {
+            lineups: {
+              some: {
+                personId,
+                clubId,
+              },
+            },
+          },
+          orderBy: {
+            matchDateTime: 'asc',
+          },
+          select: {
+            matchDateTime: true,
+          },
+        }),
+        prisma.match.findFirst({
+          where: {
+            lineups: {
+              some: {
+                personId,
+                clubId,
+              },
+            },
+          },
+          orderBy: {
+            matchDateTime: 'desc',
+          },
+          select: {
+            matchDateTime: true,
+          },
+        }),
+      ])
+
+      const bounds: MatchBounds = {
+        firstDate: firstMatch?.matchDateTime ?? null,
+        lastDate: lastMatch?.matchDateTime ?? null,
+      }
+
+      return { clubId, bounds }
+    })
+  )
+
+  const matchBoundsByClub = new Map<number, MatchBounds>()
+  matchBoundEntries.forEach(entry => {
+    matchBoundsByClub.set(entry.clubId, entry.bounds)
+  })
+
+  const entries: LeaguePlayerCareerEntryPayload[] = []
+  const sortedClubIds = Array.from(clubIds)
+
+  sortedClubIds.forEach(clubId => {
+    const career = careerByClub.get(clubId)
+    const roster = rosterByClub.get(clubId)
+    const clubMeta = career?.club ?? roster?.club
+
+    if (!clubMeta) {
+      return
+    }
+
+    const matches = career?.totalMatches ?? 0
+    const goals = career?.totalGoals ?? 0
+    const assists = career?.totalAssists ?? 0
+    const penaltyGoals = career?.penaltyGoals ?? 0
+    const yellowCards = career?.yellowCards ?? 0
+    const redCards = career?.redCards ?? 0
+
+    const seasons = roster?.seasons ?? []
+    const registrations = roster?.registrations ?? []
+    const bounds = matchBoundsByClub.get(clubId)
+
+    const firstDateCandidates: Date[] = []
+    if (bounds?.firstDate) {
+      firstDateCandidates.push(bounds.firstDate)
+    }
+    seasons.forEach(season => {
+      firstDateCandidates.push(season.startDate)
+    })
+    registrations.forEach(date => {
+      firstDateCandidates.push(date)
+    })
+    const firstDate = pickMinDate(firstDateCandidates)
+
+    const lastDateCandidates: Date[] = []
+    if (bounds?.lastDate) {
+      lastDateCandidates.push(bounds.lastDate)
+    }
+    seasons.forEach(season => {
+      lastDateCandidates.push(season.endDate)
+    })
+    registrations.forEach(date => {
+      lastDateCandidates.push(date)
+    })
+    const lastDate = pickMaxDate(lastDateCandidates)
+
+    const isActive = seasons.some(season => season.isActive)
+
+    const fromYear = yearFromDate(firstDate)
+    let toYear = isActive ? null : yearFromDate(lastDate)
+
+    if (!isActive && toYear === null && fromYear !== null) {
+      toYear = fromYear
+    }
+
+    if (matches === 0 && !isActive) {
+      return
+    }
+
+    entries.push({
+      clubId: clubMeta.id,
+      clubName: clubMeta.name,
+      clubShortName: clubMeta.shortName,
+      clubLogoUrl: clubMeta.logoUrl ?? null,
+      fromYear,
+      toYear,
+      matches,
+      goals,
+      assists,
+      penaltyGoals,
+      yellowCards,
+      redCards,
+    })
+  })
+
+  const collator = new Intl.Collator('ru', { sensitivity: 'base' })
+  entries.sort((left, right) => {
+    const leftYear = left.fromYear ?? 9999
+    const rightYear = right.fromYear ?? 9999
+    if (leftYear !== rightYear) {
+      return leftYear - rightYear
+    }
+    return collator.compare(left.clubName, right.clubName)
+  })
+
+  return entries
+}
+
 async function loadSerializedUserPayload(
   telegramId: string,
   logger?: LoggerLike
@@ -216,14 +512,23 @@ async function loadSerializedUserPayload(
 
   if (typeof user.leaguePlayerId === 'number') {
     try {
-      const stats = await loadLeaguePlayerStats(user.leaguePlayerId)
+      const [stats, career] = await Promise.all([
+        loadLeaguePlayerStats(user.leaguePlayerId),
+        loadLeaguePlayerCareer(user.leaguePlayerId),
+      ])
       serializedUser.leaguePlayerStats = stats
+      serializedUser.leaguePlayerCareer = career
     } catch (err) {
-      logger?.error?.({ err, leaguePlayerId: user.leaguePlayerId }, 'profile stats aggregation failed')
+      logger?.error?.(
+        { err, leaguePlayerId: user.leaguePlayerId },
+        'profile stats or career aggregation failed'
+      )
       serializedUser.leaguePlayerStats = null
+      serializedUser.leaguePlayerCareer = []
     }
   } else {
     serializedUser.leaguePlayerStats = null
+    serializedUser.leaguePlayerCareer = []
   }
 
   return serializedUser

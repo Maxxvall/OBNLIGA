@@ -18,10 +18,19 @@ interface LeaguePlayerStats {
   redCards: number
 }
 
-interface StatItem {
-  key: string
-  label: string
-  value: number
+interface LeaguePlayerCareerEntry {
+  clubId: number
+  clubName: string
+  clubShortName: string
+  clubLogoUrl: string | null
+  fromYear: number | null
+  toYear: number | null
+  matches: number
+  assists: number
+  goals: number
+  penaltyGoals: number
+  yellowCards: number
+  redCards: number
 }
 
 interface ProfileUser {
@@ -37,6 +46,7 @@ interface ProfileUser {
   leaguePlayerId?: number | null
   leaguePlayer?: LeaguePlayerProfile | null
   leaguePlayerStats?: LeaguePlayerStats | null
+  leaguePlayerCareer?: LeaguePlayerCareerEntry[] | null
 }
 
 interface CacheEntry {
@@ -384,42 +394,158 @@ export default function Profile() {
   const status: LeaguePlayerStatus =
     user && isLeagueStatus(user.leaguePlayerStatus) ? user.leaguePlayerStatus : 'NONE'
   const isVerified = status === 'VERIFIED'
-  const playerName = user?.leaguePlayer ? formatLeaguePlayerName(user.leaguePlayer) : null
+  const displayName = user?.firstName?.trim()?.length
+    ? String(user.firstName)
+    : user?.username?.trim()?.length
+      ? String(user.username)
+      : 'Гость'
 
-  const statsList: StatItem[] = useMemo(() => {
-    if (!isVerified || !user?.leaguePlayerStats) {
+  const careerRows = useMemo(() => {
+    if (!isVerified) {
       return []
     }
-    return [
-      { key: 'matches', label: 'МАТЧИ', value: user.leaguePlayerStats.matches },
-      { key: 'yellowCards', label: 'ЖК', value: user.leaguePlayerStats.yellowCards },
-      { key: 'redCards', label: 'КК', value: user.leaguePlayerStats.redCards },
-      { key: 'assists', label: 'ПАСЫ', value: user.leaguePlayerStats.assists },
-      { key: 'goals', label: 'ГОЛЫ', value: user.leaguePlayerStats.goals },
-    ]
-  }, [isVerified, user?.leaguePlayerStats])
+    if (Array.isArray(user?.leaguePlayerCareer)) {
+      return user.leaguePlayerCareer
+    }
+    return []
+  }, [isVerified, user?.leaguePlayerCareer])
 
-  const statsBlock = useMemo(() => {
+  type CareerTotals = {
+    matches: number
+    yellowCards: number
+    redCards: number
+    assists: number
+    goals: number
+  }
+
+  const careerTotals: CareerTotals | null = useMemo(() => {
     if (!isVerified) {
       return null
     }
-    return (
-      <div className={`profile-stats ${statsList.length ? 'with-data' : 'empty'}`}>
-        {statsList.length ? (
-          statsList.map(item => (
-            <div className="stat-item" key={item.key}>
-              <div className="stat-value">{item.value}</div>
-              <div className="stat-label">{item.label}</div>
-            </div>
-          ))
-        ) : (
-          <div className="stats-placeholder">
-            <p>Статистика появится автоматически, как только появятся данные матчей.</p>
-          </div>
-        )}
-      </div>
+    if (user?.leaguePlayerStats) {
+      const { matches, yellowCards, redCards, assists, goals } = user.leaguePlayerStats
+      return { matches, yellowCards, redCards, assists, goals }
+    }
+    if (!careerRows.length) {
+      return null
+    }
+    return careerRows.reduce<CareerTotals>(
+      (acc, entry) => ({
+        matches: acc.matches + entry.matches,
+        yellowCards: acc.yellowCards + entry.yellowCards,
+        redCards: acc.redCards + entry.redCards,
+        assists: acc.assists + entry.assists,
+        goals: acc.goals + entry.goals,
+      }),
+      { matches: 0, yellowCards: 0, redCards: 0, assists: 0, goals: 0 }
     )
-  }, [isVerified, statsList])
+  }, [careerRows, isVerified, user?.leaguePlayerStats])
+
+  const renderCareerRange = useCallback((entry: LeaguePlayerCareerEntry): string => {
+    const hasStart = typeof entry.fromYear === 'number'
+    const hasEnd = typeof entry.toYear === 'number'
+
+    if (!hasStart && !hasEnd) {
+      return '—'
+    }
+    if (hasStart && !hasEnd) {
+      return `${entry.fromYear ?? ''}-н.в`
+    }
+    if (!hasStart && hasEnd) {
+      return `${entry.toYear}`
+    }
+    if (entry.fromYear === entry.toYear) {
+      return `${entry.fromYear}`
+    }
+    return `${entry.fromYear}-${entry.toYear}`
+  }, [])
+
+  const careerBlock = useMemo(() => {
+    if (!isVerified) {
+      return null
+    }
+
+    return (
+      <section className="profile-section">
+        <div className="profile-card">
+          <header className="profile-card-header">
+            <div>
+              <h2>Карьера игрока</h2>
+              <p className="profile-card-hint">Статистика обновляется автоматически после подтверждения матчей.</p>
+            </div>
+            {careerTotals ? (
+              <div className="profile-card-summary">
+                <span>Матчи: {careerTotals.matches}</span>
+                <span>Пасы: {careerTotals.assists}</span>
+                <span>Голы: {careerTotals.goals}</span>
+              </div>
+            ) : null}
+          </header>
+          <div className="profile-table-wrapper">
+            {careerRows.length ? (
+              <table className="profile-career-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Год</th>
+                    <th scope="col">Команда</th>
+                    <th scope="col">Матчи</th>
+                    <th scope="col">ЖК</th>
+                    <th scope="col">КК</th>
+                    <th scope="col">Пасы</th>
+                    <th scope="col">Голы</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {careerRows.map(entry => (
+                    <tr key={`${entry.clubId}-${renderCareerRange(entry)}`}>
+                      <td data-label="Год">{renderCareerRange(entry)}</td>
+                      <td data-label="Команда">
+                        <div className="profile-club-cell">
+                          {entry.clubLogoUrl ? (
+                            <span className="club-logo" style={{ backgroundImage: `url(${entry.clubLogoUrl})` }} aria-hidden="true" />
+                          ) : (
+                            <span className="club-logo placeholder" aria-hidden="true">⚽</span>
+                          )}
+                          <div className="club-names">
+                            <span className="club-name">{entry.clubName}</span>
+                            {entry.clubShortName && entry.clubShortName !== entry.clubName ? (
+                              <span className="club-short">{entry.clubShortName}</span>
+                            ) : null}
+                          </div>
+                        </div>
+                      </td>
+                      <td data-label="Матчи">{entry.matches}</td>
+                      <td data-label="ЖК">{entry.yellowCards}</td>
+                      <td data-label="КК">{entry.redCards}</td>
+                      <td data-label="Пасы">{entry.assists}</td>
+                      <td data-label="Голы">{entry.goals}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                {careerTotals ? (
+                  <tfoot>
+                    <tr>
+                      <th scope="row">Итого</th>
+                      <td aria-label="Команда" />
+                      <td aria-label="Матчи">{careerTotals.matches}</td>
+                      <td aria-label="ЖК">{careerTotals.yellowCards}</td>
+                      <td aria-label="КК">{careerTotals.redCards}</td>
+                      <td aria-label="Пасы">{careerTotals.assists}</td>
+                      <td aria-label="Голы">{careerTotals.goals}</td>
+                    </tr>
+                  </tfoot>
+                ) : null}
+              </table>
+            ) : (
+              <div className="profile-table-placeholder">
+                <p>Записи карьеры появятся после первых сыгранных матчей в подтверждённом статусе игрока.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+    )
+  }, [careerRows, careerTotals, isVerified, renderCareerRange])
 
   const statusMessage = (() => {
     if (status === 'PENDING') {
@@ -505,59 +631,67 @@ export default function Profile() {
     <div className="profile-container">
       <div className="profile-wrapper">
         <div className="profile-header">
-          <div className="avatar-section">
-            {user && user.photoUrl ? (
-              <img
-                src={user.photoUrl}
-                alt={user.firstName || user.username || 'avatar'}
-                className="profile-avatar"
-              />
-            ) : (
-              <div className="profile-avatar placeholder">{loading ? '⏳' : '👤'}</div>
-            )}
-            {isVerified ? (
-              <div className="verified-indicator" title="Подтверждён игрок лиги">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M9.5 16.2 5.3 12l1.4-1.4 2.8 2.79 7.2-7.19 1.4 1.41-8.6 8.59z" fill="currentColor" />
-                </svg>
+          <div className="profile-hero-card">
+            <div className="avatar-section">
+              {user && user.photoUrl ? (
+                <img
+                  src={user.photoUrl}
+                  alt={displayName}
+                  className="profile-avatar"
+                />
+              ) : (
+                <div className="profile-avatar placeholder">{loading ? '⏳' : '👤'}</div>
+              )}
+              {isVerified ? (
+                <div className="verified-indicator" title="Подтверждён игрок лиги">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M9.5 16.2 5.3 12l1.4-1.4 2.8 2.79 7.2-7.19 1.4 1.41-8.6 8.59z" fill="currentColor" />
+                  </svg>
+                </div>
+              ) : null}
+              <div className="profile-display-name">
+                {loading ? 'Загрузка...' : displayName}
               </div>
-            ) : null}
-          </div>
+              {user?.username && user.username !== displayName ? (
+                <div className="profile-username">@{user.username}</div>
+              ) : null}
+            </div>
 
-          <div
-            className={`profile-info${
-              isCompactLayout && activeSection !== 'overview' ? ' hidden-on-compact' : ''
-            }`}
-          >
-            <h1 className="profile-name">
-              {loading ? 'Загрузка...' : user?.username || user?.firstName || 'Гость'}
-            </h1>
-            {statusMessage ? (
-              <div className={`profile-status-message status-${status.toLowerCase()}`}>
-                {statusMessage}
-              </div>
-            ) : null}
-            {playerName ? <div className="league-player-name">{playerName}</div> : null}
-            {status === 'NONE' ? (
-              <div className="verification-actions">
-                <button
-                  type="button"
-                  className="verify-button"
-                  onClick={() => {
-                    setVerifyError(null)
-                    setShowVerifyModal(true)
-                  }}
-                  disabled={verifyLoading}
-                >
-                  {verifyLoading ? 'Отправляем…' : 'Подтвердить статус игрока'}
-                </button>
-              </div>
-            ) : null}
-            {status === 'PENDING' ? (
-              <div className="verification-note">
-                Запрос отправлен. Мы сообщим, когда администратор подтвердит статус.
-              </div>
-            ) : null}
+            <div
+              className={`profile-info${
+                isCompactLayout && activeSection !== 'overview' ? ' hidden-on-compact' : ''
+              }`}
+            >
+              {statusMessage ? (
+                <div className={`profile-status-message status-${status.toLowerCase()}`}>
+                  {statusMessage}
+                </div>
+              ) : (
+                <div className="profile-status-message status-empty">
+                  Проверенный профиль показывает динамическую статистику по каждому клубу.
+                </div>
+              )}
+              {status === 'NONE' ? (
+                <div className="verification-actions">
+                  <button
+                    type="button"
+                    className="verify-button"
+                    onClick={() => {
+                      setVerifyError(null)
+                      setShowVerifyModal(true)
+                    }}
+                    disabled={verifyLoading}
+                  >
+                    {verifyLoading ? 'Отправляем…' : 'Подтвердить статус игрока'}
+                  </button>
+                </div>
+              ) : null}
+              {status === 'PENDING' ? (
+                <div className="verification-note">
+                  Запрос отправлен. Мы сообщим, когда администратор подтвердит статус.
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
 
@@ -579,12 +713,12 @@ export default function Profile() {
               role="tab"
               aria-selected={activeSection === 'stats'}
             >
-              Статистика
+              Карьера
             </button>
           </div>
         ) : null}
 
-        {(!isCompactLayout || activeSection === 'stats') && statsBlock}
+        {(!isCompactLayout || activeSection === 'stats') && careerBlock}
 
         {showVerifyModal ? (
           <div className="verify-modal-backdrop" role="dialog" aria-modal="true">
@@ -666,6 +800,28 @@ function isLeaguePlayerStats(value: unknown): value is LeaguePlayerStats {
   return keys.every(key => typeof record[key] === 'number')
 }
 
+function isLeaguePlayerCareerEntry(value: unknown): value is LeaguePlayerCareerEntry {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const record = value as Record<string, unknown>
+  const numberOrNull = (candidate: unknown) => candidate === null || typeof candidate === 'number'
+  return (
+    typeof record.clubId === 'number' &&
+    typeof record.clubName === 'string' &&
+    typeof record.clubShortName === 'string' &&
+    (record.clubLogoUrl === null || typeof record.clubLogoUrl === 'string') &&
+    numberOrNull(record.fromYear) &&
+    numberOrNull(record.toYear) &&
+    typeof record.matches === 'number' &&
+    typeof record.assists === 'number' &&
+    typeof record.goals === 'number' &&
+    typeof record.penaltyGoals === 'number' &&
+    typeof record.yellowCards === 'number' &&
+    typeof record.redCards === 'number'
+  )
+}
+
 function isProfileUser(value: unknown): value is ProfileUser {
   if (!value || typeof value !== 'object') return false
   const record = value as Record<string, unknown>
@@ -714,6 +870,16 @@ function normalizeProfilePayload(value: unknown): ProfileUser | null {
   const statsRaw = (record as Record<string, unknown>).leaguePlayerStats
   normalized.leaguePlayerStats = isLeaguePlayerStats(statsRaw) ? statsRaw : null
 
+  const careerRaw = (record as Record<string, unknown>).leaguePlayerCareer
+  if (Array.isArray(careerRaw)) {
+    const parsed = careerRaw.filter(isLeaguePlayerCareerEntry)
+    normalized.leaguePlayerCareer = parsed
+  } else if (careerRaw === null) {
+    normalized.leaguePlayerCareer = null
+  } else {
+    normalized.leaguePlayerCareer = []
+  }
+
   return normalized
 }
 
@@ -734,10 +900,6 @@ function readTokenFromResponse(payload: unknown): string | null {
   if (!payload || typeof payload !== 'object') return null
   const token = (payload as Record<string, unknown>).token
   return typeof token === 'string' ? token : null
-}
-
-function formatLeaguePlayerName(player: LeaguePlayerProfile): string {
-  return `${player.firstName} ${player.lastName}`.trim()
 }
 
 function translateVerificationError(code: string): string {

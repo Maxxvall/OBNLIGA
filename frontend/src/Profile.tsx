@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './profile.css'
 
 type LeaguePlayerStatus = 'NONE' | 'PENDING' | 'VERIFIED'
@@ -73,12 +73,21 @@ const CACHE_TTL = 5 * 60 * 1000 // 5 минут
 const CACHE_KEY = 'obnliga_profile_cache'
 const PROFILE_REFRESH_INTERVAL_MS = 90_000
 
+type ProfileSection = 'overview' | 'stats'
+
 export default function Profile() {
   const [user, setUser] = useState<Nullable<ProfileUser>>(null)
   const [loading, setLoading] = useState<boolean>(false)
   const [showVerifyModal, setShowVerifyModal] = useState(false)
   const [verifyLoading, setVerifyLoading] = useState(false)
   const [verifyError, setVerifyError] = useState<string | null>(null)
+  const [activeSection, setActiveSection] = useState<ProfileSection>('overview')
+  const [isCompactLayout, setIsCompactLayout] = useState<boolean>(() => {
+    if (typeof window === 'undefined') {
+      return false
+    }
+    return window.matchMedia('(max-width: 425px)').matches
+  })
   const isFetchingRef = useRef(false)
   const userRef = useRef<Nullable<ProfileUser>>(null)
 
@@ -285,6 +294,17 @@ export default function Profile() {
       return
     }
 
+    const media = window.matchMedia('(max-width: 425px)')
+    const handleMediaChange = (event: MediaQueryListEvent) => {
+      setIsCompactLayout(event.matches)
+    }
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', handleMediaChange)
+    } else {
+      media.addListener(handleMediaChange)
+    }
+    setIsCompactLayout(media.matches)
+
     const tick = () => {
       if (typeof document !== 'undefined' && document.hidden) {
         return
@@ -293,24 +313,61 @@ export default function Profile() {
     }
 
     const timer = window.setInterval(tick, PROFILE_REFRESH_INTERVAL_MS)
-    return () => window.clearInterval(timer)
+    return () => {
+      window.clearInterval(timer)
+      if (typeof media.removeEventListener === 'function') {
+        media.removeEventListener('change', handleMediaChange)
+      } else {
+        media.removeListener(handleMediaChange)
+      }
+    }
   }, [loadProfile])
+
+  useEffect(() => {
+    if (!isCompactLayout && activeSection !== 'overview') {
+      setActiveSection('overview')
+    }
+  }, [isCompactLayout, activeSection])
 
   const status: LeaguePlayerStatus =
     user && isLeagueStatus(user.leaguePlayerStatus) ? user.leaguePlayerStatus : 'NONE'
   const isVerified = status === 'VERIFIED'
   const playerName = user?.leaguePlayer ? formatLeaguePlayerName(user.leaguePlayer) : null
 
-  const statsList: StatItem[] =
-    isVerified && user?.leaguePlayerStats
-      ? [
-          { key: 'matches', label: 'МАТЧИ', value: user.leaguePlayerStats.matches },
-          { key: 'yellowCards', label: 'ЖК', value: user.leaguePlayerStats.yellowCards },
-          { key: 'redCards', label: 'КК', value: user.leaguePlayerStats.redCards },
-          { key: 'assists', label: 'ПАСЫ', value: user.leaguePlayerStats.assists },
-          { key: 'goals', label: 'ГОЛЫ', value: user.leaguePlayerStats.goals },
-        ]
-      : []
+  const statsList: StatItem[] = useMemo(() => {
+    if (!isVerified || !user?.leaguePlayerStats) {
+      return []
+    }
+    return [
+      { key: 'matches', label: 'МАТЧИ', value: user.leaguePlayerStats.matches },
+      { key: 'yellowCards', label: 'ЖК', value: user.leaguePlayerStats.yellowCards },
+      { key: 'redCards', label: 'КК', value: user.leaguePlayerStats.redCards },
+      { key: 'assists', label: 'ПАСЫ', value: user.leaguePlayerStats.assists },
+      { key: 'goals', label: 'ГОЛЫ', value: user.leaguePlayerStats.goals },
+    ]
+  }, [isVerified, user?.leaguePlayerStats])
+
+  const statsBlock = useMemo(() => {
+    if (!isVerified) {
+      return null
+    }
+    return (
+      <div className={`profile-stats ${statsList.length ? 'with-data' : 'empty'}`}>
+        {statsList.length ? (
+          statsList.map(item => (
+            <div className="stat-item" key={item.key}>
+              <div className="stat-value">{item.value}</div>
+              <div className="stat-label">{item.label}</div>
+            </div>
+          ))
+        ) : (
+          <div className="stats-placeholder">
+            <p>Статистика появится автоматически, как только появятся данные матчей.</p>
+          </div>
+        )}
+      </div>
+    )
+  }, [isVerified, statsList])
 
   const statusMessage = (() => {
     if (status === 'PENDING') {
@@ -415,7 +472,11 @@ export default function Profile() {
             ) : null}
           </div>
 
-          <div className="profile-info">
+          <div
+            className={`profile-info${
+              isCompactLayout && activeSection !== 'overview' ? ' hidden-on-compact' : ''
+            }`}
+          >
             <h1 className="profile-name">
               {loading ? 'Загрузка...' : user?.username || user?.firstName || 'Гость'}
             </h1>
@@ -425,22 +486,6 @@ export default function Profile() {
               </div>
             ) : null}
             {playerName ? <div className="league-player-name">{playerName}</div> : null}
-            {status === 'VERIFIED' ? (
-              <div className={`profile-stats ${statsList.length ? 'with-data' : 'empty'}`}>
-                {statsList.length ? (
-                  statsList.map(item => (
-                    <div className="stat-item" key={item.key}>
-                      <div className="stat-value">{item.value}</div>
-                      <div className="stat-label">{item.label}</div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="stats-placeholder">
-                    <p>Статистика появится автоматически, как только появятся данные матчей.</p>
-                  </div>
-                )}
-              </div>
-            ) : null}
             {status === 'NONE' ? (
               <div className="verification-actions">
                 <button
@@ -463,6 +508,31 @@ export default function Profile() {
             ) : null}
           </div>
         </div>
+
+        {isCompactLayout && isVerified ? (
+          <div className="profile-mobile-tabs" role="tablist" aria-label="Разделы профиля">
+            <button
+              type="button"
+              className={activeSection === 'overview' ? 'active' : ''}
+              onClick={() => setActiveSection('overview')}
+              role="tab"
+              aria-selected={activeSection === 'overview'}
+            >
+              Профиль
+            </button>
+            <button
+              type="button"
+              className={activeSection === 'stats' ? 'active' : ''}
+              onClick={() => setActiveSection('stats')}
+              role="tab"
+              aria-selected={activeSection === 'stats'}
+            >
+              Статистика
+            </button>
+          </div>
+        ) : null}
+
+        {(!isCompactLayout || activeSection === 'stats') && statsBlock}
 
         {showVerifyModal ? (
           <div className="verify-modal-backdrop" role="dialog" aria-modal="true">

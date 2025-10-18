@@ -78,6 +78,10 @@
   gap: 16px;
 }
 
+.profile-info.hidden-on-compact {
+  display: none;
+}
+
 .verified-indicator {
   position: absolute;
   bottom: 10px;
@@ -233,6 +237,35 @@
   letter-spacing: 0.5px;
 }
 
+.profile-mobile-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 0 16px 12px;
+  justify-content: center;
+}
+
+.profile-mobile-tabs button {
+  flex: 1 1 0;
+  min-width: 120px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 212, 255, 0.25);
+  background: rgba(10, 18, 34, 0.45);
+  color: rgba(200, 249, 255, 0.85);
+  padding: 10px 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.profile-mobile-tabs button.active {
+  background: linear-gradient(135deg, rgba(0, 173, 255, 0.4), rgba(0, 118, 255, 0.55));
+  color: #fff;
+  border-color: rgba(0, 200, 255, 0.7);
+  box-shadow: 0 10px 24px rgba(0, 118, 255, 0.25);
+}
+
 .verify-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -349,6 +382,36 @@
 
   .stat-value {
     font-size: 24px;
+  }
+}
+
+@media (max-width: 425px) {
+  .profile-stats.with-data {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 12px;
+    padding: 0 12px;
+  }
+
+  .profile-stats.empty {
+    padding: 0 12px;
+  }
+
+  .profile-stats.with-data .stat-item {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 16px 10px;
+    border-radius: 14px;
+  }
+
+  .stat-value {
+    font-size: 22px;
+  }
+
+  .stat-label {
+    font-size: 12px;
+    letter-spacing: 0.4px;
+    white-space: nowrap;
   }
 }
 

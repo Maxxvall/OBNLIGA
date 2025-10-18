@@ -550,6 +550,50 @@ body {
   max-width: 920px;
 }
 
+.league-table-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 6px;
+}
+
+.league-table-group {
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(0, 240, 255, 0.04);
+  border: 1px solid rgba(0, 240, 255, 0.12);
+}
+
+.league-table-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.league-table-group-header h3 {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.league-table-qualify {
+  font-size: 12px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: rgba(122, 255, 106, 0.82);
+  background: rgba(122, 255, 106, 0.12);
+  border: 1px solid rgba(122, 255, 106, 0.32);
+  border-radius: 999px;
+  padding: 4px 12px;
+}
+
+.league-table-scroll.group {
+  margin: 0;
+}
+
 .league-table-scroll {
   overflow-x: hidden;
   margin-top: 6px;
@@ -586,6 +630,11 @@ body {
 
 .league-table-row.empty {
   justify-content: center;
+}
+
+.league-table-row[data-qualified='true'] {
+  border-color: rgba(122, 255, 106, 0.45);
+  box-shadow: 0 0 16px rgba(122, 255, 106, 0.18);
 }
 
 .col-logo {

@@ -199,7 +199,7 @@ export const MatchDetailsPage: React.FC = () => {
   if (!header && !snapshot) {
     return (
       <div className="match-details-page">
-        <div className="match-details-container">
+        <div className="match-details-shell">
           <div className="match-details-loading">
             <p>Загрузка...</p>
           </div>
@@ -233,106 +233,105 @@ export const MatchDetailsPage: React.FC = () => {
 
   return (
     <div className="match-details-page">
-      {/* Header */}
-      <div className="match-details-header">
-        <button className="back-btn" onClick={closeMatchDetails} aria-label="Назад">
-          ←
-        </button>
-        <div className="match-header-content">
-          <div className="match-header-top">
-            <div className="match-meta">
-              {roundLabel && <span className="match-round">{roundLabel}</span>}
-              <span className="match-date">{dateLabel}</span>
-              <span className="match-location">{locationLabel}</span>
-            </div>
-            {badge && <span className={`badge badge-${badge.tone}`}>{badge.label}</span>}
-          </div>
-          <div className="match-teams">
-            <div className="team home">
-              {homeLogo && <img src={homeLogo} alt={homeName} className="team-logo" />}
-              <div className="team-labels">
-                <span className="team-name">{homeName}</span>
-                {homeShort && homeShort !== homeName && (
-                  <span className="team-short">{homeShort}</span>
-                )}
+      <div className="match-details-shell">
+        <div className="match-details-header">
+          <button className="back-btn" onClick={closeMatchDetails} aria-label="Назад">
+            ←
+          </button>
+          <div className="match-header-content">
+            <div className="match-header-top">
+              <div className="match-meta">
+                {roundLabel && <span className="match-round">{roundLabel}</span>}
+                <span className="match-date">{dateLabel}</span>
+                <span className="match-location">{locationLabel}</span>
               </div>
+              {badge && <span className={`badge badge-${badge.tone}`}>{badge.label}</span>}
             </div>
-            <div className="match-score">
-              <div className="score-main">
-                <span className={`score${homeScoreAnimated ? ' score-animate' : ''}`}>
-                  {homeScoreDisplay}
-                </span>
-                <span className="separator">:</span>
-                <span className={`score${awayScoreAnimated ? ' score-animate' : ''}`}>
-                  {awayScoreDisplay}
-                </span>
-              </div>
-              {(penaltyLabel || minuteLabel) && (
-                <div className="score-meta">
-                  {penaltyLabel && <span className="score-detail">{penaltyLabel}</span>}
-                  {minuteLabel && <span className="match-minute">{minuteLabel}</span>}
+            <div className="match-teams">
+              <div className="team home">
+                {homeLogo && <img src={homeLogo} alt={homeName} className="team-logo" />}
+                <div className="team-labels">
+                  <span className="team-name">{homeName}</span>
+                  {homeShort && homeShort !== homeName && (
+                    <span className="team-short">{homeShort}</span>
+                  )}
                 </div>
-              )}
-            </div>
-            <div className="team away">
-              <div className="team-labels">
-                <span className="team-name">{awayName}</span>
-                {awayShort && awayShort !== awayName && (
-                  <span className="team-short">{awayShort}</span>
+              </div>
+              <div className="match-score">
+                <div className="score-main">
+                  <span className={`score${homeScoreAnimated ? ' score-animate' : ''}`}>
+                    {homeScoreDisplay}
+                  </span>
+                  <span className="separator">:</span>
+                  <span className={`score${awayScoreAnimated ? ' score-animate' : ''}`}>
+                    {awayScoreDisplay}
+                  </span>
+                </div>
+                {(penaltyLabel || minuteLabel) && (
+                  <div className="score-meta">
+                    {penaltyLabel && <span className="score-detail">{penaltyLabel}</span>}
+                    {minuteLabel && <span className="match-minute">{minuteLabel}</span>}
+                  </div>
                 )}
               </div>
-              {awayLogo && <img src={awayLogo} alt={awayName} className="team-logo" />}
+              <div className="team away">
+                <div className="team-labels">
+                  <span className="team-name">{awayName}</span>
+                  {awayShort && awayShort !== awayName && (
+                    <span className="team-short">{awayShort}</span>
+                  )}
+                </div>
+                {awayLogo && <img src={awayLogo} alt={awayName} className="team-logo" />}
+              </div>
             </div>
           </div>
         </div>
-      </div>
-      <div className="match-details-separator" aria-hidden="true" />
+        <div className="match-details-separator" aria-hidden="true" />
 
-      {/* Tabs */}
-      <div className="match-details-tabs">
-        <button
-          className={`tab ${activeTab === 'lineups' ? 'active' : ''}`}
-          onClick={() => setMatchDetailsTab('lineups')}
-        >
-          Составы
-        </button>
-        <button
-          className={`tab ${activeTab === 'events' ? 'active' : ''}`}
-          onClick={() => setMatchDetailsTab('events')}
-        >
-          События
-        </button>
-        {showStatsTab && (
+        <div className="match-details-tabs">
           <button
-            className={`tab ${activeTab === 'stats' ? 'active' : ''}`}
-            onClick={() => setMatchDetailsTab('stats')}
+            className={`tab ${activeTab === 'lineups' ? 'active' : ''}`}
+            onClick={() => setMatchDetailsTab('lineups')}
           >
-            Статистика
+            Составы
           </button>
-        )}
-        <button
-          className={`tab ${activeTab === 'broadcast' ? 'active' : ''}`}
-          onClick={() => setMatchDetailsTab('broadcast')}
-          disabled
-        >
-          Трансляция
-        </button>
-      </div>
+          <button
+            className={`tab ${activeTab === 'events' ? 'active' : ''}`}
+            onClick={() => setMatchDetailsTab('events')}
+          >
+            События
+          </button>
+          {showStatsTab && (
+            <button
+              className={`tab ${activeTab === 'stats' ? 'active' : ''}`}
+              onClick={() => setMatchDetailsTab('stats')}
+            >
+              Статистика
+            </button>
+          )}
+          <button
+            className={`tab ${activeTab === 'broadcast' ? 'active' : ''}`}
+            onClick={() => setMatchDetailsTab('broadcast')}
+            disabled
+          >
+            Трансляция
+          </button>
+        </div>
 
-      {/* Content */}
-      <div className="match-details-content">
-        {activeTab === 'lineups' && (
-          <LineupsView lineups={lineups} loading={matchDetails.loadingLineups} />
-        )}
-        {activeTab === 'events' && (
-          <EventsView events={events} loading={matchDetails.loadingEvents} />
-        )}
-        {activeTab === 'stats' && <StatsView stats={stats} loading={matchDetails.loadingStats} />}
-        {activeTab === 'broadcast' && (
-          <div className="placeholder-tab">
-            <p>Трансляция пока недоступна</p>
-          </div>
-        )}
+        <div className="match-details-content">
+          {activeTab === 'lineups' && (
+            <LineupsView lineups={lineups} loading={matchDetails.loadingLineups} />
+          )}
+          {activeTab === 'events' && (
+            <EventsView events={events} loading={matchDetails.loadingEvents} />
+          )}
+          {activeTab === 'stats' && <StatsView stats={stats} loading={matchDetails.loadingStats} />}
+          {activeTab === 'broadcast' && (
+            <div className="placeholder-tab">
+              <p>Трансляция пока недоступна</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

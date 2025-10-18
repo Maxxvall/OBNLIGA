@@ -5,6 +5,7 @@ import type {
   LeagueMatchView,
   LeagueSeasonSummary,
   LeagueTableResponse,
+  LeagueTableGroup,
   LeagueStatsResponse,
   LeagueStatsCategory,
   LeaguePlayerLeaderboardEntry,
@@ -124,7 +125,68 @@ const areTableEntriesEqual = (left: LeagueTableResponse['standings'][number], ri
   left.goalsFor === right.goalsFor &&
   left.goalsAgainst === right.goalsAgainst &&
   left.goalDifference === right.goalDifference &&
-  left.points === right.points
+  left.points === right.points &&
+  (left.groupIndex ?? null) === (right.groupIndex ?? null) &&
+  (left.groupLabel ?? '') === (right.groupLabel ?? '')
+
+const areNumberArraysEqual = (left: number[], right: number[]): boolean => {
+  if (left.length !== right.length) {
+    return false
+  }
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) {
+      return false
+    }
+  }
+  return true
+}
+
+const mergeTableGroups = (
+  previous: LeagueTableGroup[] | undefined,
+  incoming: LeagueTableGroup[] | undefined
+): LeagueTableGroup[] | undefined => {
+  if (!incoming || incoming.length === 0) {
+    return undefined
+  }
+  if (!previous || previous.length === 0) {
+    return incoming
+  }
+
+  const previousByIndex = new Map<number, LeagueTableGroup>()
+  previous.forEach(group => {
+    previousByIndex.set(group.groupIndex, group)
+  })
+
+  let changed = previous.length !== incoming.length
+  const merged = incoming.map(group => {
+    const existing = previousByIndex.get(group.groupIndex)
+    if (
+      existing &&
+      existing.label === group.label &&
+      existing.qualifyCount === group.qualifyCount &&
+      areNumberArraysEqual(existing.clubIds, group.clubIds)
+    ) {
+      return existing
+    }
+    changed = true
+    return group
+  })
+
+  if (!changed) {
+    for (let index = 0; index < merged.length; index += 1) {
+      if (merged[index] !== previous[index]) {
+        changed = true
+        break
+      }
+    }
+  }
+
+  if (!changed) {
+    return previous
+  }
+
+  return merged
+}
 
 const mergeLeagueTable = (
   previous: LeagueTableResponse | undefined,
@@ -149,10 +211,13 @@ const mergeLeagueTable = (
     return entry
   })
 
+  const nextGroups = mergeTableGroups(previous.groups, incoming.groups)
+
   const unchanged =
     season === previous.season &&
     nextStandings.length === previous.standings.length &&
-    nextStandings.every((entry, index) => entry === previous.standings[index])
+    nextStandings.every((entry, index) => entry === previous.standings[index]) &&
+    nextGroups === previous.groups
 
   if (unchanged) {
     return previous
@@ -161,6 +226,7 @@ const mergeLeagueTable = (
   return {
     season,
     standings: nextStandings,
+    groups: nextGroups,
   }
 }
 

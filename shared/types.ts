@@ -61,11 +61,21 @@ export interface LeagueTableEntry {
   goalsAgainst: number
   goalDifference: number
   points: number
+  groupIndex?: number | null
+  groupLabel?: string | null
 }
 
 export interface LeagueTableResponse {
   season: LeagueSeasonSummary
   standings: LeagueTableEntry[]
+  groups?: LeagueTableGroup[]
+}
+
+export interface LeagueTableGroup {
+  groupIndex: number
+  label: string
+  qualifyCount: number
+  clubIds: number[]
 }
 
 export interface LeagueMatchLocation {

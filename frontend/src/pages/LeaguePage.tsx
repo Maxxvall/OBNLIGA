@@ -520,7 +520,6 @@ const LeaguePage: React.FC = () => {
                               >
                                 <span className="season-name">{season.name}</span>
                                 <span className="season-range muted">{formatSeasonRange(season)}</span>
-                                {isActive && <span className="season-chip">Текущий</span>}
                               </button>
                             )
                           })}

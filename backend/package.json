@@ -23,13 +23,14 @@
     "schema": "../prisma/schema.prisma"
   },
   "dependencies": {
-  "@fastify/cookie": "^9.3.1",
+    "@fastify/cookie": "^9.3.1",
     "@fastify/cors": "^8.5.0",
     "@fastify/websocket": "^8.3.1",
     "@prisma/client": "^5.22.0",
-    "@tma.js/init-data-node": "^2.0.1",
+    "@tma.js/init-data-node": "^2.0.2",
     "@tma.js/transformers": "^1.0.1",
     "@tma.js/types": "^1.0.0",
+    "@types/node": "^20.0.0",
     "bullmq": "^5.61.0",
     "dotenv": "^17.2.2",
     "fastify": "^4.0.0",
@@ -38,8 +39,7 @@
     "jsonwebtoken": "^9.0.2",
     "prisma": "^5.22.0",
     "quick-lru": "^7.2.0",
-    "uuid": "^13.0.0",
-    "@types/node": "^20.0.0"
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^8.45.0",

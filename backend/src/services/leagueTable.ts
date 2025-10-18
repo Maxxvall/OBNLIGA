@@ -29,11 +29,21 @@ export interface LeagueTableEntry {
   goalsAgainst: number
   goalDifference: number
   points: number
+  groupIndex?: number | null
+  groupLabel?: string | null
 }
 
 export interface LeagueTableResponse {
   season: LeagueSeasonSummary
   standings: LeagueTableEntry[]
+  groups?: LeagueTableGroup[]
+}
+
+export interface LeagueTableGroup {
+  groupIndex: number
+  label: string
+  qualifyCount: number
+  clubIds: number[]
 }
 
 export type SeasonWithCompetition = Prisma.SeasonGetPayload<{
@@ -49,11 +59,11 @@ export const ensureSeasonSummary = (season: SeasonWithCompetition): LeagueSeason
   endDate: season.endDate.toISOString(),
   isActive: season.isActive,
   city: season.city ?? null,
-    competition: {
-      id: season.competitionId,
-      name: season.competition.name,
-      type: season.competition.type,
-    },
+  competition: {
+    id: season.competitionId,
+    name: season.competition.name,
+    type: season.competition.type,
+  },
 })
 
 export const fetchLeagueSeasons = async (): Promise<LeagueSeasonSummary[]> => {
@@ -111,7 +121,7 @@ type HeadToHeadEntry = {
 export const buildLeagueTable = async (
   season: SeasonWithCompetition
 ): Promise<LeagueTableResponse> => {
-  const [stats, participants, finishedMatches] = await Promise.all([
+  const [stats, participants, finishedMatches, seasonGroups] = await Promise.all([
     prisma.clubSeasonStats.findMany({
       where: { seasonId: season.id },
       include: { club: true },
@@ -135,6 +145,18 @@ export const buildLeagueTable = async (
         penaltyHomeScore: true,
         penaltyAwayScore: true,
       },
+    }),
+    prisma.seasonGroup.findMany({
+      where: { seasonId: season.id },
+      include: {
+        slots: {
+          orderBy: { position: 'asc' },
+          select: {
+            clubId: true,
+          },
+        },
+      },
+      orderBy: { groupIndex: 'asc' },
     }),
   ])
 
@@ -166,6 +188,36 @@ export const buildLeagueTable = async (
       opponents.set(opponentId, entry)
     }
     return entry
+  }
+
+  const rawGroups = seasonGroups
+    .map(group => {
+      const clubIds = group.slots
+        .map(slot => slot.clubId)
+        .filter((clubId): clubId is number => typeof clubId === 'number' && Number.isFinite(clubId) && clubId > 0)
+
+      if (!clubIds.length) {
+        return null
+      }
+
+      return {
+        groupIndex: group.groupIndex,
+        label: group.label,
+        qualifyCount: group.qualifyCount,
+        clubIds,
+      }
+    })
+    .filter((value): value is { groupIndex: number; label: string; qualifyCount: number; clubIds: number[] } => value !== null)
+
+  const clubGroups = new Map<number, { groupIndex: number; label: string; qualifyCount: number }>()
+  for (const group of rawGroups) {
+    for (const clubId of group.clubIds) {
+      clubGroups.set(clubId, {
+        groupIndex: group.groupIndex,
+        label: group.label,
+        qualifyCount: group.qualifyCount,
+      })
+    }
   }
 
   for (const match of finishedMatches) {
@@ -255,6 +307,8 @@ export const buildLeagueTable = async (
     const matchesPlayed = wins + losses + draws
     const goalDifference = goalsFor - goalsAgainst
 
+    const groupInfo = clubGroups.get(clubId)
+
     standings.push({
       position: 0,
       clubId,
@@ -269,6 +323,8 @@ export const buildLeagueTable = async (
       goalsAgainst,
       goalDifference,
       points,
+      groupIndex: groupInfo?.groupIndex ?? null,
+      groupLabel: groupInfo?.label ?? null,
     })
   }
 
@@ -282,65 +338,73 @@ export const buildLeagueTable = async (
     }
   }
 
-  const pointsGroups = new Map<number, number[]>()
-  for (const row of standings) {
-    const list = pointsGroups.get(row.points)
-    if (list) {
-      list.push(row.clubId)
-    } else {
-      pointsGroups.set(row.points, [row.clubId])
-    }
-  }
-
-  const groupHeadToHead = new Map<
-    number,
-    Map<number, { points: number; goalsFor: number; goalsAgainst: number }>
-  >()
-
-  const ensureGroupEntry = (
-    groupPoints: number,
-    clubId: number
-  ): { points: number; goalsFor: number; goalsAgainst: number } => {
-    let clubMap = groupHeadToHead.get(groupPoints)
-    if (!clubMap) {
-      clubMap = new Map<number, { points: number; goalsFor: number; goalsAgainst: number }>()
-      groupHeadToHead.set(groupPoints, clubMap)
-    }
-    let entry = clubMap.get(clubId)
-    if (!entry) {
-      entry = { points: 0, goalsFor: 0, goalsAgainst: 0 }
-      clubMap.set(clubId, entry)
-    }
-    return entry
-  }
-
-  for (const [groupPoints, clubIds] of pointsGroups.entries()) {
-    if (clubIds.length < 2) continue
-    const clubSet = new Set(clubIds)
-    for (const match of finishedMatches) {
-      if (!clubSet.has(match.homeTeamId) || !clubSet.has(match.awayTeamId)) continue
-      const home = ensureGroupEntry(groupPoints, match.homeTeamId)
-      const away = ensureGroupEntry(groupPoints, match.awayTeamId)
-
-      home.goalsFor += match.homeScore
-      home.goalsAgainst += match.awayScore
-      away.goalsFor += match.awayScore
-      away.goalsAgainst += match.homeScore
-
-      const winnerClubId = determineMatchWinnerClubId(match)
-      if (winnerClubId === match.homeTeamId) {
-        home.points += 3
-      } else if (winnerClubId === match.awayTeamId) {
-        away.points += 3
+  const createGroupHeadToHead = (rows: LeagueTableEntry[]) => {
+    const pointsGroups = new Map<number, number[]>()
+    for (const row of rows) {
+      const list = pointsGroups.get(row.points)
+      if (list) {
+        list.push(row.clubId)
       } else {
-        home.points += 1
-        away.points += 1
+        pointsGroups.set(row.points, [row.clubId])
       }
     }
+
+    const groupMap = new Map<number, Map<number, HeadToHeadEntry>>()
+
+    const ensureEntry = (groupPoints: number, clubId: number): HeadToHeadEntry => {
+      let clubMap = groupMap.get(groupPoints)
+      if (!clubMap) {
+        clubMap = new Map<number, HeadToHeadEntry>()
+        groupMap.set(groupPoints, clubMap)
+      }
+      let entry = clubMap.get(clubId)
+      if (!entry) {
+        entry = { points: 0, goalsFor: 0, goalsAgainst: 0 }
+        clubMap.set(clubId, entry)
+      }
+      return entry
+    }
+
+    for (const [groupPoints, clubIds] of pointsGroups.entries()) {
+      if (clubIds.length < 2) {
+        continue
+      }
+      const clubSet = new Set(clubIds)
+      for (const match of finishedMatches) {
+        if (!clubSet.has(match.homeTeamId) || !clubSet.has(match.awayTeamId)) {
+          continue
+        }
+        const home = ensureEntry(groupPoints, match.homeTeamId)
+        const away = ensureEntry(groupPoints, match.awayTeamId)
+
+        home.goalsFor += match.homeScore
+        home.goalsAgainst += match.awayScore
+        away.goalsFor += match.awayScore
+        away.goalsAgainst += match.homeScore
+
+        const winnerClubId = determineMatchWinnerClubId(match)
+        if (winnerClubId === match.homeTeamId) {
+          home.points += 3
+        } else if (winnerClubId === match.awayTeamId) {
+          away.points += 3
+        } else {
+          home.points += 1
+          away.points += 1
+        }
+      }
+    }
+
+    return groupMap
   }
 
-  standings.sort((left, right) => {
-    if (right.points !== left.points) return right.points - left.points
+  const compareEntries = (
+    left: LeagueTableEntry,
+    right: LeagueTableEntry,
+    groupHeadToHead: Map<number, Map<number, HeadToHeadEntry>>
+  ): number => {
+    if (right.points !== left.points) {
+      return right.points - left.points
+    }
 
     const groupStats = groupHeadToHead.get(left.points)
     if (groupStats && groupStats.size >= 2) {
@@ -381,19 +445,49 @@ export const buildLeagueTable = async (
 
     const leftDiff = left.goalDifference
     const rightDiff = right.goalDifference
-    if (rightDiff !== leftDiff) return rightDiff - leftDiff
+    if (rightDiff !== leftDiff) {
+      return rightDiff - leftDiff
+    }
 
-    if (right.goalsFor !== left.goalsFor) return right.goalsFor - left.goalsFor
+    if (right.goalsFor !== left.goalsFor) {
+      return right.goalsFor - left.goalsFor
+    }
 
     return left.clubName.localeCompare(right.clubName, 'ru')
-  })
+  }
+
+  const globalGroupHeadToHead = createGroupHeadToHead(standings)
+
+  standings.sort((left, right) => compareEntries(left, right, globalGroupHeadToHead))
 
   standings.forEach((row, index) => {
     row.position = index + 1
   })
 
+  const groupsForResponse = rawGroups
+    .map(group => {
+      const clubSet = new Set(group.clubIds)
+      const rows = standings.filter(row => clubSet.has(row.clubId))
+      if (rows.length === 0) {
+        return null
+      }
+      const headToHeadMap = createGroupHeadToHead(rows)
+      const sortedRows = rows
+        .slice()
+        .sort((left, right) => compareEntries(left, right, headToHeadMap))
+      return {
+        groupIndex: group.groupIndex,
+        label: group.label,
+        qualifyCount: group.qualifyCount,
+        clubIds: sortedRows.map(row => row.clubId),
+      }
+    })
+    .filter((value): value is LeagueTableGroup => value !== null)
+    .sort((left, right) => left.groupIndex - right.groupIndex)
+
   return {
     season: ensureSeasonSummary(season),
     standings,
+    groups: groupsForResponse.length ? groupsForResponse : undefined,
   }
 }

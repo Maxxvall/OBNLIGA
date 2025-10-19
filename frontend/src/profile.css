@@ -123,7 +123,6 @@
   font-size: 28px;
   font-weight: 700;
   letter-spacing: 0.8px;
-  text-transform: uppercase;
   color: #f0fbff;
   text-shadow: 0 4px 18px rgba(0, 240, 255, 0.4);
 }
@@ -166,6 +165,7 @@
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+  justify-content: center;
 }
 
 .verify-button {

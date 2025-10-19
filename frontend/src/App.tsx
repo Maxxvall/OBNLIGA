@@ -18,8 +18,6 @@ export default function App() {
   const leagueMenuOpen = useAppStore(state => state.leagueMenuOpen)
   const matchDetailsOpen = useAppStore(state => state.matchDetails.open)
 
-  console.log('[App] matchDetailsOpen:', matchDetailsOpen)
-
   useEffect(() => {
     const duration = 1600 // splash duration in ms
     const start = Date.now()

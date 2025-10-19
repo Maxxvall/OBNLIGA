@@ -177,10 +177,11 @@ export default async function assistantRoutes(server: FastifyInstance) {
           },
           orderBy: { matchDateTime: 'asc' },
           include: {
-            season: { select: { id: true, name: true } },
+            season: { select: { id: true, name: true, city: true } },
             round: true,
             homeClub: true,
             awayClub: true,
+            stadium: { select: { id: true, name: true, city: true } },
           },
         })
 
@@ -194,7 +195,9 @@ export default async function assistantRoutes(server: FastifyInstance) {
           hasPenaltyShootout: match.hasPenaltyShootout,
           penaltyHomeScore: match.penaltyHomeScore ?? 0,
           penaltyAwayScore: match.penaltyAwayScore ?? 0,
-          season: match.season ? { id: match.season.id, name: match.season.name } : null,
+          season: match.season
+            ? { id: match.season.id, name: match.season.name, city: match.season.city }
+            : null,
           round: match.round
             ? {
                 id: match.round.id,
@@ -215,6 +218,14 @@ export default async function assistantRoutes(server: FastifyInstance) {
             shortName: match.awayClub.shortName,
             logoUrl: match.awayClub.logoUrl,
           },
+          stadium: match.stadium
+            ? {
+                id: match.stadium.id,
+                name: match.stadium.name,
+                city: match.stadium.city,
+              }
+            : null,
+          locationCity: match.stadium?.city ?? match.season?.city ?? null,
         }))
 
         return reply.send({ ok: true, data: serializePrisma(payload) })

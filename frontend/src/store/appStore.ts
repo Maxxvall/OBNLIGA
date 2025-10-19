@@ -1018,7 +1018,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       loading: { ...prev.loading, seasons: true },
       errors: { ...prev.errors, seasons: undefined },
     }))
-    const response = await leagueApi.fetchSeasons({ version: state.seasonsVersion })
+  const requestVersion = options?.force ? undefined : state.seasonsVersion
+  const response = await leagueApi.fetchSeasons({ version: requestVersion })
     if (!response.ok) {
       set(prev => ({
         loading: { ...prev.loading, seasons: false },
@@ -1078,8 +1079,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       errors: { ...prev.errors, table: undefined },
     }))
     const currentVersion = state.tableVersions[seasonId]
+    const requestVersion = options?.force ? undefined : currentVersion
     const response = await leagueApi.fetchTable(seasonId, {
-      version: currentVersion,
+      version: requestVersion,
     })
     if (!response.ok) {
       set(prev => ({
@@ -1139,8 +1141,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       loading: { ...prev.loading, schedule: true },
       errors: { ...prev.errors, schedule: undefined },
     }))
+    const requestVersion = options?.force ? undefined : state.scheduleVersions[seasonId]
     const response = await leagueApi.fetchSchedule(seasonId, {
-      version: state.scheduleVersions[seasonId],
+      version: requestVersion,
     })
     if (!response.ok) {
       set(prev => ({
@@ -1200,8 +1203,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       loading: { ...prev.loading, results: true },
       errors: { ...prev.errors, results: undefined },
     }))
+    const requestVersion = options?.force ? undefined : state.resultsVersions[seasonId]
     const response = await leagueApi.fetchResults(seasonId, {
-      version: state.resultsVersions[seasonId],
+      version: requestVersion,
     })
     if (!response.ok) {
       set(prev => ({
@@ -1261,8 +1265,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       loading: { ...prev.loading, stats: true },
       errors: { ...prev.errors, stats: undefined },
     }))
+    const requestVersion = options?.force ? undefined : state.statsVersions[seasonId]
     const response = await leagueApi.fetchStats(seasonId, {
-      version: state.statsVersions[seasonId],
+      version: requestVersion,
     })
     if (!response.ok) {
       set(prev => ({
@@ -1362,8 +1367,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       teamSummaryErrors: { ...prev.teamSummaryErrors, [clubId]: undefined },
     }))
 
+    const requestVersion = options?.force ? undefined : state.teamSummaryVersions[clubId]
     const response = await clubApi.fetchSummary(clubId, {
-      version: state.teamSummaryVersions[clubId],
+      version: requestVersion,
     })
     if (!response.ok) {
       set(prev => ({
@@ -1485,8 +1491,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       matchDetails: { ...prev.matchDetails, loadingHeader: true, errorHeader: undefined },
     }))
 
+    const requestEtag = options?.force ? undefined : state.matchDetails.headerEtag
     const response = await matchApi.fetchHeader(matchId, {
-      etag: state.matchDetails.headerEtag,
+      etag: requestEtag,
     })
 
     if (!response.ok) {
@@ -1597,8 +1604,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       matchDetails: { ...prev.matchDetails, loadingLineups: true, errorLineups: undefined },
     }))
 
+    const requestEtag = options?.force ? undefined : state.matchDetails.lineupsEtag
     const response = await matchApi.fetchLineups(matchId, {
-      etag: state.matchDetails.lineupsEtag,
+      etag: requestEtag,
     })
 
     if (!response.ok) {
@@ -1640,8 +1648,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       matchDetails: { ...prev.matchDetails, loadingStats: true, errorStats: undefined },
     }))
 
+    const requestEtag = options?.force ? undefined : state.matchDetails.statsEtag
     const response = await matchApi.fetchStats(matchId, {
-      etag: state.matchDetails.statsEtag,
+      etag: requestEtag,
     })
 
     if (!response.ok) {
@@ -1679,8 +1688,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       matchDetails: { ...prev.matchDetails, loadingEvents: true, errorEvents: undefined },
     }))
 
+    const requestEtag = options?.force ? undefined : state.matchDetails.eventsEtag
     const response = await matchApi.fetchEvents(matchId, {
-      etag: state.matchDetails.eventsEtag,
+      etag: requestEtag,
     })
 
     if (!response.ok) {

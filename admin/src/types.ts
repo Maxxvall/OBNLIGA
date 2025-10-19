@@ -167,7 +167,7 @@ export interface JudgeMatchSummary {
   hasPenaltyShootout: boolean
   penaltyHomeScore: number
   penaltyAwayScore: number
-  season?: { id: number; name: string } | null
+  season?: { id: number; name: string; city?: string | null } | null
   round?: {
     id: number
     roundType: 'REGULAR' | 'PLAYOFF'
@@ -176,6 +176,8 @@ export interface JudgeMatchSummary {
   } | null
   homeClub: Club
   awayClub: Club
+  stadium?: { id: number; name: string; city: string } | null
+  locationCity?: string | null
 }
 
 export interface AssistantMatchSummary {
@@ -188,7 +190,7 @@ export interface AssistantMatchSummary {
   hasPenaltyShootout: boolean
   penaltyHomeScore: number
   penaltyAwayScore: number
-  season?: { id: number; name: string } | null
+  season?: { id: number; name: string; city?: string | null } | null
   round?: {
     id: number
     roundType: 'REGULAR' | 'PLAYOFF'
@@ -197,6 +199,8 @@ export interface AssistantMatchSummary {
   } | null
   homeClub: Club
   awayClub: Club
+  stadium?: { id: number; name: string; city: string } | null
+  locationCity?: string | null
 }
 
 export interface FriendlyMatch {

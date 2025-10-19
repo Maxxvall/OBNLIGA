@@ -39,6 +39,21 @@ const STATISTIC_LABELS: Record<MatchStatisticMetric, string> = {
   redCards: 'Красные карточки',
 }
 
+const UNKNOWN_CITY_KEY = '__unknown__'
+
+const normalizeCityKey = (value?: string | null): string => {
+  const trimmed = value?.trim() ?? ''
+  if (!trimmed) {
+    return UNKNOWN_CITY_KEY
+  }
+  return trimmed.toLowerCase()
+}
+
+const labelForCity = (value?: string | null): string => {
+  const trimmed = value?.trim()
+  return trimmed && trimmed.length > 0 ? trimmed : 'Без города'
+}
+
 type ScoreFormState = {
   homeScore: string
   awayScore: string
@@ -469,6 +484,52 @@ export const AssistantPanel = () => {
     }
   }
 
+  const matchGroups = useMemo(() => {
+    if (!matches.length) {
+      return [] as Array<{
+        key: string
+        label: string
+        matches: AssistantMatchSummary[]
+      }>
+    }
+
+    const collator = new Intl.Collator('ru', { sensitivity: 'base' })
+    const buckets = new Map<
+      string,
+      {
+        key: string
+        label: string
+        matches: AssistantMatchSummary[]
+      }
+    >()
+
+    for (const match of matches) {
+      const originCity = match.locationCity ?? match.stadium?.city ?? match.season?.city ?? null
+      const key = normalizeCityKey(originCity)
+      const label = labelForCity(originCity)
+      const bucket = buckets.get(key)
+      if (bucket) {
+        bucket.matches.push(match)
+      } else {
+        buckets.set(key, { key, label, matches: [match] })
+      }
+    }
+
+    const grouped = Array.from(buckets.values())
+    grouped.forEach(group => {
+      group.matches.sort((left, right) => left.matchDateTime.localeCompare(right.matchDateTime))
+    })
+    grouped.sort((left, right) => collator.compare(left.label, right.label))
+
+    const unknownIndex = grouped.findIndex(group => group.key === UNKNOWN_CITY_KEY)
+    if (unknownIndex > 0) {
+      const [unknown] = grouped.splice(unknownIndex, 1)
+      grouped.push(unknown)
+    }
+
+    return grouped
+  }, [matches])
+
   return (
     <div className="assistant-panel" onFocus={() => clearError()}>
       <header className="assistant-header">
@@ -504,36 +565,43 @@ export const AssistantPanel = () => {
               Нет доступных матчей. Проверьте расписание или статус матча.
             </p>
           ) : null}
-          <ul>
-            {matches.map(match => {
-              const isSelected = match.id === selectedMatchId
-              const scoreLabel = `${match.homeScore}:${match.awayScore}`
-              return (
-                <li key={match.id}>
-                  <button
-                    type="button"
-                    className={isSelected ? 'assistant-match active' : 'assistant-match'}
-                    onClick={() => handleSelectMatch(match.id)}
-                    disabled={isLoadingMatches}
-                  >
-                    <div className="match-row">
-                      <span className="club-name club-home">{match.homeClub.name}</span>
-                      <span className="score">{scoreLabel}</span>
-                      <span className="club-name club-away">{match.awayClub.name}</span>
-                    </div>
-                    <div className="match-meta">
-                      <span className={`status status-${match.status.toLowerCase()}`}>
-                        {matchStatusLabel(match)}
-                      </span>
-                      <span className="match-date">
-                        {formatDateTime(match.matchDateTime)}
-                      </span>
-                    </div>
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
+          <div className="assistant-match-groups">
+            {matchGroups.map(group => (
+              <section className="assistant-match-group" key={group.key}>
+                <h3 className="assistant-match-group-title">{group.label}</h3>
+                <ul>
+                  {group.matches.map(match => {
+                    const isSelected = match.id === selectedMatchId
+                    const scoreLabel = `${match.homeScore}:${match.awayScore}`
+                    return (
+                      <li key={match.id}>
+                        <button
+                          type="button"
+                          className={isSelected ? 'assistant-match active' : 'assistant-match'}
+                          onClick={() => handleSelectMatch(match.id)}
+                          disabled={isLoadingMatches}
+                        >
+                          <div className="match-row">
+                            <span className="club-name club-home">{match.homeClub.name}</span>
+                            <span className="score">{scoreLabel}</span>
+                            <span className="club-name club-away">{match.awayClub.name}</span>
+                          </div>
+                          <div className="match-meta">
+                            <span className={`status status-${match.status.toLowerCase()}`}>
+                              {matchStatusLabel(match)}
+                            </span>
+                            <span className="match-date">
+                              {formatDateTime(match.matchDateTime)}
+                            </span>
+                          </div>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </section>
+            ))}
+          </div>
         </aside>
 
         <section className="assistant-details">

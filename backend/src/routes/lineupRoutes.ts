@@ -604,6 +604,43 @@ const registerLineupRouteGroup = (
             data: { updatedAt: new Date() },
           })
         }
+
+        if (numbersToUpdate.length) {
+          const personIdsNeedingDefaultUpdate = numbersToUpdate.map(entry => entry.personId)
+          const existingDefaults = await tx.clubPlayer.findMany({
+            where: {
+              clubId,
+              personId: { in: personIdsNeedingDefaultUpdate },
+            },
+            select: {
+              personId: true,
+              defaultShirtNumber: true,
+            },
+          })
+
+          const defaultMap = new Map<number, number | null>()
+          for (const link of existingDefaults) {
+            defaultMap.set(link.personId, link.defaultShirtNumber)
+          }
+
+          for (const { personId, shirtNumber } of numbersToUpdate) {
+            if (defaultMap.get(personId) === shirtNumber) {
+              continue
+            }
+
+            await tx.clubPlayer.upsert({
+              where: { clubId_personId: { clubId, personId } },
+              create: {
+                clubId,
+                personId,
+                defaultShirtNumber: shirtNumber,
+              },
+              update: {
+                defaultShirtNumber: shirtNumber,
+              },
+            })
+          }
+        }
       })
 
       if (hasRosterChanges) {

@@ -6,6 +6,38 @@ import type { LineupPortalMatch, LineupPortalRosterEntry } from '../types'
 import { formatDateTime } from '../utils/date'
 import '../lineup.css'
 
+const MINIMUM_MATCH_LENGTH = 5
+
+const normalizeSearchValue = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/[-–—]/g, '')
+    .replace(/\s+/g, '')
+
+const hasClubMatch = (clubName: string, normalizedTerm: string) => {
+  if (!normalizedTerm) return false
+  const normalizedClub = normalizeSearchValue(clubName)
+  if (!normalizedClub) return false
+  if (normalizedClub.length < MINIMUM_MATCH_LENGTH) {
+    return normalizedTerm === normalizedClub
+  }
+  if (normalizedTerm.length < MINIMUM_MATCH_LENGTH) {
+    return false
+  }
+  return normalizedClub.startsWith(normalizedTerm)
+}
+
+const resolveMatchedClubIds = (match: LineupPortalMatch, normalizedTerm: string) => {
+  const matched: number[] = []
+  if (hasClubMatch(match.homeClub.name, normalizedTerm)) {
+    matched.push(match.homeClub.id)
+  }
+  if (hasClubMatch(match.awayClub.name, normalizedTerm)) {
+    matched.push(match.awayClub.id)
+  }
+  return matched
+}
+
 const statusLabels: Record<LineupPortalMatch['status'], string> = {
   SCHEDULED: 'Запланирован',
   LIVE: 'В игре',
@@ -83,6 +115,10 @@ export const LineupPortalView = () => {
   const [shirtNumbers, setShirtNumbers] = useState<Record<number, string>>({})
   const [saving, setSaving] = useState(false)
   const [modalError, setModalError] = useState<string | null>(null)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [lockedClubId, setLockedClubId] = useState<number | null>(null)
+
+  const normalizedSearch = useMemo(() => normalizeSearchValue(searchTerm), [searchTerm])
 
   const selectedCount = useMemo(
     () =>
@@ -94,6 +130,15 @@ export const LineupPortalView = () => {
     [roster, selectedPlayers]
   )
 
+  const filteredMatches = useMemo(() => {
+    if (!normalizedSearch) return []
+    return matches.filter(match => {
+      const homeMatched = hasClubMatch(match.homeClub.name, normalizedSearch)
+      const awayMatched = hasClubMatch(match.awayClub.name, normalizedSearch)
+      return homeMatched || awayMatched
+    })
+  }, [matches, normalizedSearch])
+
   const resetModalState = () => {
     setActiveMatch(null)
     setActiveClubId(null)
@@ -101,6 +146,7 @@ export const LineupPortalView = () => {
     setSelectedPlayers({})
     setShirtNumbers({})
     setModalError(null)
+    setLockedClubId(null)
     setModalOpen(false)
   }
 
@@ -141,8 +187,11 @@ export const LineupPortalView = () => {
   }, [lineupToken, fetchMatches])
 
   const openMatchModal = (match: LineupPortalMatch) => {
+    const matchedClubIds = resolveMatchedClubIds(match, normalizedSearch)
+    const initialClubId = matchedClubIds[0] ?? match.homeClub.id
     setActiveMatch(match)
-    setActiveClubId(match.homeClub.id)
+    setActiveClubId(initialClubId)
+    setLockedClubId(matchedClubIds.length === 1 ? initialClubId : null)
     setModalOpen(true)
     setRoster([])
     setSelectedPlayers({})
@@ -318,27 +367,49 @@ export const LineupPortalView = () => {
             {matchesLoading ? 'Обновляем…' : 'Обновить'}
           </button>
         </header>
-        <p className="portal-sub">Отображаются игры в ближайшие 24 часа.</p>
-        <ul className="portal-match-list">
-          {matches.map(match => {
-            const title = `${match.homeClub.name} vs ${match.awayClub.name}`
-            const roundLabel = match.round?.label ? match.round.label : 'Без стадии'
-            const isActive = activeMatch?.id === match.id
-            return (
-              <li key={match.id} className={isActive ? 'active' : undefined}>
-                <button type="button" onClick={() => openMatchModal(match)}>
-                  <span className="match-date">{formatKickoff(match.matchDateTime)}</span>
-                  <span className="match-round">{roundLabel}</span>
-                  <span className="match-opponent">{title}</span>
-                  <span className="match-venue">Статус: {statusLabels[match.status]}</span>
-                </button>
-              </li>
-            )
-          })}
-        </ul>
-        {matches.length === 0 ? (
-          <p className="portal-hint">Нет матчей для подтверждения состава.</p>
-        ) : null}
+        <div className="portal-search">
+          <label htmlFor="portal-match-search">Поиск команды</label>
+          <input
+            id="portal-match-search"
+            type="text"
+            placeholder="Начните вводить название команды"
+            autoComplete="off"
+            value={searchTerm}
+            onChange={event => setSearchTerm(event.target.value)}
+          />
+          <p className="portal-hint">
+            Введите минимум 5 букв названия или полностью короткое название клуба.
+          </p>
+        </div>
+        {filteredMatches.length > 0 ? (
+          <ul className="portal-match-list">
+            {filteredMatches.map(match => {
+              const title = `${match.homeClub.name} vs ${match.awayClub.name}`
+              const roundLabel = match.round?.label ? match.round.label : 'Без стадии'
+              const isActive = activeMatch?.id === match.id
+              return (
+                <li key={match.id} className={isActive ? 'active' : undefined}>
+                  <button type="button" onClick={() => openMatchModal(match)}>
+                    <span className="match-date">{formatKickoff(match.matchDateTime)}</span>
+                    <span className="match-round">{roundLabel}</span>
+                    <span className="match-opponent">{title}</span>
+                    <span className="match-venue">Статус: {statusLabels[match.status]}</span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        ) : (
+          <p className="portal-hint">
+            {matchesLoading
+              ? 'Ищем доступные матчи...'
+              : normalizedSearch
+                ? normalizedSearch.length < MINIMUM_MATCH_LENGTH
+                  ? 'Продолжайте ввод, пока не совпадут 5 букв, или напишите короткое название полностью.'
+                  : 'Матчи для указанной команды не найдены в ближайшие сутки.'
+                : 'Введите название своей команды, чтобы увидеть матчи.'}
+          </p>
+        )}
       </aside>
 
       <section className="portal-card">
@@ -366,6 +437,28 @@ export const LineupPortalView = () => {
     if (!modalOpen || !activeMatch || !activeClubId) return null
     const homeActive = activeClubId === activeMatch.homeClub.id
     const awayActive = activeClubId === activeMatch.awayClub.id
+    const isClubLocked = lockedClubId !== null
+
+    const renderClubChip = (club: LineupPortalMatch['homeClub'], isActive: boolean) => {
+      if (isClubLocked && lockedClubId !== club.id) {
+        return null
+      }
+      return (
+        <button
+          type="button"
+          className={`club-chip${isActive ? ' active' : ''}`}
+          onClick={() => {
+            if (!isClubLocked) {
+              setActiveClubId(club.id)
+            }
+          }}
+          disabled={isClubLocked}
+          data-locked={isClubLocked ? 'true' : undefined}
+        >
+          {club.name}
+        </button>
+      )
+    }
 
     return (
       <div className="portal-overlay" role="dialog" aria-modal="true">
@@ -383,21 +476,9 @@ export const LineupPortalView = () => {
             </button>
           </header>
 
-          <div className="club-switcher">
-            <button
-              type="button"
-              className={`club-chip${homeActive ? ' active' : ''}`}
-              onClick={() => setActiveClubId(activeMatch.homeClub.id)}
-            >
-              {activeMatch.homeClub.name}
-            </button>
-            <button
-              type="button"
-              className={`club-chip${awayActive ? ' active' : ''}`}
-              onClick={() => setActiveClubId(activeMatch.awayClub.id)}
-            >
-              {activeMatch.awayClub.name}
-            </button>
+          <div className={`club-switcher${isClubLocked ? ' locked' : ''}`}>
+            {renderClubChip(activeMatch.homeClub, homeActive)}
+            {renderClubChip(activeMatch.awayClub, awayActive)}
           </div>
 
           <form className="portal-roster" onSubmit={handleSubmitRoster}>

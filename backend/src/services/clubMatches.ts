@@ -3,112 +3,74 @@ import { defaultCache } from '../cache'
 import {
   buildLeagueSchedule,
   buildLeagueResults,
-  type LeagueRoundCollection,
   type LeagueRoundMatches,
 } from './leagueSchedule'
 import { ClubSummaryNotFoundError } from './clubSummary'
 
-const PUBLIC_CLUB_MATCHES_TTL_SECONDS = 1_200
+const PUBLIC_CLUB_MATCHES_TTL_SECONDS = 86_400
 
 export const publicClubMatchesKey = (clubId: number) => `public:club:${clubId}:matches`
 
-type ClubMatchesRoundAccumulator = {
-  round: LeagueRoundMatches
-  matchIds: Set<string>
-  firstMatchAt: number
-  lastMatchAt: number
-}
-
-type ClubMatchesSnapshot = {
-  clubId: number
-  seasons: ClubMatchesSeasonSnapshot[]
-  generatedAt: string
+type ClubMatchCompact = {
+  d: string
+  st: 'SCHEDULED' | 'LIVE' | 'POSTPONED' | 'FINISHED'
+  r: string | null
+  h: { n: string }
+  a: { n: string }
+  sc: { h: number | null; a: number | null }
 }
 
 type ClubMatchesSeasonSnapshot = {
-  season: LeagueRoundCollection['season']
-  rounds: LeagueRoundMatches[]
+  n: string
+  m: ClubMatchCompact[]
 }
 
-const createAccumulator = (round: LeagueRoundMatches): ClubMatchesRoundAccumulator => ({
-  round: {
-    roundId: round.roundId,
-    roundNumber: round.roundNumber,
-    roundLabel: round.roundLabel,
-    roundType: round.roundType,
-    matches: [],
-  },
-  matchIds: new Set<string>(),
-  firstMatchAt: Number.POSITIVE_INFINITY,
-  lastMatchAt: Number.NEGATIVE_INFINITY,
-})
+type ClubMatchesSnapshot = {
+  c: number
+  g: string
+  s: ClubMatchesSeasonSnapshot[]
+}
 
-const appendRoundMatches = (
-  map: Map<string, ClubMatchesRoundAccumulator>,
+const pickDisplayName = (name: string, shortName?: string | null) => {
+  if (shortName && shortName.trim().length <= 10) {
+    return shortName
+  }
+  return name
+}
+
+const toCompactMatch = (match: LeagueRoundMatches['matches'][number], roundLabel: string): ClubMatchCompact => {
+  const isScheduled = match.status === 'SCHEDULED'
+  return {
+    d: match.matchDateTime,
+    st: match.status,
+    r: roundLabel || null,
+    h: {
+      n: pickDisplayName(match.homeClub.name, match.homeClub.shortName),
+    },
+    a: {
+      n: pickDisplayName(match.awayClub.name, match.awayClub.shortName),
+    },
+    sc: {
+      h: isScheduled ? null : match.homeScore,
+      a: isScheduled ? null : match.awayScore,
+    },
+  }
+}
+
+const collectMatches = (
   rounds: LeagueRoundMatches[],
-  clubId: number
+  clubId: number,
+  store: Map<string, ClubMatchCompact>
 ) => {
-  rounds.forEach(round => {
-    const filteredMatches = round.matches.filter(match =>
-      match.homeClub.id === clubId || match.awayClub.id === clubId
-    )
-
-    if (filteredMatches.length === 0) {
-      return
-    }
-
-    const key = round.roundId !== null ? `id:${round.roundId}` : `label:${round.roundLabel}`
-    let accumulator = map.get(key)
-    if (!accumulator) {
-      accumulator = createAccumulator(round)
-      map.set(key, accumulator)
-    }
-
-    filteredMatches.forEach(match => {
-      if (accumulator!.matchIds.has(match.id)) {
-        return
+  for (const round of rounds) {
+    for (const match of round.matches) {
+      if (match.homeClub.id !== clubId && match.awayClub.id !== clubId) {
+        continue
       }
-      accumulator!.matchIds.add(match.id)
-      accumulator!.round.matches.push(match)
-      const timestamp = Date.parse(match.matchDateTime)
-      if (Number.isFinite(timestamp)) {
-        accumulator!.firstMatchAt = Math.min(accumulator!.firstMatchAt, timestamp)
-        accumulator!.lastMatchAt = Math.max(accumulator!.lastMatchAt, timestamp)
-      }
-    })
-  })
-}
-
-const finalizeRounds = (
-  map: Map<string, ClubMatchesRoundAccumulator>
-): LeagueRoundMatches[] => {
-  const values = Array.from(map.values()).filter(entry => entry.round.matches.length > 0)
-
-  values.forEach(entry => {
-    entry.round.matches.sort((left, right) =>
-      left.matchDateTime.localeCompare(right.matchDateTime)
-    )
-    if (!Number.isFinite(entry.firstMatchAt)) {
-      entry.firstMatchAt = entry.round.matches.reduce((min, match) => {
-        const ts = Date.parse(match.matchDateTime)
-        return Number.isFinite(ts) ? Math.min(min, ts) : min
-      }, Number.POSITIVE_INFINITY)
+      const compact = toCompactMatch(match, round.roundLabel)
+      store.set(match.id, compact)
     }
-    if (!Number.isFinite(entry.lastMatchAt)) {
-      entry.lastMatchAt = entry.round.matches.reduce((max, match) => {
-        const ts = Date.parse(match.matchDateTime)
-        return Number.isFinite(ts) ? Math.max(max, ts) : max
-      }, Number.NEGATIVE_INFINITY)
-    }
-  })
-
-  values.sort((left, right) => {
-    const leftTime = Number.isFinite(left.lastMatchAt) ? left.lastMatchAt : left.firstMatchAt
-    const rightTime = Number.isFinite(right.lastMatchAt) ? right.lastMatchAt : right.firstMatchAt
-    return rightTime - leftTime
-  })
-
-  return values.map(entry => entry.round)
+  }
 }
 
 export const buildClubMatches = async (clubId: number): Promise<ClubMatchesSnapshot | null> => {
@@ -131,9 +93,9 @@ export const buildClubMatches = async (clubId: number): Promise<ClubMatchesSnaps
 
   if (!seasons.length) {
     return {
-      clubId,
-      seasons: [],
-      generatedAt: new Date().toISOString(),
+      c: clubId,
+      s: [],
+      g: new Date().toISOString(),
     }
   }
 
@@ -145,25 +107,28 @@ export const buildClubMatches = async (clubId: number): Promise<ClubMatchesSnaps
       buildLeagueResults(season, Number.MAX_SAFE_INTEGER),
     ])
 
-    const accumulator = new Map<string, ClubMatchesRoundAccumulator>()
-    appendRoundMatches(accumulator, schedule.rounds, clubId)
-    appendRoundMatches(accumulator, results.rounds, clubId)
-    const rounds = finalizeRounds(accumulator)
+    const matches = new Map<string, ClubMatchCompact>()
+    collectMatches(schedule.rounds, clubId, matches)
+    collectMatches(results.rounds, clubId, matches)
 
-    if (rounds.length === 0) {
+    if (!matches.size) {
       continue
     }
 
+    const sorted = Array.from(matches.values()).sort((left, right) =>
+      right.d.localeCompare(left.d)
+    )
+
     seasonSnapshots.push({
-      season: schedule.season,
-      rounds,
+      n: schedule.season.name,
+      m: sorted,
     })
   }
 
   return {
-    clubId,
-    seasons: seasonSnapshots,
-    generatedAt: new Date().toISOString(),
+    c: clubId,
+    s: seasonSnapshots,
+    g: new Date().toISOString(),
   }
 }
 

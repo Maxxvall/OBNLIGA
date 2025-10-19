@@ -201,6 +201,18 @@
   color: rgba(255, 220, 170, 0.94);
 }
 
+.match-badge.scheduled {
+  border-color: rgba(0, 240, 255, 0.32);
+  background: rgba(0, 240, 255, 0.16);
+  color: rgba(10, 25, 42, 0.92);
+}
+
+.match-badge.finished {
+  border-color: rgba(122, 255, 193, 0.4);
+  background: rgba(122, 255, 193, 0.14);
+  color: rgba(210, 255, 235, 0.92);
+}
+
 .league-match-main {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -208,11 +220,26 @@
   align-items: end;
 }
 
+.league-match-main.compact {
+  gap: 12px;
+}
+
 .league-match-team {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 10px;
+}
+
+.league-match-team.compact-team {
+  gap: 6px;
+}
+
+.league-match-main.compact .team-name {
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: rgba(230, 247, 255, 0.92);
+  text-align: center;
 }
 
 .league-match-team .club-logo-button {

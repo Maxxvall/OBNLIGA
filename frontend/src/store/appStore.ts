@@ -84,7 +84,7 @@ const SCHEDULE_TTL_MS = 12_000
 const RESULTS_TTL_MS = 20_000
 const STATS_TTL_MS = 300_000
 const CLUB_SUMMARY_TTL_MS = 45_000
-const CLUB_MATCHES_TTL_MS = 90_000
+const CLUB_MATCHES_TTL_MS = 86_400_000
 const DOUBLE_TAP_THRESHOLD_MS = 280
 
 const LEAGUE_POLL_INTERVAL_MS = 10_000
@@ -734,7 +734,9 @@ const startTeamPolling = (get: () => AppState, clubId: number) => {
     }
 
     void state.fetchClubSummary(clubId)
-    void state.fetchClubMatches(clubId)
+    if (state.teamView.activeTab === 'matches') {
+      void state.fetchClubMatches(clubId)
+    }
   }
 
   teamPollingTimer = window.setInterval(tick, TEAM_POLL_INTERVAL_MS)
@@ -909,181 +911,62 @@ const isClubSummaryAchievement = (
   )
 }
 
-const MATCH_STATUS_VALUES = new Set<LeagueMatchView['status']>([
+const COMPACT_MATCH_STATUS_VALUES: ReadonlySet<MatchStatus> = new Set([
   'SCHEDULED',
   'LIVE',
   'POSTPONED',
   'FINISHED',
 ])
 
-const isMatchClubSummary = (
-  value: unknown
-): value is LeagueMatchView['homeClub'] => {
+const isCompactTeam = (value: unknown): value is ClubMatchesResponse['s'][number]['m'][number]['h'] => {
   if (!value || typeof value !== 'object') {
     return false
   }
-  const club = value as Record<string, unknown>
-  return (
-    typeof club.id === 'number' &&
-    typeof club.name === 'string' &&
-    typeof club.shortName === 'string' &&
-    (club.logoUrl === null || typeof club.logoUrl === 'string')
-  )
+  const team = value as Record<string, unknown>
+  return typeof team.n === 'string'
 }
 
-const isMatchLocation = (
-  value: unknown
-): value is NonNullable<LeagueMatchView['location']> => {
+const isCompactScore = (value: unknown): value is ClubMatchesResponse['s'][number]['m'][number]['sc'] => {
   if (!value || typeof value !== 'object') {
     return false
   }
-  const location = value as Record<string, unknown>
-  const isValidNullableNumber = (data: unknown) => data === null || typeof data === 'number'
-  const isValidNullableString = (data: unknown) => data === null || typeof data === 'string'
-  return (
-    isValidNullableNumber(location.stadiumId) &&
-    isValidNullableString(location.stadiumName) &&
-    isValidNullableString(location.city)
-  )
+  const score = value as Record<string, unknown>
+  const isValid = (entry: unknown) => entry === null || typeof entry === 'number'
+  return isValid(score.h) && isValid(score.a)
 }
 
-const isMatchSeries = (
-  value: unknown
-): value is NonNullable<LeagueMatchView['series']> => {
-  if (!value || typeof value !== 'object') {
-    return false
-  }
-  const series = value as Record<string, unknown>
-  const status = series.status
-
-  return (
-    typeof series.id === 'string' &&
-    typeof series.stageName === 'string' &&
-    (status === 'IN_PROGRESS' || status === 'FINISHED') &&
-    typeof series.matchNumber === 'number' &&
-    typeof series.totalMatches === 'number' &&
-    typeof series.requiredWins === 'number' &&
-    typeof series.homeWinsBefore === 'number' &&
-    typeof series.awayWinsBefore === 'number' &&
-    typeof series.homeWinsAfter === 'number' &&
-    typeof series.awayWinsAfter === 'number' &&
-    typeof series.homeWinsTotal === 'number' &&
-    typeof series.awayWinsTotal === 'number' &&
-    typeof series.homeClubId === 'number' &&
-    typeof series.awayClubId === 'number' &&
-    (series.winnerClubId === null || typeof series.winnerClubId === 'number') &&
-    isMatchClubSummary(series.homeClub) &&
-    isMatchClubSummary(series.awayClub)
-  )
-}
-
-const isLeagueMatchView = (value: unknown): value is LeagueMatchView => {
+const isCompactMatch = (value: unknown): value is ClubMatchesResponse['s'][number]['m'][number] => {
   if (!value || typeof value !== 'object') {
     return false
   }
   const match = value as Record<string, unknown>
-  if (
-    typeof match.id !== 'string' ||
-    typeof match.matchDateTime !== 'string' ||
-    typeof match.status !== 'string' ||
-    !MATCH_STATUS_VALUES.has(match.status as LeagueMatchView['status']) ||
-    typeof match.homeScore !== 'number' ||
-    typeof match.awayScore !== 'number' ||
-    typeof match.hasPenaltyShootout !== 'boolean' ||
-    !isMatchClubSummary(match.homeClub) ||
-    !isMatchClubSummary(match.awayClub)
-  ) {
+  if (typeof match.d !== 'string' || typeof match.st !== 'string') {
     return false
   }
-
-  if (
-    !(match.penaltyHomeScore === null || typeof match.penaltyHomeScore === 'number') ||
-    !(match.penaltyAwayScore === null || typeof match.penaltyAwayScore === 'number')
-  ) {
+  if (!COMPACT_MATCH_STATUS_VALUES.has(match.st as MatchStatus)) {
     return false
   }
-
-  if (!(match.location === null || isMatchLocation(match.location))) {
+  if (!(match.r === null || typeof match.r === 'string')) {
     return false
   }
-
-  if (match.series !== undefined && match.series !== null && !isMatchSeries(match.series)) {
+  if (!isCompactTeam(match.h) || !isCompactTeam(match.a)) {
     return false
   }
-
+  if (!isCompactScore(match.sc)) {
+    return false
+  }
   return true
 }
 
-const isLeagueRoundMatchesPayload = (
-  value: unknown
-): value is LeagueRoundMatches => {
-  if (!value || typeof value !== 'object') {
-    return false
-  }
-  const round = value as Record<string, unknown>
-  const roundType = round.roundType
-  const roundId = round.roundId
-  const roundNumber = round.roundNumber
-
-  if (
-    !(roundId === null || typeof roundId === 'number') ||
-    !(roundNumber === null || typeof roundNumber === 'number') ||
-    typeof round.roundLabel !== 'string'
-  ) {
-    return false
-  }
-
-  if (
-    !(
-      roundType === null ||
-      roundType === 'REGULAR' ||
-      roundType === 'PLAYOFF'
-    )
-  ) {
-    return false
-  }
-
-  if (!Array.isArray(round.matches) || !round.matches.every(isLeagueMatchView)) {
-    return false
-  }
-
-  return true
-}
-
-const isLeagueSeasonSummaryPayload = (
-  value: unknown
-): value is ClubMatchesResponse['seasons'][number]['season'] => {
+const isCompactSeason = (value: unknown): value is ClubMatchesResponse['s'][number] => {
   if (!value || typeof value !== 'object') {
     return false
   }
   const season = value as Record<string, unknown>
-  const competition = season.competition as Record<string, unknown> | undefined
-
   return (
-    typeof season.id === 'number' &&
-    typeof season.name === 'string' &&
-    typeof season.startDate === 'string' &&
-    typeof season.endDate === 'string' &&
-    typeof season.isActive === 'boolean' &&
-    (season.city === null || season.city === undefined || typeof season.city === 'string') &&
-    competition != null &&
-    typeof competition.id === 'number' &&
-    typeof competition.name === 'string' &&
-    typeof competition.type === 'string'
-  )
-}
-
-const isClubMatchesSeasonSnapshot = (
-  value: unknown
-): value is ClubMatchesResponse['seasons'][number] => {
-  if (!value || typeof value !== 'object') {
-    return false
-  }
-  const snapshot = value as Record<string, unknown>
-  return (
-    isLeagueSeasonSummaryPayload(snapshot.season) &&
-    Array.isArray(snapshot.rounds) &&
-    snapshot.rounds.every(isLeagueRoundMatchesPayload)
+    typeof season.n === 'string' &&
+    Array.isArray(season.m) &&
+    season.m.every(isCompactMatch)
   )
 }
 
@@ -1094,10 +977,10 @@ const isClubMatchesResponsePayload = (
     return false
   }
   const candidate = payload as Record<string, unknown>
-  if (typeof candidate.clubId !== 'number' || typeof candidate.generatedAt !== 'string') {
+  if (typeof candidate.c !== 'number' || typeof candidate.g !== 'string') {
     return false
   }
-  if (!Array.isArray(candidate.seasons) || !candidate.seasons.every(isClubMatchesSeasonSnapshot)) {
+  if (!Array.isArray(candidate.s) || !candidate.s.every(isCompactSeason)) {
     return false
   }
   return true
@@ -1547,9 +1430,16 @@ export const useAppStore = create<AppState>((set, get) => ({
         teamMatchesErrors: { ...prev.teamMatchesErrors, [clubId]: undefined },
       }
     })
-    get().ensureTeamPolling()
-    void get().fetchClubSummary(clubId)
-    void get().fetchClubMatches(clubId)
+    const stateAfterOpen = get()
+    stateAfterOpen.ensureTeamPolling()
+    void stateAfterOpen.fetchClubSummary(clubId)
+    if (
+      stateAfterOpen.teamView.open &&
+      stateAfterOpen.teamView.clubId === clubId &&
+      stateAfterOpen.teamView.activeTab === 'matches'
+    ) {
+      void stateAfterOpen.fetchClubMatches(clubId)
+    }
   },
   closeTeamView: () => {
     const state = get()
@@ -1570,6 +1460,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     set(prev => ({
       teamView: prev.teamView.open ? { ...prev.teamView, activeTab: tab } : prev.teamView,
     }))
+    if (tab === 'matches') {
+      const state = get()
+      const clubId = state.teamView.clubId
+      if (state.teamView.open && typeof clubId === 'number') {
+        void state.fetchClubMatches(clubId)
+      }
+    }
   },
   setTeamMatchesMode: mode => {
     set(prev => ({

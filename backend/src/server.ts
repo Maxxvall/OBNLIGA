@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
+import compress from '@fastify/compress'
 
 const server = Fastify({ logger: true })
 
@@ -21,6 +22,11 @@ server.register(cors, {
   origin: true, // Allow all origins in development, configure specifically for production
   credentials: true,
   exposedHeaders: ['ETag', 'X-Resource-Version', 'Cache-Control'],
+})
+
+server.register(compress, {
+  global: true,
+  encodings: ['gzip', 'br'],
 })
 
 server.get('/health', async () => {

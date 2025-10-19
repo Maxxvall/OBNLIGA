@@ -9,6 +9,7 @@ import type {
   LeagueStatsResponse,
   LeagueStatsCategory,
   LeaguePlayerLeaderboardEntry,
+  ClubMatchesResponse,
   ClubSummaryResponse,
   MatchDetailsHeader,
   MatchDetailsLineups,
@@ -83,6 +84,7 @@ const SCHEDULE_TTL_MS = 12_000
 const RESULTS_TTL_MS = 20_000
 const STATS_TTL_MS = 300_000
 const CLUB_SUMMARY_TTL_MS = 45_000
+const CLUB_MATCHES_TTL_MS = 90_000
 const DOUBLE_TAP_THRESHOLD_MS = 280
 
 const LEAGUE_POLL_INTERVAL_MS = 10_000
@@ -732,6 +734,7 @@ const startTeamPolling = (get: () => AppState, clubId: number) => {
     }
 
     void state.fetchClubSummary(clubId)
+    void state.fetchClubMatches(clubId)
   }
 
   teamPollingTimer = window.setInterval(tick, TEAM_POLL_INTERVAL_MS)
@@ -787,6 +790,11 @@ interface AppState {
   teamSummaryVersions: Record<number, string | undefined>
   teamSummaryLoadingId: number | null
   teamSummaryErrors: Record<number, string | undefined>
+  teamMatches: Record<number, ClubMatchesResponse>
+  teamMatchesFetchedAt: Record<number, number>
+  teamMatchesVersions: Record<number, string | undefined>
+  teamMatchesLoadingId: number | null
+  teamMatchesErrors: Record<number, string | undefined>
   teamPollingAttached: boolean
   teamPollingClubId?: number
   matchDetails: MatchDetailsState
@@ -809,6 +817,7 @@ interface AppState {
   setTeamSubTab: (tab: TeamSubTab) => void
   setTeamMatchesMode: (mode: TeamMatchesMode) => void
   fetchClubSummary: (clubId: number, options?: { force?: boolean }) => Promise<FetchResult>
+  fetchClubMatches: (clubId: number, options?: { force?: boolean }) => Promise<FetchResult>
   ensureTeamPolling: () => void
   stopTeamPolling: () => void
   openMatchDetails: (matchId: string, snapshot?: LeagueMatchView, seasonId?: number) => void
@@ -900,6 +909,200 @@ const isClubSummaryAchievement = (
   )
 }
 
+const MATCH_STATUS_VALUES = new Set<LeagueMatchView['status']>([
+  'SCHEDULED',
+  'LIVE',
+  'POSTPONED',
+  'FINISHED',
+])
+
+const isMatchClubSummary = (
+  value: unknown
+): value is LeagueMatchView['homeClub'] => {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const club = value as Record<string, unknown>
+  return (
+    typeof club.id === 'number' &&
+    typeof club.name === 'string' &&
+    typeof club.shortName === 'string' &&
+    (club.logoUrl === null || typeof club.logoUrl === 'string')
+  )
+}
+
+const isMatchLocation = (
+  value: unknown
+): value is NonNullable<LeagueMatchView['location']> => {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const location = value as Record<string, unknown>
+  const isValidNullableNumber = (data: unknown) => data === null || typeof data === 'number'
+  const isValidNullableString = (data: unknown) => data === null || typeof data === 'string'
+  return (
+    isValidNullableNumber(location.stadiumId) &&
+    isValidNullableString(location.stadiumName) &&
+    isValidNullableString(location.city)
+  )
+}
+
+const isMatchSeries = (
+  value: unknown
+): value is NonNullable<LeagueMatchView['series']> => {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const series = value as Record<string, unknown>
+  const status = series.status
+
+  return (
+    typeof series.id === 'string' &&
+    typeof series.stageName === 'string' &&
+    (status === 'IN_PROGRESS' || status === 'FINISHED') &&
+    typeof series.matchNumber === 'number' &&
+    typeof series.totalMatches === 'number' &&
+    typeof series.requiredWins === 'number' &&
+    typeof series.homeWinsBefore === 'number' &&
+    typeof series.awayWinsBefore === 'number' &&
+    typeof series.homeWinsAfter === 'number' &&
+    typeof series.awayWinsAfter === 'number' &&
+    typeof series.homeWinsTotal === 'number' &&
+    typeof series.awayWinsTotal === 'number' &&
+    typeof series.homeClubId === 'number' &&
+    typeof series.awayClubId === 'number' &&
+    (series.winnerClubId === null || typeof series.winnerClubId === 'number') &&
+    isMatchClubSummary(series.homeClub) &&
+    isMatchClubSummary(series.awayClub)
+  )
+}
+
+const isLeagueMatchView = (value: unknown): value is LeagueMatchView => {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const match = value as Record<string, unknown>
+  if (
+    typeof match.id !== 'string' ||
+    typeof match.matchDateTime !== 'string' ||
+    typeof match.status !== 'string' ||
+    !MATCH_STATUS_VALUES.has(match.status as LeagueMatchView['status']) ||
+    typeof match.homeScore !== 'number' ||
+    typeof match.awayScore !== 'number' ||
+    typeof match.hasPenaltyShootout !== 'boolean' ||
+    !isMatchClubSummary(match.homeClub) ||
+    !isMatchClubSummary(match.awayClub)
+  ) {
+    return false
+  }
+
+  if (
+    !(match.penaltyHomeScore === null || typeof match.penaltyHomeScore === 'number') ||
+    !(match.penaltyAwayScore === null || typeof match.penaltyAwayScore === 'number')
+  ) {
+    return false
+  }
+
+  if (!(match.location === null || isMatchLocation(match.location))) {
+    return false
+  }
+
+  if (match.series !== undefined && match.series !== null && !isMatchSeries(match.series)) {
+    return false
+  }
+
+  return true
+}
+
+const isLeagueRoundMatchesPayload = (
+  value: unknown
+): value is LeagueRoundMatches => {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const round = value as Record<string, unknown>
+  const roundType = round.roundType
+  const roundId = round.roundId
+  const roundNumber = round.roundNumber
+
+  if (
+    !(roundId === null || typeof roundId === 'number') ||
+    !(roundNumber === null || typeof roundNumber === 'number') ||
+    typeof round.roundLabel !== 'string'
+  ) {
+    return false
+  }
+
+  if (
+    !(
+      roundType === null ||
+      roundType === 'REGULAR' ||
+      roundType === 'PLAYOFF'
+    )
+  ) {
+    return false
+  }
+
+  if (!Array.isArray(round.matches) || !round.matches.every(isLeagueMatchView)) {
+    return false
+  }
+
+  return true
+}
+
+const isLeagueSeasonSummaryPayload = (
+  value: unknown
+): value is ClubMatchesResponse['seasons'][number]['season'] => {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const season = value as Record<string, unknown>
+  const competition = season.competition as Record<string, unknown> | undefined
+
+  return (
+    typeof season.id === 'number' &&
+    typeof season.name === 'string' &&
+    typeof season.startDate === 'string' &&
+    typeof season.endDate === 'string' &&
+    typeof season.isActive === 'boolean' &&
+    (season.city === null || season.city === undefined || typeof season.city === 'string') &&
+    competition != null &&
+    typeof competition.id === 'number' &&
+    typeof competition.name === 'string' &&
+    typeof competition.type === 'string'
+  )
+}
+
+const isClubMatchesSeasonSnapshot = (
+  value: unknown
+): value is ClubMatchesResponse['seasons'][number] => {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const snapshot = value as Record<string, unknown>
+  return (
+    isLeagueSeasonSummaryPayload(snapshot.season) &&
+    Array.isArray(snapshot.rounds) &&
+    snapshot.rounds.every(isLeagueRoundMatchesPayload)
+  )
+}
+
+const isClubMatchesResponsePayload = (
+  payload: unknown
+): payload is ClubMatchesResponse => {
+  if (!payload || typeof payload !== 'object') {
+    return false
+  }
+  const candidate = payload as Record<string, unknown>
+  if (typeof candidate.clubId !== 'number' || typeof candidate.generatedAt !== 'string') {
+    return false
+  }
+  if (!Array.isArray(candidate.seasons) || !candidate.seasons.every(isClubMatchesSeasonSnapshot)) {
+    return false
+  }
+  return true
+}
+
 const isClubSummaryResponsePayload = (
   payload: unknown
 ): payload is ClubSummaryResponse => {
@@ -962,6 +1165,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   teamSummaryVersions: {},
   teamSummaryLoadingId: null,
   teamSummaryErrors: {},
+  teamMatches: {},
+  teamMatchesFetchedAt: {},
+  teamMatchesVersions: {},
+  teamMatchesLoadingId: null,
+  teamMatchesErrors: {},
   teamPollingAttached: false,
   teamPollingClubId: undefined,
   matchDetails: { ...INITIAL_MATCH_DETAILS },
@@ -1336,21 +1544,26 @@ export const useAppStore = create<AppState>((set, get) => ({
           matchesMode: sameClub ? prev.teamView.matchesMode : 'schedule',
         },
         teamSummaryErrors: { ...prev.teamSummaryErrors, [clubId]: undefined },
+        teamMatchesErrors: { ...prev.teamMatchesErrors, [clubId]: undefined },
       }
     })
     get().ensureTeamPolling()
     void get().fetchClubSummary(clubId)
+    void get().fetchClubMatches(clubId)
   },
   closeTeamView: () => {
     const state = get()
     get().stopTeamPolling()
     const shouldClearLoading =
       state.teamSummaryLoadingId !== null && state.teamSummaryLoadingId === state.teamView.clubId
+    const shouldClearMatchesLoading =
+      state.teamMatchesLoadingId !== null && state.teamMatchesLoadingId === state.teamView.clubId
     set(prev => ({
       teamView: { ...INITIAL_TEAM_VIEW },
       teamPollingAttached: false,
       teamPollingClubId: undefined,
       teamSummaryLoadingId: shouldClearLoading ? null : prev.teamSummaryLoadingId,
+      teamMatchesLoadingId: shouldClearMatchesLoading ? null : prev.teamMatchesLoadingId,
     }))
   },
   setTeamSubTab: tab => {
@@ -1431,6 +1644,78 @@ export const useAppStore = create<AppState>((set, get) => ({
       teamSummaryErrors: { ...prev.teamSummaryErrors, [clubId]: undefined },
     }))
     get().ensureTeamPolling()
+    return { ok: true }
+  },
+  fetchClubMatches: async (clubId, options) => {
+    const state = get()
+    const now = Date.now()
+    const lastFetched = state.teamMatchesFetchedAt[clubId] ?? 0
+    const hasFreshData = now - lastFetched < CLUB_MATCHES_TTL_MS
+    if (!options?.force && state.teamMatches[clubId] && hasFreshData) {
+      return { ok: true }
+    }
+    if (state.teamMatchesLoadingId === clubId && !options?.force) {
+      return { ok: true }
+    }
+
+    set(prev => ({
+      teamMatchesLoadingId: clubId,
+      teamMatchesErrors: { ...prev.teamMatchesErrors, [clubId]: undefined },
+    }))
+
+    const requestVersion = options?.force ? undefined : state.teamMatchesVersions[clubId]
+    const response = await clubApi.fetchMatches(clubId, {
+      version: requestVersion,
+    })
+
+    if (!response.ok) {
+      set(prev => ({
+        teamMatchesLoadingId:
+          prev.teamMatchesLoadingId === clubId ? null : prev.teamMatchesLoadingId,
+        teamMatchesErrors: { ...prev.teamMatchesErrors, [clubId]: response.error },
+      }))
+      return { ok: false }
+    }
+
+    if (!('data' in response)) {
+      if (!state.teamMatches[clubId]) {
+        set(prev => ({
+          teamMatchesLoadingId:
+            prev.teamMatchesLoadingId === clubId ? null : prev.teamMatchesLoadingId,
+          teamMatchesErrors: { ...prev.teamMatchesErrors, [clubId]: 'empty_cache' },
+        }))
+        return { ok: false }
+      }
+
+      set(prev => ({
+        teamMatchesFetchedAt: { ...prev.teamMatchesFetchedAt, [clubId]: Date.now() },
+        teamMatchesLoadingId:
+          prev.teamMatchesLoadingId === clubId ? null : prev.teamMatchesLoadingId,
+        teamMatchesErrors: { ...prev.teamMatchesErrors, [clubId]: undefined },
+      }))
+      return { ok: true }
+    }
+
+    const payload = response.data as unknown
+    if (!isClubMatchesResponsePayload(payload)) {
+      set(prev => ({
+        teamMatchesLoadingId:
+          prev.teamMatchesLoadingId === clubId ? null : prev.teamMatchesLoadingId,
+        teamMatchesErrors: { ...prev.teamMatchesErrors, [clubId]: 'invalid_payload' },
+      }))
+      return { ok: false }
+    }
+
+    const fetchedAt = Date.now()
+    const nextVersion = response.version ?? state.teamMatchesVersions[clubId]
+    set(prev => ({
+      teamMatches: { ...prev.teamMatches, [clubId]: payload },
+      teamMatchesVersions: { ...prev.teamMatchesVersions, [clubId]: nextVersion },
+      teamMatchesFetchedAt: { ...prev.teamMatchesFetchedAt, [clubId]: fetchedAt },
+      teamMatchesLoadingId: prev.teamMatchesLoadingId === clubId ? null : prev.teamMatchesLoadingId,
+      teamMatchesErrors: { ...prev.teamMatchesErrors, [clubId]: undefined },
+    }))
+
     return { ok: true }
   },
   ensureTeamPolling: () => {

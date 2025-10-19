@@ -151,6 +151,17 @@ export interface LeagueRoundCollection {
   generatedAt: string
 }
 
+export interface ClubMatchesSeasonGroup {
+  season: LeagueSeasonSummary
+  rounds: LeagueRoundMatches[]
+}
+
+export interface ClubMatchesResponse {
+  clubId: number
+  seasons: ClubMatchesSeasonGroup[]
+  generatedAt: string
+}
+
 export type LeagueStatsCategory = 'goalContribution' | 'scorers' | 'assists'
 
 export interface LeaguePlayerLeaderboardEntry {

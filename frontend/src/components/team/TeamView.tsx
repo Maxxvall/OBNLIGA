@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useRef } from 'react'
+import React, { CSSProperties, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import type { ClubSummaryResponse, LeagueRoundCollection } from '@shared/types'
+import type { ClubMatchesResponse, ClubSummaryResponse, LeagueMatchView } from '@shared/types'
 import { useAppStore, TeamSubTab, TeamMatchesMode } from '../../store/appStore'
-import { LeagueRoundsView } from '../league/LeagueRoundsView'
+import { buildMatchDescriptor } from '../../utils/matchPresentation'
 import '../../styles/teamView.css'
+import '../../styles/leagueRounds.css'
 
 const TAB_CONFIG: Array<{ key: TeamSubTab; label: string }> = [
   { key: 'overview', label: 'Обзор' },
@@ -41,43 +42,19 @@ const FORM_TONE: Record<ClubSummaryResponse['form'][number]['result'], string> =
   LOSS: 'loss',
 }
 
-const GAUGE_START_ANGLE = -90
 const GAUGE_SWEEP = 180
 const SEGMENT_GAP_DEGREES = 4
+const GAUGE_TRACK_COLOR = 'var(--team-gauge-track)'
+const GAUGE_SEGMENT_COLORS: Record<GaugeSegment['key'], string> = {
+  wins: 'var(--team-gauge-win)',
+  draws: 'var(--team-gauge-draw)',
+  losses: 'var(--team-gauge-loss)',
+}
 
 type GaugeSegment = {
   key: 'wins' | 'draws' | 'losses'
   start: number
   end: number
-}
-
-const polarToCartesian = (centerX: number, centerY: number, radius: number, angleInDegrees: number) => {
-  const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180
-  const x = centerX + radius * Math.cos(angleInRadians)
-  const y = centerY + radius * Math.sin(angleInRadians)
-  return { x, y }
-}
-
-const describeArc = (centerX: number, centerY: number, radius: number, startAngle: number, endAngle: number) => {
-  const start = polarToCartesian(centerX, centerY, radius, endAngle)
-  const end = polarToCartesian(centerX, centerY, radius, startAngle)
-  const sweep = endAngle - startAngle
-  const largeArcFlag = sweep > 180 ? '1' : '0'
-  const sweepFlag = sweep >= 0 ? '1' : '0'
-  const precision = (value: number) => Number(value.toFixed(3))
-  return [
-    'M',
-    precision(start.x),
-    precision(start.y),
-    'A',
-    radius,
-    radius,
-    0,
-    largeArcFlag,
-    sweepFlag,
-    precision(end.x),
-    precision(end.y),
-  ].join(' ')
 }
 
 const buildGaugeSegments = (stats: ClubSummaryResponse['statistics']): GaugeSegment[] => {
@@ -97,54 +74,182 @@ const buildGaugeSegments = (stats: ClubSummaryResponse['statistics']): GaugeSegm
     return []
   }
 
-  const gap = activeSources.length > 1 ? SEGMENT_GAP_DEGREES : 0
-  let cursor = GAUGE_START_ANGLE
+  const interiorGap = activeSources.length > 1 ? SEGMENT_GAP_DEGREES : 0
+  const edgeGap = activeSources.length > 1 ? SEGMENT_GAP_DEGREES / 2 : 0
+  let cursor = edgeGap
   const segments: GaugeSegment[] = []
 
   activeSources.forEach((source, index) => {
     const sweep = (source.value / total) * GAUGE_SWEEP
-    const rawStart = cursor
-    const rawEnd = cursor + sweep
-    const hasNext = index < activeSources.length - 1
-    const start = index > 0 ? rawStart + gap : rawStart
-    const end = hasNext ? rawEnd - gap : rawEnd
-    cursor = rawEnd
+    const reduction = index < activeSources.length - 1 ? interiorGap : edgeGap
+    const start = cursor
+    const end = Math.max(cursor + sweep - reduction, cursor)
     if (end - start <= 0) {
       return
     }
+    cursor = end + (index < activeSources.length - 1 ? interiorGap : 0)
     segments.push({ key: source.key, start, end })
   })
 
   return segments
 }
 
-const filterCollectionByClub = (
-  collection: LeagueRoundCollection | undefined,
-  clubId?: number
-): LeagueRoundCollection | undefined => {
-  if (!collection || !clubId) {
-    return undefined
+const buildGaugeGradient = (segments: GaugeSegment[]): string => {
+  if (!segments.length) {
+    return `conic-gradient(from 180deg, ${GAUGE_TRACK_COLOR} 0deg ${GAUGE_SWEEP}deg, transparent ${GAUGE_SWEEP}deg 360deg)`
   }
 
-  const filteredRounds = collection.rounds
-    .map(round => {
-      const matches = round.matches.filter(
-        match => match.homeClub.id === clubId || match.awayClub.id === clubId
+  const stops: string[] = []
+  let cursor = 0
+
+  segments.forEach(segment => {
+    if (segment.start > cursor) {
+      stops.push(
+        `${GAUGE_TRACK_COLOR} ${cursor.toFixed(3)}deg ${segment.start.toFixed(3)}deg`
       )
-      if (!matches.length) {
-        return null
-      }
-      return {
-        ...round,
-        matches,
-      }
-    })
-    .filter((round): round is NonNullable<typeof round> => Boolean(round))
+    }
+    const color = GAUGE_SEGMENT_COLORS[segment.key]
+    stops.push(
+      `${color} ${segment.start.toFixed(3)}deg ${segment.end.toFixed(3)}deg`
+    )
+    cursor = segment.end
+  })
 
-  return {
-    ...collection,
-    rounds: filteredRounds,
+  if (cursor < GAUGE_SWEEP) {
+    stops.push(
+      `${GAUGE_TRACK_COLOR} ${cursor.toFixed(3)}deg ${GAUGE_SWEEP.toFixed(3)}deg`
+    )
   }
+
+  stops.push(`transparent ${GAUGE_SWEEP}deg 360deg`)
+  return `conic-gradient(from 180deg, ${stops.join(', ')})`
+}
+
+type TeamMatchItem = {
+  match: LeagueMatchView
+  roundLabel: string
+  roundType: 'REGULAR' | 'PLAYOFF' | null
+  competitionName: string
+  seasonName: string
+  seasonId: number
+}
+
+type TeamMatchGroup = {
+  id: string
+  competitionName: string
+  seasonName: string
+  matches: TeamMatchItem[]
+}
+
+const collectTeamMatches = (snapshot?: ClubMatchesResponse): TeamMatchItem[] => {
+  if (!snapshot) {
+    return []
+  }
+
+  const items: TeamMatchItem[] = []
+  snapshot.seasons.forEach(seasonEntry => {
+    const competitionName = seasonEntry.season.competition.name
+    const seasonName = seasonEntry.season.name
+    const seasonId = seasonEntry.season.id
+
+    seasonEntry.rounds.forEach(round => {
+      round.matches.forEach(match => {
+        items.push({
+          match,
+          roundLabel: round.roundLabel,
+          roundType: round.roundType,
+          competitionName,
+          seasonName,
+          seasonId,
+        })
+      })
+    })
+  })
+
+  return items
+}
+
+const selectMatchesForMode = (
+  matches: TeamMatchItem[],
+  mode: TeamMatchesMode,
+  limit = 5
+): TeamMatchItem[] => {
+  if (!matches.length) {
+    return []
+  }
+
+  const allowedStatuses: Record<TeamMatchesMode, Set<LeagueMatchView['status']>> = {
+    schedule: new Set(['SCHEDULED', 'LIVE', 'POSTPONED']),
+    results: new Set(['FINISHED']),
+  }
+
+  const filterSet = allowedStatuses[mode]
+  const filtered = matches.filter(item => filterSet.has(item.match.status))
+
+  const pickSource = filtered.length ? filtered : matches
+
+  const sorted = pickSource
+    .slice()
+    .sort((a, b) => {
+      const aTime = Date.parse(a.match.matchDateTime)
+      const bTime = Date.parse(b.match.matchDateTime)
+      const safeA = Number.isNaN(aTime)
+        ? mode === 'schedule'
+          ? Number.POSITIVE_INFINITY
+          : Number.NEGATIVE_INFINITY
+        : aTime
+      const safeB = Number.isNaN(bTime)
+        ? mode === 'schedule'
+          ? Number.POSITIVE_INFINITY
+          : Number.NEGATIVE_INFINITY
+        : bTime
+      return mode === 'schedule' ? safeA - safeB : safeB - safeA
+    })
+
+  return sorted.slice(0, limit)
+}
+
+const groupMatchesByCompetition = (matches: TeamMatchItem[]): TeamMatchGroup[] => {
+  if (!matches.length) {
+    return []
+  }
+
+  const groups: TeamMatchGroup[] = []
+  const map = new Map<string, TeamMatchGroup>()
+
+  matches.forEach(item => {
+    const key = `${item.seasonId}:${item.competitionName}`
+    let group = map.get(key)
+    if (!group) {
+      group = {
+        id: key,
+        competitionName: item.competitionName,
+        seasonName: item.seasonName,
+        matches: [],
+      }
+      map.set(key, group)
+      groups.push(group)
+    }
+    group.matches.push(item)
+  })
+
+  return groups
+}
+
+const getMatchesEmptyMessage = (mode: TeamMatchesMode) => {
+  return mode === 'schedule'
+    ? 'Ближайшие матчи появятся позже — следите за обновлениями.'
+    : 'Недавние результаты появятся сразу после завершения игр.'
+}
+
+const buildLocationLabelCompact = (match: LeagueMatchView): string | null => {
+  const city = match.location?.city?.trim()
+  const stadium = match.location?.stadiumName?.trim()
+  const parts = [city, stadium].filter(Boolean)
+  if (!parts.length) {
+    return null
+  }
+  return parts.join(' · ')
 }
 
 const getRoot = () => {
@@ -290,6 +395,10 @@ const renderSquad = (summary: ClubSummaryResponse) => {
 const renderOverview = (summary: ClubSummaryResponse) => {
   const stats = summary.statistics
   const gaugeSegments = buildGaugeSegments(stats)
+  const gaugeGradient = buildGaugeGradient(gaugeSegments)
+  const gaugeStyle: CSSProperties & Record<'--team-gauge-fill', string> = {
+    '--team-gauge-fill': gaugeGradient,
+  }
 
   return (
     <>
@@ -306,19 +415,10 @@ const renderOverview = (summary: ClubSummaryResponse) => {
         <div className="team-stats-wide-block">
           <div className="team-stats-matches">
             <div className="team-stats-gauge" aria-hidden="true">
-              <svg viewBox="0 0 120 70" focusable="false">
-                <path
-                  className="team-stats-gauge-track"
-                  d={describeArc(60, 60, 52, GAUGE_START_ANGLE, GAUGE_START_ANGLE + GAUGE_SWEEP)}
-                />
-                {gaugeSegments.map(segment => (
-                  <path
-                    key={segment.key}
-                    className={`team-stats-gauge-segment tone-${segment.key}`}
-                    d={describeArc(60, 60, 52, segment.start, segment.end)}
-                  />
-                ))}
-              </svg>
+              <div className="team-stats-gauge-arc" style={gaugeStyle}>
+                <div className="team-stats-gauge-layer team-stats-gauge-track" />
+                <div className="team-stats-gauge-layer team-stats-gauge-fill" />
+              </div>
               <div className="team-stats-gauge-value">
                 <span className="team-stats-matches-value">{stats.matchesPlayed}</span>
                 <span className="team-stats-matches-label">матча</span>
@@ -388,6 +488,164 @@ const renderOverview = (summary: ClubSummaryResponse) => {
   )
 }
 
+type TeamMatchesListProps = {
+  mode: TeamMatchesMode
+  data?: ClubMatchesResponse
+  loading: boolean
+  error?: string
+  onRetry: () => void
+}
+
+const TeamMatchesList: React.FC<TeamMatchesListProps> = ({ mode, data, loading, error, onRetry }) => {
+  const openTeamView = useAppStore(state => state.openTeamView)
+  const openMatchDetails = useAppStore(state => state.openMatchDetails)
+
+  const matches = useMemo(() => collectTeamMatches(data), [data])
+  const selectedMatches = useMemo(() => selectMatchesForMode(matches, mode, 5), [matches, mode])
+  const groups = useMemo(() => groupMatchesByCompetition(selectedMatches), [selectedMatches])
+
+  const isInitialLoading = loading && (!data || data.seasons.length === 0)
+  const emptyMessage = getMatchesEmptyMessage(mode)
+  const isRefreshing = loading && groups.length > 0
+
+  if (isInitialLoading) {
+    return (
+      <div className="league-rounds-placeholder" aria-live="polite" aria-busy="true">
+        <div className="skeleton skeleton-heading" />
+        <div className="skeleton skeleton-card" />
+        <div className="skeleton skeleton-card" />
+      </div>
+    )
+  }
+
+  if (error && groups.length === 0) {
+    return (
+      <div className="inline-feedback error" role="alert">
+        <div>Не удалось загрузить данные. Код: {error}</div>
+        <button type="button" className="button-secondary" onClick={onRetry}>
+          Повторить
+        </button>
+      </div>
+    )
+  }
+
+  if (groups.length === 0) {
+    return (
+      <div className="inline-feedback info" role="status">
+        {emptyMessage}
+      </div>
+    )
+  }
+
+  return (
+    <div className="team-matches-groups" data-refreshing={isRefreshing || undefined}>
+      {error && (
+        <div className="team-view-feedback warning" role="status">
+          Показаны сохранённые данные. Последняя попытка загрузки завершилась с ошибкой: {error}
+        </div>
+      )}
+
+      {groups.map(group => (
+        <article className="league-round-card team-matches-group" key={group.id}>
+          <header className="league-round-card-header">
+            <h3>{group.competitionName}</h3>
+            <span className="team-match-season-label">{group.seasonName}</span>
+            <span className="league-round-chip">{mode === 'schedule' ? 'Расписание' : 'Результаты'}</span>
+          </header>
+          <div className="league-round-card-body">
+            {group.matches.map(item => {
+              const descriptor = buildMatchDescriptor(item.match, mode)
+              const cardClasses = ['league-match-card', 'team-match-card']
+              if (descriptor.modifier) {
+                cardClasses.push(descriptor.modifier)
+              }
+              const homeName = item.match.homeClub.name
+              const awayName = item.match.awayClub.name
+              const locationLabel = buildLocationLabelCompact(item.match)
+              return (
+                <div
+                  className={cardClasses.join(' ')}
+                  key={item.match.id}
+                  onClick={() => openMatchDetails(item.match.id, item.match, item.seasonId)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="league-match-top">
+                    <span className="match-datetime">{descriptor.dateTime}</span>
+                    {descriptor.badge && (
+                      <span className={`match-badge ${descriptor.badge.tone}`}>{descriptor.badge.label}</span>
+                    )}
+                  </div>
+                  <div className="league-match-main">
+                    <div className="league-match-team">
+                      <button
+                        type="button"
+                        className="club-logo-button"
+                        onClick={event => {
+                          event.stopPropagation()
+                          openTeamView(item.match.homeClub.id)
+                        }}
+                        aria-label={`Открыть страницу клуба ${item.match.homeClub.name}`}
+                      >
+                        {item.match.homeClub.logoUrl ? (
+                          <img src={item.match.homeClub.logoUrl} alt="" aria-hidden="true" className="club-logo" />
+                        ) : (
+                          <span className="club-logo fallback" aria-hidden="true">
+                            {homeName.slice(0, 2).toUpperCase()}
+                          </span>
+                        )}
+                      </button>
+                      <span className="team-name">{homeName}</span>
+                    </div>
+                    <div className="league-match-score">
+                      <span className="score-main">{descriptor.score}</span>
+                      {descriptor.detail && <span className="score-detail">{descriptor.detail}</span>}
+                    </div>
+                    <div className="league-match-team">
+                      <button
+                        type="button"
+                        className="club-logo-button"
+                        onClick={event => {
+                          event.stopPropagation()
+                          openTeamView(item.match.awayClub.id)
+                        }}
+                        aria-label={`Открыть страницу клуба ${item.match.awayClub.name}`}
+                      >
+                        {item.match.awayClub.logoUrl ? (
+                          <img src={item.match.awayClub.logoUrl} alt="" aria-hidden="true" className="club-logo" />
+                        ) : (
+                          <span className="club-logo fallback" aria-hidden="true">
+                            {awayName.slice(0, 2).toUpperCase()}
+                          </span>
+                        )}
+                      </button>
+                      <span className="team-name">{awayName}</span>
+                    </div>
+                  </div>
+                  {descriptor.series ? (
+                    <div className="series-info">
+                      <span className="series-label">Счёт в серии</span>
+                      <span className="series-score">{descriptor.series.seriesScore}</span>
+                    </div>
+                  ) : null}
+                  {locationLabel ? (
+                    <div className="league-match-location">
+                      <span>{locationLabel}</span>
+                    </div>
+                  ) : null}
+                  <div className="team-match-meta">
+                    <span className="team-match-round">{item.roundLabel}</span>
+                    <span className="team-match-season">{item.seasonName}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </article>
+      ))}
+    </div>
+  )
+}
+
 export const TeamView: React.FC = () => {
   const open = useAppStore(state => state.teamView.open)
   const clubId = useAppStore(state => state.teamView.clubId)
@@ -400,15 +658,14 @@ export const TeamView: React.FC = () => {
   const loadingId = useAppStore(state => state.teamSummaryLoadingId)
   const errors = useAppStore(state => state.teamSummaryErrors)
   const fetchSummary = useAppStore(state => state.fetchClubSummary)
-  const fetchSchedule = useAppStore(state => state.fetchLeagueSchedule)
-  const fetchResults = useAppStore(state => state.fetchLeagueResults)
-  const schedules = useAppStore(state => state.schedules)
-  const resultsMap = useAppStore(state => state.results)
-  const loadingState = useAppStore(state => state.loading)
-  const errorsState = useAppStore(state => state.errors)
-  const resolvedSeasonId = useAppStore(
-    state => state.selectedSeasonId ?? state.activeSeasonId
-  )
+  const fetchMatches = useAppStore(state => state.fetchClubMatches)
+  const matchesMap = useAppStore(state => state.teamMatches)
+  const matchesLoadingId = useAppStore(state => state.teamMatchesLoadingId)
+  const matchesErrorsMap = useAppStore(state => state.teamMatchesErrors)
+
+  const matchesData = clubId !== undefined ? matchesMap[clubId] : undefined
+  const matchesLoading = clubId !== undefined && matchesLoadingId === clubId
+  const matchesError = clubId !== undefined ? matchesErrorsMap[clubId] : undefined
 
   const summary = clubId !== undefined ? summaries[clubId] : undefined
   const isLoading = clubId !== undefined && loadingId === clubId
@@ -435,46 +692,20 @@ export const TeamView: React.FC = () => {
   }, [open, clubId, summary, isLoading, error, fetchSummary])
 
   useEffect(() => {
-    if (!open || !clubId || activeTab !== 'matches' || !resolvedSeasonId) {
+    if (!open || !clubId) {
       return
     }
-    void fetchSchedule({ seasonId: resolvedSeasonId })
-    void fetchResults({ seasonId: resolvedSeasonId })
-  }, [open, clubId, activeTab, resolvedSeasonId, fetchSchedule, fetchResults])
+    if (!matchesData && !matchesLoading && !matchesError) {
+      void fetchMatches(clubId)
+    }
+  }, [open, clubId, matchesData, matchesLoading, matchesError, fetchMatches])
 
   const host = useMemo(getRoot, [])
-
-  const seasonSchedule = useMemo(
-    () => (resolvedSeasonId ? schedules[resolvedSeasonId] : undefined),
-    [resolvedSeasonId, schedules]
-  )
-  const seasonResults = useMemo(
-    () => (resolvedSeasonId ? resultsMap[resolvedSeasonId] : undefined),
-    [resolvedSeasonId, resultsMap]
-  )
-
-  const scheduleForClub = useMemo(
-    () => filterCollectionByClub(seasonSchedule, clubId),
-    [seasonSchedule, clubId]
-  )
-  const resultsForClub = useMemo(
-    () => filterCollectionByClub(seasonResults, clubId),
-    [seasonResults, clubId]
-  )
-
-  const matchesData = matchesMode === 'schedule' ? scheduleForClub : resultsForClub
-  const matchesLoading = matchesMode === 'schedule' ? loadingState.schedule : loadingState.results
-  const matchesError = matchesMode === 'schedule' ? errorsState.schedule : errorsState.results
-
   const handleRetryMatches = () => {
-    if (!resolvedSeasonId) {
+    if (!clubId) {
       return
     }
-    if (matchesMode === 'schedule') {
-      void fetchSchedule({ seasonId: resolvedSeasonId, force: true })
-    } else {
-      void fetchResults({ seasonId: resolvedSeasonId, force: true })
-    }
+    void fetchMatches(clubId, { force: true })
   }
 
   if (!open || !clubId || !host) {
@@ -531,14 +762,6 @@ export const TeamView: React.FC = () => {
     }
 
     if (activeTab === 'matches') {
-      if (!resolvedSeasonId) {
-        return (
-          <div className="team-view-feedback" role="status">
-            Активный сезон не выбран. Откройте вкладку «Лига», чтобы выбрать сезон.
-          </div>
-        )
-      }
-
       return (
         <section className="team-matches-section">
           <div className="team-matches-tabs" role="tablist" aria-label="Режим просмотра матчей">
@@ -554,7 +777,7 @@ export const TeamView: React.FC = () => {
               </button>
             ))}
           </div>
-          <LeagueRoundsView
+          <TeamMatchesList
             mode={matchesMode}
             data={matchesData}
             loading={matchesLoading}

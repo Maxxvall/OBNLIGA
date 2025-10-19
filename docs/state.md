@@ -26,6 +26,7 @@
 - `teamView`: открыта ли карточка клуба и активная вкладка `overview|matches|squad`.
 - `teamView.matchesMode`: внутренняя вкладка раздела «Матчи» (`schedule` или `results`).
 - `teamSummaries`, `teamSummaryVersions`, `teamSummaryFetchedAt`, `teamSummaryErrors`, `teamSummaryLoadingId`: данные `/api/clubs/:id/summary`.
+- `teamMatches`, `teamMatchesVersions`, `teamMatchesFetchedAt`, `teamMatchesErrors`, `teamMatchesLoadingId`: агрегированные матчи клуба из `/api/clubs/:id/matches` (по всем сезонам).
 - `loading` и `errors`: флаги загрузки и ошибочные состояния по категориям.
 - `leaguePollingAttached`, `teamPollingAttached` и `teamPollingClubId`: контроль интервалов polling.
 
@@ -39,6 +40,7 @@
 | `/api/league/results?seasonId={id}` | 20 000 мс | `resultsVersions[seasonId]` | Аналогичное поведение для «Результатов» |
 | `/api/league/stats?seasonId={id}` | 300 000 мс | `statsVersions[seasonId]` | Содержит лидерборды; поллинг включается только на подвкладке «Статистика» |
 | `/api/clubs/{id}/summary` | 45 000 мс | `teamSummaryVersions[clubId]` | Интервал активен, пока открыт Team View конкретного клуба |
+| `/api/clubs/{id}/matches` | 90 000 мс | `teamMatchesVersions[clubId]` | Возвращает все сыгранные и будущие матчи клуба по сезонам |
 | `/api/news` | 60 000 мс между запросами, локальный cache 30 мин | `localStorage` + `etagRef` внутри компонента | Компонент запоминает snapshot и `etag`, чтобы мгновенно показать карусель |
 | `/api/auth/me` | 90 000 мс между запросами, локальный cache 5 мин | `localStorage` | Профиль читает `ETag` из `/api/auth/telegram-init`, продлевает TTL при `304`; payload содержит `leaguePlayerStats` и массив `leaguePlayerCareer` по клубам |
 
@@ -51,8 +53,7 @@
 - `ensureLeaguePolling()` / `stopLeaguePolling()`: управление 10-секундным интервалом для активной вкладки «Лига» (интервал спит, если вкладка браузера скрыта или выбран другой таб).
 - `openTeamView(clubId)`, `closeTeamView()`, `setTeamSubTab(tab)`: управление карточкой клуба.
 - `setTeamMatchesMode(mode)`: переключатель под-вкладок «Расписание/Результаты» в карточке клуба.
-- `fetchClubSummary(clubId, { force? })`, `ensureTeamPolling()`, `stopTeamPolling()`: polling сводки клуба каждые 20 с при открытом окне.
-- Вкладка «Матчи» использует итоговые коллекции `schedules`/`results` текущего сезона, фильтруя раунды по `clubId`; переключение режима не дублирует запросы (TTL контролируют `fetchLeagueSchedule`/`fetchLeagueResults`).
+- `fetchClubSummary(clubId, { force? })`, `fetchClubMatches(clubId, { force? })`, `ensureTeamPolling()`, `stopTeamPolling()`: Team View опрашивает сводку и агрегированные матчи клуба каждые 20 с, пока карточка открыта.
 
 ### Merge и минимальные перерисовки
 
@@ -83,8 +84,9 @@
 
 ### Team View и обработка ошибок
 
-- `fetchClubSummary` валидирует форму, достижения и статистику клуба перед записью в store, чтобы избежать рендера невалидных данных.
-- При ошибке запроса сводки флаг `teamSummaryErrors[clubId]` получает код ошибки, polling останавливается до ручного перезапроса.
+- `fetchClubSummary` и `fetchClubMatches` валидируют входящий payload перед записью в store, чтобы избежать рендера невалидных данных.
+- `teamMatches` содержит готовую выборку матчей по всем сезонам; фильтрация по режимам (`schedule/results`) происходит на клиенте, без повторных запросов к `/api/league/*`.
+- При ошибке запросов сводки или матчей соответствующие флаги (`teamSummaryErrors`, `teamMatchesErrors`) получают код ошибки, polling останавливается до ручного перезапроса.
 
 ## HTTP клиент (`frontend/src/api/httpClient.ts`)
 

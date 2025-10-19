@@ -111,6 +111,7 @@ MATCH_WINDOW_POST_GRACE_MINUTES=30
 ### Public aggregates / client store
 
 * `public:matches:live` — TTL **3–5s** (SWR **10–15s**), но при старте/предматчевой подготовке — pre‑warm.
+* `public:club:{id}:matches` — TTL **1 200s** (20 мин) вне матчевого окна, содержит агрегированные матчи клуба по всем сезонам.
 * Static assets (JS/CSS/images) — long cache (1y) + content hash.
 
 ---

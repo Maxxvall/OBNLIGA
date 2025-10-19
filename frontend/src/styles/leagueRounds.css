@@ -173,6 +173,7 @@
 .match-datetime {
   font-size: 14px;
   letter-spacing: 0.6px;
+  color: rgba(230, 247, 255, 0.82);
 }
 
 .match-badge {

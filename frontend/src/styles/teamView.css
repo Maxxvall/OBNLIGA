@@ -185,48 +185,69 @@
 
 .team-stats-matches {
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   min-width: 140px;
 }
 
 .team-stats-gauge {
   position: relative;
   width: 140px;
-  height: 84px;
+  height: calc(var(--team-gauge-diameter) / 2);
+  margin: 0 auto;
+  --team-gauge-diameter: 140px;
+  --team-gauge-thickness: 16px;
+  --team-gauge-track: rgba(230, 247, 255, 0.16);
+  --team-gauge-win: #7affc1;
+  --team-gauge-draw: rgba(255, 255, 255, 0.52);
+  --team-gauge-loss: #ff6298;
 }
 
-.team-stats-gauge svg {
-  width: 100%;
-  height: 100%;
-  display: block;
+.team-stats-gauge-arc {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: var(--team-gauge-diameter);
+  height: var(--team-gauge-diameter);
+  transform: translateX(-50%);
+  pointer-events: none;
+  border-bottom-left-radius: var(--team-gauge-diameter);
+  border-bottom-right-radius: var(--team-gauge-diameter);
+  overflow: hidden;
+  mask: radial-gradient(
+    circle at 50% 100%,
+    rgba(0, 0, 0, 0) calc(50% - var(--team-gauge-thickness) - 0.5px),
+    rgba(0, 0, 0, 1) calc(50% - var(--team-gauge-thickness)),
+    rgba(0, 0, 0, 1) 50%,
+    rgba(0, 0, 0, 0) 50%
+  ) bottom / 100% 200% no-repeat;
+  -webkit-mask: radial-gradient(
+    circle at 50% 100%,
+    rgba(0, 0, 0, 0) calc(50% - var(--team-gauge-thickness) - 0.5px),
+    rgba(0, 0, 0, 1) calc(50% - var(--team-gauge-thickness)),
+    rgba(0, 0, 0, 1) 50%,
+    rgba(0, 0, 0, 0) 50%
+  ) bottom / 100% 200% no-repeat;
+}
+
+.team-stats-gauge-layer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: var(--team-gauge-diameter);
+  height: var(--team-gauge-diameter);
+  border-radius: 50%;
 }
 
 .team-stats-gauge-track {
-  fill: none;
-  stroke: rgba(230, 247, 255, 0.16);
-  stroke-width: 10;
-  stroke-linecap: round;
+  background: conic-gradient(from 180deg, var(--team-gauge-track) 0deg 180deg, transparent 180deg 360deg);
+  opacity: 0.45;
 }
 
-.team-stats-gauge-segment {
-  fill: none;
-  stroke-width: 10;
-  stroke-linecap: round;
-  filter: drop-shadow(0 12px 20px rgba(0, 240, 255, 0.16));
-}
-
-.team-stats-gauge-segment.tone-wins {
-  stroke: #7affc1;
-}
-
-.team-stats-gauge-segment.tone-draws {
-  stroke: rgba(255, 255, 255, 0.52);
-}
-
-.team-stats-gauge-segment.tone-losses {
-  stroke: #ff6298;
+.team-stats-gauge-fill {
+  background: var(
+    --team-gauge-fill,
+    conic-gradient(from 180deg, transparent 0deg 180deg, transparent 180deg 360deg)
+  );
+  filter: drop-shadow(0 12px 20px rgba(0, 240, 255, 0.18));
 }
 
 .team-stats-gauge-value {
@@ -279,15 +300,15 @@
 }
 
 .team-stats-wdl-bullet.tone-wins {
-  background: #7affc1;
+  background: var(--team-gauge-win);
 }
 
 .team-stats-wdl-bullet.tone-draws {
-  background: rgba(255, 255, 255, 0.52);
+  background: var(--team-gauge-draw);
 }
 
 .team-stats-wdl-bullet.tone-losses {
-  background: #ff6298;
+  background: var(--team-gauge-loss);
 }
 
 .team-stats-wdl-label {
@@ -621,6 +642,61 @@
   box-shadow: 0 0 0 2px rgba(0, 240, 255, 0.42);
 }
 
+.team-matches-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.team-matches-group .league-round-card-header {
+  gap: 4px;
+}
+
+.team-matches-group .league-round-card-header h3 {
+  font-size: 14px;
+  letter-spacing: 0.8px;
+  color: rgba(230, 247, 255, 0.86);
+}
+
+.team-match-season-label {
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  color: rgba(200, 222, 255, 0.72);
+  text-transform: uppercase;
+}
+
+.team-match-card {
+  border: 1px solid rgba(0, 240, 255, 0.16);
+  background: rgba(0, 240, 255, 0.08);
+  transition:
+    transform 140ms ease,
+    box-shadow 160ms ease;
+}
+
+.team-match-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 22px 44px rgba(0, 240, 255, 0.16);
+}
+
+.team-match-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  color: rgba(200, 222, 255, 0.7);
+  text-transform: uppercase;
+}
+
+.team-match-round,
+.team-match-season {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-align: left;
+}
+
 @media (max-width: 720px) {
   .team-view-panel {
     padding: 20px;
@@ -636,8 +712,13 @@
 
   .team-stats-wide-block {
     gap: 20px;
-    grid-template-columns: 1fr;
     justify-items: center;
+  }
+
+  .team-stats-gauge {
+    width: 120px;
+    --team-gauge-diameter: 120px;
+    --team-gauge-thickness: 14px;
   }
 
   .team-stats-wdl {
@@ -661,6 +742,12 @@
   .team-matches-tabs {
     margin-top: 4px;
   }
+
+  .team-match-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
 }
 
 @media (max-width: 520px) {
@@ -678,39 +765,20 @@
     height: 64px;
   }
 
-  .team-stats-matches-value {
-    font-size: 42px;
-  }
-
   .team-stats-gauge {
-    width: 120px;
-    height: 72px;
+    width: 110px;
+    --team-gauge-diameter: 110px;
+    --team-gauge-thickness: 12px;
   }
 
-  .team-stats-grid {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-  }
-
-  .team-stats-card {
-    padding: 14px 10px;
-  }
-
-  .team-stats-card-icon {
-    font-size: 28px;
-  }
-
-  .team-stats-card-value {
-    font-size: 20px;
-  }
-
-  .team-stats-card-label {
-    font-size: 10px;
+  .team-stats-matches-value {
+    font-size: 48px;
   }
 
   .team-matches-tabs {
+    align-self: stretch;
+    justify-content: center;
     width: 100%;
-    justify-content: space-between;
     padding: 6px 8px;
   }
 

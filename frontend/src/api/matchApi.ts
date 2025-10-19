@@ -15,6 +15,16 @@ import { httpRequest, type ApiResponse } from './httpClient'
 type RequestOptions = {
   signal?: AbortSignal
   etag?: string
+  version?: string
+}
+
+const mapRequestOptions = (options?: RequestOptions) => {
+  if (!options) {
+    return undefined
+  }
+  const { etag, version, ...rest } = options
+  const resolvedVersion = version ?? etag
+  return resolvedVersion ? { ...rest, version: resolvedVersion } : rest
 }
 
 export const matchApi = {
@@ -24,7 +34,7 @@ export const matchApi = {
   fetchHeader(matchId: string, options?: RequestOptions) {
     return httpRequest<MatchDetailsHeader>(
       `/api/public/matches/${matchId}/header`,
-      options
+      mapRequestOptions(options)
     )
   },
 
@@ -34,7 +44,7 @@ export const matchApi = {
   fetchLineups(matchId: string, options?: RequestOptions) {
     return httpRequest<MatchDetailsLineups>(
       `/api/public/matches/${matchId}/lineups`,
-      options
+      mapRequestOptions(options)
     )
   },
 
@@ -44,7 +54,7 @@ export const matchApi = {
   fetchStats(matchId: string, options?: RequestOptions) {
     return httpRequest<MatchDetailsStats>(
       `/api/public/matches/${matchId}/stats`,
-      options
+      mapRequestOptions(options)
     )
   },
 
@@ -54,7 +64,7 @@ export const matchApi = {
   fetchEvents(matchId: string, options?: RequestOptions) {
     return httpRequest<MatchDetailsEvents>(
       `/api/public/matches/${matchId}/events`,
-      options
+      mapRequestOptions(options)
     )
   },
 
@@ -64,7 +74,7 @@ export const matchApi = {
   fetchBroadcast(matchId: string, options?: RequestOptions) {
     return httpRequest<MatchDetailsBroadcast>(
       `/api/public/matches/${matchId}/broadcast`,
-      options
+      mapRequestOptions(options)
     )
   },
 }

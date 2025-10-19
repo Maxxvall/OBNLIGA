@@ -8,6 +8,21 @@ import prisma from '../db'
 import { defaultCache } from '../cache'
 import { MatchStatus, LineupRole } from '@prisma/client'
 
+type CachedResult<T> = {
+  data: T
+  version: number
+}
+
+const wrapCachedResult = <T>(value: T | null | undefined, version: number): CachedResult<T> | null => {
+  if (value === null || value === undefined) {
+    return null
+  }
+  return {
+    data: value,
+    version,
+  }
+}
+
 // Local type definitions (minimal payload for public API)
 type MatchDetailsHeader = {
   st: 'SCHEDULED' | 'LIVE' | 'POSTPONED' | 'FINISHED'
@@ -82,10 +97,10 @@ const getCurrentMinute = (matchDateTime: Date, status: MatchStatus): number | un
  */
 export async function fetchMatchHeader(
   matchId: string
-): Promise<MatchDetailsHeader | null> {
+): Promise<CachedResult<MatchDetailsHeader> | null> {
   const key = `${REDIS_PREFIX}${matchId}:header`
 
-  const result = await defaultCache.get(key, async () => {
+  const result = await defaultCache.getWithMeta(key, async () => {
     const match = await prisma.match.findUnique({
       where: { id: BigInt(matchId) },
       select: {
@@ -172,7 +187,7 @@ export async function fetchMatchHeader(
     return header
   }, { ttlSeconds: TTL_HEADER_SECONDS, staleWhileRevalidateSeconds: TTL_HEADER_SECONDS * 2, lockTimeoutSeconds: 4 })
 
-  return result
+  return wrapCachedResult(result.value, result.version)
 }
 
 /**
@@ -180,10 +195,10 @@ export async function fetchMatchHeader(
  */
 export async function fetchMatchLineups(
   matchId: string
-): Promise<MatchDetailsLineups | null> {
+): Promise<CachedResult<MatchDetailsLineups> | null> {
   const key = `${REDIS_PREFIX}${matchId}:lineups`
 
-  const result = await defaultCache.get(key, async () => {
+  const result = await defaultCache.getWithMeta(key, async () => {
     const match = await prisma.match.findUnique({
       where: { id: BigInt(matchId) },
       select: {
@@ -265,7 +280,7 @@ export async function fetchMatchLineups(
     return lineups
   }, { ttlSeconds: TTL_LINEUPS_SECONDS, staleWhileRevalidateSeconds: TTL_LINEUPS_SECONDS * 2, lockTimeoutSeconds: 6 })
 
-  return result
+  return wrapCachedResult(result.value, result.version)
 }
 
 /**
@@ -273,10 +288,10 @@ export async function fetchMatchLineups(
  */
 export async function fetchMatchStats(
   matchId: string
-): Promise<MatchDetailsStats | null> {
+): Promise<CachedResult<MatchDetailsStats> | null> {
   const key = `${REDIS_PREFIX}${matchId}:stats`
 
-  const result = await defaultCache.get(key, async () => {
+  const result = await defaultCache.getWithMeta(key, async () => {
     const match = await prisma.match.findUnique({
       where: { id: BigInt(matchId) },
       select: {
@@ -331,7 +346,7 @@ export async function fetchMatchStats(
     return stats
   }, { ttlSeconds: TTL_STATS_SECONDS, staleWhileRevalidateSeconds: TTL_STATS_SECONDS * 2, lockTimeoutSeconds: 6 })
 
-  return result
+  return wrapCachedResult(result.value, result.version)
 }
 
 /**
@@ -339,10 +354,10 @@ export async function fetchMatchStats(
  */
 export async function fetchMatchEvents(
   matchId: string
-): Promise<MatchDetailsEvents | null> {
+): Promise<CachedResult<MatchDetailsEvents> | null> {
   const key = `${REDIS_PREFIX}${matchId}:events`
 
-  const result = await defaultCache.get(key, async () => {
+  const result = await defaultCache.getWithMeta(key, async () => {
     const match = await prisma.match.findUnique({
       where: { id: BigInt(matchId) },
       select: {
@@ -409,7 +424,7 @@ export async function fetchMatchEvents(
     return result
   }, { ttlSeconds: TTL_EVENTS_SECONDS, staleWhileRevalidateSeconds: TTL_EVENTS_SECONDS * 2, lockTimeoutSeconds: 6 })
 
-  return result
+  return wrapCachedResult(result.value, result.version)
 }
 
 /**
@@ -417,10 +432,10 @@ export async function fetchMatchEvents(
  */
 export async function fetchMatchBroadcast(
   matchId: string
-): Promise<MatchDetailsBroadcast> {
+): Promise<CachedResult<MatchDetailsBroadcast>> {
   const key = `${REDIS_PREFIX}${matchId}:broadcast`
 
-  const result = await defaultCache.get(
+  const result = await defaultCache.getWithMeta(
     key,
     async () => {
       // Stub: always return not_available
@@ -429,7 +444,10 @@ export async function fetchMatchBroadcast(
     { ttlSeconds: TTL_BROADCAST_SECONDS }
   )
 
-  return result
+  return {
+    data: result.value,
+    version: result.version,
+  }
 }
 
 /**

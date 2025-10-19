@@ -3,7 +3,7 @@
  * Provides minimal REST API for match details screen
  */
 
-import type { FastifyPluginCallback } from 'fastify'
+import type { FastifyPluginCallback, FastifyReply } from 'fastify'
 import {
   fetchMatchHeader,
   fetchMatchLineups,
@@ -11,6 +11,28 @@ import {
   fetchMatchEvents,
   fetchMatchBroadcast,
 } from '../services/matchDetailsPublic'
+
+const buildEtag = (version: number) => `"${version}"`
+
+const hasMatchingEtag = (candidate: string | undefined, etag: string) => {
+  if (!candidate) {
+    return false
+  }
+  if (candidate.trim() === '*') {
+    return true
+  }
+  const normalized = candidate
+    .split(',')
+    .map(value => value.trim())
+    .filter(Boolean)
+  return normalized.some(value => value.replace(/^W\//, '') === etag)
+}
+
+const setCachingHeaders = (reply: FastifyReply, etag: string, version: number, cacheControl: string) => {
+  reply.header('ETag', etag)
+  reply.header('X-Resource-Version', String(version))
+  reply.header('Cache-Control', cacheControl)
+}
 
 const matchPublicRoutes: FastifyPluginCallback = (server, _opts, done) => {
   /**
@@ -21,24 +43,22 @@ const matchPublicRoutes: FastifyPluginCallback = (server, _opts, done) => {
     '/api/public/matches/:id/header',
     async (request, reply) => {
       const { id } = request.params
-      const header = await fetchMatchHeader(id)
+      const cached = await fetchMatchHeader(id)
 
-      if (!header) {
+      if (!cached) {
         return reply.code(404).send({ ok: false, error: 'Match not found' })
       }
 
-      // Calculate ETag based on header content
-      const etag = `"${Buffer.from(JSON.stringify(header)).toString('base64').slice(0, 16)}"`
-      
-      // Check If-None-Match
+      const { data, version } = cached
+      const etag = buildEtag(version)
       const clientEtag = request.headers['if-none-match']
-      if (clientEtag && clientEtag === etag) {
+      if (hasMatchingEtag(clientEtag, etag)) {
+        setCachingHeaders(reply, etag, version, 'public, max-age=5, stale-while-revalidate=10')
         return reply.code(304).send()
       }
 
-      reply.header('ETag', etag)
-      reply.header('Cache-Control', 'public, max-age=10')
-      return reply.send({ ok: true, data: header })
+      setCachingHeaders(reply, etag, version, 'public, max-age=5, stale-while-revalidate=10')
+      return reply.send({ ok: true, data })
     }
   )
 
@@ -50,22 +70,22 @@ const matchPublicRoutes: FastifyPluginCallback = (server, _opts, done) => {
     '/api/public/matches/:id/lineups',
     async (request, reply) => {
       const { id } = request.params
-      const lineups = await fetchMatchLineups(id)
+      const cached = await fetchMatchLineups(id)
 
-      if (!lineups) {
+      if (!cached) {
         return reply.code(404).send({ ok: false, error: 'Match not found' })
       }
 
-      const etag = `"${Buffer.from(JSON.stringify(lineups)).toString('base64').slice(0, 16)}"`
-      
+      const { data, version } = cached
+      const etag = buildEtag(version)
       const clientEtag = request.headers['if-none-match']
-      if (clientEtag && clientEtag === etag) {
+      if (hasMatchingEtag(clientEtag, etag)) {
+        setCachingHeaders(reply, etag, version, 'public, max-age=60, stale-while-revalidate=120')
         return reply.code(304).send()
       }
 
-      reply.header('ETag', etag)
-      reply.header('Cache-Control', 'public, max-age=600')
-      return reply.send({ ok: true, data: lineups })
+      setCachingHeaders(reply, etag, version, 'public, max-age=60, stale-while-revalidate=120')
+      return reply.send({ ok: true, data })
     }
   )
 
@@ -77,22 +97,22 @@ const matchPublicRoutes: FastifyPluginCallback = (server, _opts, done) => {
     '/api/public/matches/:id/stats',
     async (request, reply) => {
       const { id } = request.params
-      const stats = await fetchMatchStats(id)
+      const cached = await fetchMatchStats(id)
 
-      if (!stats) {
+      if (!cached) {
         return reply.code(404).send({ ok: false, error: 'Match not found' })
       }
 
-      const etag = `"${Buffer.from(JSON.stringify(stats)).toString('base64').slice(0, 16)}"`
-      
+      const { data, version } = cached
+      const etag = buildEtag(version)
       const clientEtag = request.headers['if-none-match']
-      if (clientEtag && clientEtag === etag) {
+      if (hasMatchingEtag(clientEtag, etag)) {
+        setCachingHeaders(reply, etag, version, 'public, max-age=5, stale-while-revalidate=10')
         return reply.code(304).send()
       }
 
-      reply.header('ETag', etag)
-      reply.header('Cache-Control', 'public, max-age=10')
-      return reply.send({ ok: true, data: stats })
+      setCachingHeaders(reply, etag, version, 'public, max-age=5, stale-while-revalidate=10')
+      return reply.send({ ok: true, data })
     }
   )
 
@@ -104,22 +124,22 @@ const matchPublicRoutes: FastifyPluginCallback = (server, _opts, done) => {
     '/api/public/matches/:id/events',
     async (request, reply) => {
       const { id } = request.params
-      const events = await fetchMatchEvents(id)
+      const cached = await fetchMatchEvents(id)
 
-      if (!events) {
+      if (!cached) {
         return reply.code(404).send({ ok: false, error: 'Match not found' })
       }
 
-      const etag = `"${Buffer.from(JSON.stringify(events)).toString('base64').slice(0, 16)}"`
-      
+      const { data, version } = cached
+      const etag = buildEtag(version)
       const clientEtag = request.headers['if-none-match']
-      if (clientEtag && clientEtag === etag) {
+      if (hasMatchingEtag(clientEtag, etag)) {
+        setCachingHeaders(reply, etag, version, 'public, max-age=5, stale-while-revalidate=10')
         return reply.code(304).send()
       }
 
-      reply.header('ETag', etag)
-      reply.header('Cache-Control', 'public, max-age=10')
-      return reply.send({ ok: true, data: events })
+      setCachingHeaders(reply, etag, version, 'public, max-age=5, stale-while-revalidate=10')
+      return reply.send({ ok: true, data })
     }
   )
 
@@ -131,18 +151,17 @@ const matchPublicRoutes: FastifyPluginCallback = (server, _opts, done) => {
     '/api/public/matches/:id/broadcast',
     async (request, reply) => {
       const { id } = request.params
-      const broadcast = await fetchMatchBroadcast(id)
-
-      const etag = `"${Buffer.from(JSON.stringify(broadcast)).toString('base64').slice(0, 16)}"`
-      
+      const cached = await fetchMatchBroadcast(id)
+      const { data, version } = cached
+      const etag = buildEtag(version)
       const clientEtag = request.headers['if-none-match']
-      if (clientEtag && clientEtag === etag) {
+      if (hasMatchingEtag(clientEtag, etag)) {
+        setCachingHeaders(reply, etag, version, 'public, max-age=86400, stale-while-revalidate=86400')
         return reply.code(304).send()
       }
 
-      reply.header('ETag', etag)
-      reply.header('Cache-Control', 'public, max-age=86400')
-      return reply.send({ ok: true, data: broadcast })
+      setCachingHeaders(reply, etag, version, 'public, max-age=86400, stale-while-revalidate=86400')
+      return reply.send({ ok: true, data })
     }
   )
 

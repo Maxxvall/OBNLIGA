@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken'
 import { MatchStatus, LineupRole, Prisma } from '@prisma/client'
 import prisma from '../db'
 import { serializePrisma } from '../utils/serialization'
+import { defaultCache } from '../cache'
 
 interface LineupJwtPayload {
   sub: string
@@ -78,6 +79,8 @@ const parseNumericId = (value: string | number | undefined, field: string): numb
   }
   return numeric
 }
+
+const publicMatchLineupsCacheKey = (matchId: bigint | number | string) => `pub:md:${String(matchId)}:lineups`
 
 const adjustMatchesCounters = async (
   tx: Prisma.TransactionClient,
@@ -520,6 +523,13 @@ const registerLineupRouteGroup = (
         }
       }
 
+      const hasRosterChanges =
+        numbersToUpdate.length > 0 || toAdd.length > 0 || toRemove.length > 0
+
+      if (!hasRosterChanges) {
+        return reply.send({ ok: true })
+      }
+
       await prisma.$transaction(async tx => {
         if (numbersToUpdate.length) {
           let tempIndex = 0
@@ -587,7 +597,18 @@ const registerLineupRouteGroup = (
         for (const personId of toRemove) {
           await adjustMatchesCounters(tx, match.seasonId, clubId, personId, -1)
         }
+
+        if (hasRosterChanges) {
+          await tx.match.update({
+            where: { id: matchId },
+            data: { updatedAt: new Date() },
+          })
+        }
       })
+
+      if (hasRosterChanges) {
+        await defaultCache.invalidate(publicMatchLineupsCacheKey(matchId)).catch(() => undefined)
+      }
 
       return reply.send({ ok: true })
     }

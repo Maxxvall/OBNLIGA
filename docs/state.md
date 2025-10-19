@@ -24,6 +24,7 @@
 - `seasonsFetchedAt`, `tableFetchedAt`, `scheduleFetchedAt`, `resultsFetchedAt`, `statsFetchedAt`: отметки времени для TTL.
 - `seasonsVersion`, `tableVersions`, `scheduleVersions`, `resultsVersions`, `statsVersions`: версии/ETag с сервера.
 - `teamView`: открыта ли карточка клуба и активная вкладка `overview|matches|squad`.
+- `teamView.matchesMode`: внутренняя вкладка раздела «Матчи» (`schedule` или `results`).
 - `teamSummaries`, `teamSummaryVersions`, `teamSummaryFetchedAt`, `teamSummaryErrors`, `teamSummaryLoadingId`: данные `/api/clubs/:id/summary`.
 - `loading` и `errors`: флаги загрузки и ошибочные состояния по категориям.
 - `leaguePollingAttached`, `teamPollingAttached` и `teamPollingClubId`: контроль интервалов polling.
@@ -49,7 +50,9 @@
 - `fetchLeagueSeasons({ force? })`, `fetchLeagueTable({ seasonId?, force? })`, `fetchLeagueSchedule`, `fetchLeagueResults`, `fetchLeagueStats`: HTTP polling с `If-None-Match`, управление TTL и merge-хелперами.
 - `ensureLeaguePolling()` / `stopLeaguePolling()`: управление 10-секундным интервалом для активной вкладки «Лига» (интервал спит, если вкладка браузера скрыта или выбран другой таб).
 - `openTeamView(clubId)`, `closeTeamView()`, `setTeamSubTab(tab)`: управление карточкой клуба.
+- `setTeamMatchesMode(mode)`: переключатель под-вкладок «Расписание/Результаты» в карточке клуба.
 - `fetchClubSummary(clubId, { force? })`, `ensureTeamPolling()`, `stopTeamPolling()`: polling сводки клуба каждые 20 с при открытом окне.
+- Вкладка «Матчи» использует итоговые коллекции `schedules`/`results` текущего сезона, фильтруя раунды по `clubId`; переключение режима не дублирует запросы (TTL контролируют `fetchLeagueSchedule`/`fetchLeagueResults`).
 
 ### Merge и минимальные перерисовки
 

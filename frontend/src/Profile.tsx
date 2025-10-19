@@ -211,15 +211,15 @@ export default function Profile() {
           typeof initDataOverride === 'string' && initDataOverride.length > 0
             ? initDataOverride
             : JSON.stringify({
-                user: {
-                  id: userPayload.id,
-                  first_name: userPayload.first_name,
-                  last_name: userPayload.last_name,
-                  username: userPayload.username,
-                  photo_url: userPayload.photo_url,
-                  language_code: userPayload.language_code,
-                },
-              })
+              user: {
+                id: userPayload.id,
+                first_name: userPayload.first_name,
+                last_name: userPayload.last_name,
+                username: userPayload.username,
+                photo_url: userPayload.photo_url,
+                language_code: userPayload.language_code,
+              },
+            })
 
         const headers: Record<string, string> = { 'Content-Type': 'application/json' }
         if (initDataValue.length > 0 && isAscii(initDataValue)) {

@@ -1,13 +1,19 @@
 import React, { useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import type { ClubSummaryResponse } from '@shared/types'
-import { useAppStore, TeamSubTab } from '../../store/appStore'
+import type { ClubSummaryResponse, LeagueRoundCollection } from '@shared/types'
+import { useAppStore, TeamSubTab, TeamMatchesMode } from '../../store/appStore'
+import { LeagueRoundsView } from '../league/LeagueRoundsView'
 import '../../styles/teamView.css'
 
 const TAB_CONFIG: Array<{ key: TeamSubTab; label: string }> = [
   { key: 'overview', label: 'Обзор' },
   { key: 'matches', label: 'Матчи' },
   { key: 'squad', label: 'Состав' },
+]
+
+const MATCH_TAB_CONFIG: Array<{ key: TeamMatchesMode; label: string }> = [
+  { key: 'schedule', label: 'Расписание' },
+  { key: 'results', label: 'Результаты' },
 ]
 
 const formatFormDate = (value?: string) => {
@@ -33,6 +39,112 @@ const FORM_TONE: Record<ClubSummaryResponse['form'][number]['result'], string> =
   WIN: 'win',
   DRAW: 'draw',
   LOSS: 'loss',
+}
+
+const GAUGE_START_ANGLE = -90
+const GAUGE_SWEEP = 180
+const SEGMENT_GAP_DEGREES = 4
+
+type GaugeSegment = {
+  key: 'wins' | 'draws' | 'losses'
+  start: number
+  end: number
+}
+
+const polarToCartesian = (centerX: number, centerY: number, radius: number, angleInDegrees: number) => {
+  const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180
+  const x = centerX + radius * Math.cos(angleInRadians)
+  const y = centerY + radius * Math.sin(angleInRadians)
+  return { x, y }
+}
+
+const describeArc = (centerX: number, centerY: number, radius: number, startAngle: number, endAngle: number) => {
+  const start = polarToCartesian(centerX, centerY, radius, endAngle)
+  const end = polarToCartesian(centerX, centerY, radius, startAngle)
+  const sweep = endAngle - startAngle
+  const largeArcFlag = sweep > 180 ? '1' : '0'
+  const sweepFlag = sweep >= 0 ? '1' : '0'
+  const precision = (value: number) => Number(value.toFixed(3))
+  return [
+    'M',
+    precision(start.x),
+    precision(start.y),
+    'A',
+    radius,
+    radius,
+    0,
+    largeArcFlag,
+    sweepFlag,
+    precision(end.x),
+    precision(end.y),
+  ].join(' ')
+}
+
+const buildGaugeSegments = (stats: ClubSummaryResponse['statistics']): GaugeSegment[] => {
+  const total = stats.wins + stats.draws + stats.losses
+  if (total <= 0) {
+    return []
+  }
+  type SegmentSource = { key: GaugeSegment['key']; value: number }
+  const sources: SegmentSource[] = [
+    { key: 'wins', value: stats.wins },
+    { key: 'draws', value: stats.draws },
+    { key: 'losses', value: stats.losses },
+  ]
+
+  const activeSources = sources.filter(source => source.value > 0)
+  if (!activeSources.length) {
+    return []
+  }
+
+  const gap = activeSources.length > 1 ? SEGMENT_GAP_DEGREES : 0
+  let cursor = GAUGE_START_ANGLE
+  const segments: GaugeSegment[] = []
+
+  activeSources.forEach((source, index) => {
+    const sweep = (source.value / total) * GAUGE_SWEEP
+    const rawStart = cursor
+    const rawEnd = cursor + sweep
+    const hasNext = index < activeSources.length - 1
+    const start = index > 0 ? rawStart + gap : rawStart
+    const end = hasNext ? rawEnd - gap : rawEnd
+    cursor = rawEnd
+    if (end - start <= 0) {
+      return
+    }
+    segments.push({ key: source.key, start, end })
+  })
+
+  return segments
+}
+
+const filterCollectionByClub = (
+  collection: LeagueRoundCollection | undefined,
+  clubId?: number
+): LeagueRoundCollection | undefined => {
+  if (!collection || !clubId) {
+    return undefined
+  }
+
+  const filteredRounds = collection.rounds
+    .map(round => {
+      const matches = round.matches.filter(
+        match => match.homeClub.id === clubId || match.awayClub.id === clubId
+      )
+      if (!matches.length) {
+        return null
+      }
+      return {
+        ...round,
+        matches,
+      }
+    })
+    .filter((round): round is NonNullable<typeof round> => Boolean(round))
+
+  return {
+    ...collection,
+    rounds: filteredRounds,
+  }
 }
 
 const getRoot = () => {
@@ -177,52 +289,8 @@ const renderSquad = (summary: ClubSummaryResponse) => {
 
 const renderOverview = (summary: ClubSummaryResponse) => {
   const stats = summary.statistics
-  
-  // Вычисляем процент каждого результата для полукруга
-  const total = stats.wins + stats.draws + stats.losses
-  const winPercent = total > 0 ? (stats.wins / total) * 100 : 0
-  const drawPercent = total > 0 ? (stats.draws / total) * 100 : 0
-  // Генерируем градиент с отступами между сегментами
-  const generateArcGradient = () => {
-    if (total === 0) return undefined
-    
-    const segments: string[] = []
-    let currentPos = 0
-    const gap = 1 // 1% отступ между сегментами
-    
-    // Победы (зелёный)
-    if (stats.wins > 0) {
-      segments.push(`rgba(0, 255, 128, 0.6) ${currentPos}%`)
-      currentPos += winPercent
-      segments.push(`rgba(0, 255, 128, 0.6) ${currentPos}%`)
-      if (stats.draws > 0 || stats.losses > 0) {
-        segments.push(`transparent ${currentPos}%`)
-        currentPos += gap
-        segments.push(`transparent ${currentPos}%`)
-      }
-    }
-    
-    // Ничьи (серый)
-    if (stats.draws > 0) {
-      segments.push(`rgba(255, 255, 255, 0.4) ${currentPos}%`)
-      currentPos += drawPercent
-      segments.push(`rgba(255, 255, 255, 0.4) ${currentPos}%`)
-      if (stats.losses > 0) {
-        segments.push(`transparent ${currentPos}%`)
-        currentPos += gap
-        segments.push(`transparent ${currentPos}%`)
-      }
-    }
-    
-    // Поражения (красный)
-    if (stats.losses > 0) {
-      segments.push(`rgba(255, 0, 100, 0.6) ${currentPos}%`)
-      segments.push('rgba(255, 0, 100, 0.6) 100%')
-    }
-    
-    return `linear-gradient(to right, ${segments.join(', ')})`
-  }
-  
+  const gaugeSegments = buildGaugeSegments(stats)
+
   return (
     <>
       <section className="team-section">
@@ -230,42 +298,53 @@ const renderOverview = (summary: ClubSummaryResponse) => {
         {renderForm(summary)}
       </section>
 
-      <div className="team-divider"></div>
+      <div className="team-divider" />
 
       <section className="team-section">
         <h3 className="team-section-title">Статистика</h3>
-        
-        {/* Широкий блок с матчами и В/Н/П */}
+
         <div className="team-stats-wide-block">
           <div className="team-stats-matches">
-            <div className="team-stats-arc" style={{
-              background: generateArcGradient()
-            }}></div>
-            <span className="team-stats-matches-value">{stats.matchesPlayed}</span>
-            <span className="team-stats-matches-label">матча</span>
+            <div className="team-stats-gauge" aria-hidden="true">
+              <svg viewBox="0 0 120 70" focusable="false">
+                <path
+                  className="team-stats-gauge-track"
+                  d={describeArc(60, 60, 52, GAUGE_START_ANGLE, GAUGE_START_ANGLE + GAUGE_SWEEP)}
+                />
+                {gaugeSegments.map(segment => (
+                  <path
+                    key={segment.key}
+                    className={`team-stats-gauge-segment tone-${segment.key}`}
+                    d={describeArc(60, 60, 52, segment.start, segment.end)}
+                  />
+                ))}
+              </svg>
+              <div className="team-stats-gauge-value">
+                <span className="team-stats-matches-value">{stats.matchesPlayed}</span>
+                <span className="team-stats-matches-label">матча</span>
+              </div>
+            </div>
           </div>
           <div className="team-stats-wdl">
             <div className="team-stats-wdl-item">
-              <span className="team-stats-wdl-bullet">•</span>
+              <span className="team-stats-wdl-bullet tone-wins" aria-hidden="true" />
               <span className="team-stats-wdl-label">Победы</span>
               <span className="team-stats-wdl-value">{stats.wins}</span>
             </div>
             <div className="team-stats-wdl-item">
-              <span className="team-stats-wdl-bullet">•</span>
+              <span className="team-stats-wdl-bullet tone-draws" aria-hidden="true" />
               <span className="team-stats-wdl-label">Ничьи</span>
               <span className="team-stats-wdl-value">{stats.draws}</span>
             </div>
             <div className="team-stats-wdl-item">
-              <span className="team-stats-wdl-bullet">•</span>
+              <span className="team-stats-wdl-bullet tone-losses" aria-hidden="true" />
               <span className="team-stats-wdl-label">Поражения</span>
               <span className="team-stats-wdl-value">{stats.losses}</span>
             </div>
           </div>
         </div>
 
-        {/* Нижняя статистика: 2 ряда по 3 блока */}
         <div className="team-stats-grid">
-          {/* Первый ряд */}
           <div className="team-stats-card">
             <span className="team-stats-card-icon">🏆</span>
             <span className="team-stats-card-value">{stats.tournaments}</span>
@@ -281,8 +360,6 @@ const renderOverview = (summary: ClubSummaryResponse) => {
             <span className="team-stats-card-value">{stats.goalsAgainst}</span>
             <span className="team-stats-card-label">Пропущено</span>
           </div>
-          
-          {/* Второй ряд */}
           <div className="team-stats-card">
             <span className="team-stats-card-icon">🟨</span>
             <span className="team-stats-card-value">{stats.yellowCards}</span>
@@ -301,7 +378,7 @@ const renderOverview = (summary: ClubSummaryResponse) => {
         </div>
       </section>
 
-      <div className="team-divider"></div>
+      <div className="team-divider" />
 
       <section className="team-section">
         <h3 className="team-section-title">Достижения</h3>
@@ -315,12 +392,23 @@ export const TeamView: React.FC = () => {
   const open = useAppStore(state => state.teamView.open)
   const clubId = useAppStore(state => state.teamView.clubId)
   const activeTab = useAppStore(state => state.teamView.activeTab)
+  const matchesMode = useAppStore(state => state.teamView.matchesMode)
   const close = useAppStore(state => state.closeTeamView)
   const setTab = useAppStore(state => state.setTeamSubTab)
+  const setMatchesMode = useAppStore(state => state.setTeamMatchesMode)
   const summaries = useAppStore(state => state.teamSummaries)
   const loadingId = useAppStore(state => state.teamSummaryLoadingId)
   const errors = useAppStore(state => state.teamSummaryErrors)
   const fetchSummary = useAppStore(state => state.fetchClubSummary)
+  const fetchSchedule = useAppStore(state => state.fetchLeagueSchedule)
+  const fetchResults = useAppStore(state => state.fetchLeagueResults)
+  const schedules = useAppStore(state => state.schedules)
+  const resultsMap = useAppStore(state => state.results)
+  const loadingState = useAppStore(state => state.loading)
+  const errorsState = useAppStore(state => state.errors)
+  const resolvedSeasonId = useAppStore(
+    state => state.selectedSeasonId ?? state.activeSeasonId
+  )
 
   const summary = clubId !== undefined ? summaries[clubId] : undefined
   const isLoading = clubId !== undefined && loadingId === clubId
@@ -346,7 +434,49 @@ export const TeamView: React.FC = () => {
     }
   }, [open, clubId, summary, isLoading, error, fetchSummary])
 
+  useEffect(() => {
+    if (!open || !clubId || activeTab !== 'matches' || !resolvedSeasonId) {
+      return
+    }
+    void fetchSchedule({ seasonId: resolvedSeasonId })
+    void fetchResults({ seasonId: resolvedSeasonId })
+  }, [open, clubId, activeTab, resolvedSeasonId, fetchSchedule, fetchResults])
+
   const host = useMemo(getRoot, [])
+
+  const seasonSchedule = useMemo(
+    () => (resolvedSeasonId ? schedules[resolvedSeasonId] : undefined),
+    [resolvedSeasonId, schedules]
+  )
+  const seasonResults = useMemo(
+    () => (resolvedSeasonId ? resultsMap[resolvedSeasonId] : undefined),
+    [resolvedSeasonId, resultsMap]
+  )
+
+  const scheduleForClub = useMemo(
+    () => filterCollectionByClub(seasonSchedule, clubId),
+    [seasonSchedule, clubId]
+  )
+  const resultsForClub = useMemo(
+    () => filterCollectionByClub(seasonResults, clubId),
+    [seasonResults, clubId]
+  )
+
+  const matchesData = matchesMode === 'schedule' ? scheduleForClub : resultsForClub
+  const matchesLoading = matchesMode === 'schedule' ? loadingState.schedule : loadingState.results
+  const matchesError = matchesMode === 'schedule' ? errorsState.schedule : errorsState.results
+
+  const handleRetryMatches = () => {
+    if (!resolvedSeasonId) {
+      return
+    }
+    if (matchesMode === 'schedule') {
+      void fetchSchedule({ seasonId: resolvedSeasonId, force: true })
+    } else {
+      void fetchResults({ seasonId: resolvedSeasonId, force: true })
+    }
+  }
+
   if (!open || !clubId || !host) {
     return null
   }
@@ -381,6 +511,8 @@ export const TeamView: React.FC = () => {
       return null
     }
 
+    const clubSummary = summary as ClubSummaryResponse
+
     if (activeTab === 'overview') {
       return (
         <>
@@ -389,20 +521,47 @@ export const TeamView: React.FC = () => {
               Показаны сохранённые данные. Последний запрос завершился с ошибкой: {error}
             </div>
           )}
-          {renderOverview(summary)}
+          {renderOverview(clubSummary)}
         </>
       )
     }
 
     if (activeTab === 'squad') {
-      return renderSquad(summary)
+      return renderSquad(clubSummary)
     }
 
     if (activeTab === 'matches') {
+      if (!resolvedSeasonId) {
+        return (
+          <div className="team-view-feedback" role="status">
+            Активный сезон не выбран. Откройте вкладку «Лига», чтобы выбрать сезон.
+          </div>
+        )
+      }
+
       return (
-        <div className="team-view-feedback" role="status">
-          Раздел в разработке — данные появятся позже.
-        </div>
+        <section className="team-matches-section">
+          <div className="team-matches-tabs" role="tablist" aria-label="Режим просмотра матчей">
+            {MATCH_TAB_CONFIG.map(tab => (
+              <button
+                key={tab.key}
+                type="button"
+                className={`team-matches-tab${matchesMode === tab.key ? ' active' : ''}`}
+                onClick={() => setMatchesMode(tab.key)}
+                aria-pressed={matchesMode === tab.key}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <LeagueRoundsView
+            mode={matchesMode}
+            data={matchesData}
+            loading={matchesLoading}
+            error={matchesError}
+            onRetry={handleRetryMatches}
+          />
+        </section>
       )
     }
 

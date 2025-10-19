@@ -24,12 +24,14 @@ import { readFromStorage, writeToStorage } from '../utils/leaguePersistence'
 export type UITab = 'home' | 'league' | 'predictions' | 'leaderboard' | 'shop' | 'profile'
 export type LeagueSubTab = 'table' | 'schedule' | 'results' | 'stats'
 export type TeamSubTab = 'overview' | 'matches' | 'squad'
+export type TeamMatchesMode = 'schedule' | 'results'
 export type MatchDetailsTab = 'lineups' | 'events' | 'stats' | 'broadcast'
 
 type TeamViewState = {
   open: boolean
   clubId?: number
   activeTab: TeamSubTab
+  matchesMode: TeamMatchesMode
 }
 
 type MatchDetailsState = {
@@ -60,6 +62,7 @@ const INITIAL_TEAM_VIEW: TeamViewState = {
   open: false,
   clubId: undefined,
   activeTab: 'overview',
+  matchesMode: 'schedule',
 }
 
 const INITIAL_MATCH_DETAILS: MatchDetailsState = {
@@ -804,6 +807,7 @@ interface AppState {
   openTeamView: (clubId: number) => void
   closeTeamView: () => void
   setTeamSubTab: (tab: TeamSubTab) => void
+  setTeamMatchesMode: (mode: TeamMatchesMode) => void
   fetchClubSummary: (clubId: number, options?: { force?: boolean }) => Promise<FetchResult>
   ensureTeamPolling: () => void
   stopTeamPolling: () => void
@@ -1018,8 +1022,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       loading: { ...prev.loading, seasons: true },
       errors: { ...prev.errors, seasons: undefined },
     }))
-  const requestVersion = options?.force ? undefined : state.seasonsVersion
-  const response = await leagueApi.fetchSeasons({ version: requestVersion })
+    const requestVersion = options?.force ? undefined : state.seasonsVersion
+    const response = await leagueApi.fetchSeasons({ version: requestVersion })
     if (!response.ok) {
       set(prev => ({
         loading: { ...prev.loading, seasons: false },
@@ -1322,14 +1326,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ leaguePollingAttached: false })
   },
   openTeamView: clubId => {
-    set(prev => ({
-      teamView: {
-        open: true,
-        clubId,
-        activeTab: prev.teamView.clubId === clubId ? prev.teamView.activeTab : 'overview',
-      },
-      teamSummaryErrors: { ...prev.teamSummaryErrors, [clubId]: undefined },
-    }))
+    set(prev => {
+      const sameClub = prev.teamView.clubId === clubId
+      return {
+        teamView: {
+          open: true,
+          clubId,
+          activeTab: sameClub ? prev.teamView.activeTab : 'overview',
+          matchesMode: sameClub ? prev.teamView.matchesMode : 'schedule',
+        },
+        teamSummaryErrors: { ...prev.teamSummaryErrors, [clubId]: undefined },
+      }
+    })
     get().ensureTeamPolling()
     void get().fetchClubSummary(clubId)
   },
@@ -1348,6 +1356,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   setTeamSubTab: tab => {
     set(prev => ({
       teamView: prev.teamView.open ? { ...prev.teamView, activeTab: tab } : prev.teamView,
+    }))
+  },
+  setTeamMatchesMode: mode => {
+    set(prev => ({
+      teamView: prev.teamView.open ? { ...prev.teamView, matchesMode: mode } : prev.teamView,
     }))
   },
   fetchClubSummary: async (clubId, options) => {

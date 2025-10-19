@@ -671,7 +671,6 @@ body {
 .club-logo-button:hover,
 .club-logo-button:focus-visible {
   transform: translateY(-1px) scale(1.05);
-  box-shadow: 0 12px 22px rgba(0, 240, 255, 0.26);
   outline: none;
 }
 

@@ -103,6 +103,16 @@ type CommentAuthorInfo = {
   photoUrl?: string
 }
 
+type FullscreenCapableElement = HTMLElement & {
+  webkitRequestFullscreen?: () => Promise<void> | void
+}
+
+type FullscreenCapableDocument = Document & {
+  webkitExitFullscreen?: () => Promise<void> | void
+  webkitFullscreenElement?: Element | null
+  webkitFullscreenEnabled?: boolean
+}
+
 type TelegramWindow = Window & {
   Telegram?: {
     WebApp?: {
@@ -744,6 +754,14 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
   const [author, setAuthor] = React.useState<CommentAuthorInfo | null>(() => resolveCommentAuthor())
   const [isExpanded, setIsExpanded] = React.useState(false)
   const commentsBodyId = React.useId()
+  const videoContainerRef = React.useRef<HTMLDivElement | null>(null)
+  const [fullscreenSupported, setFullscreenSupported] = React.useState(false)
+  const [isFullscreen, setIsFullscreen] = React.useState(false)
+  const broadcastAvailable = React.useMemo(
+    () =>
+      Boolean(broadcast?.st === 'available' && broadcast.url && broadcast.url.trim().length > 0),
+    [broadcast]
+  )
 
   React.useEffect(() => {
     if (typeof window === 'undefined') {
@@ -756,6 +774,66 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
       window.removeEventListener('focus', updateAuthor)
     }
   }, [])
+
+  React.useEffect(() => {
+    if (typeof document === 'undefined') {
+      return
+    }
+
+    const doc = document as FullscreenCapableDocument
+    const supportAvailable = Boolean(
+      doc.fullscreenEnabled ||
+        doc.webkitFullscreenEnabled ||
+        document.body?.requestFullscreen
+    )
+    setFullscreenSupported(supportAvailable)
+
+    const handleFullscreenChange = () => {
+      const current = doc.fullscreenElement ?? doc.webkitFullscreenElement
+      setIsFullscreen(Boolean(current))
+    }
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    document.addEventListener(
+      'webkitfullscreenchange' as unknown as keyof DocumentEventMap,
+      handleFullscreenChange
+    )
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange)
+      document.removeEventListener(
+        'webkitfullscreenchange' as unknown as keyof DocumentEventMap,
+        handleFullscreenChange
+      )
+    }
+  }, [])
+
+  const handleToggleFullscreen = React.useCallback(() => {
+    if (typeof document === 'undefined') {
+      return
+    }
+
+    const doc = document as FullscreenCapableDocument
+    const target = videoContainerRef.current as FullscreenCapableElement | null
+    if (!target) {
+      return
+    }
+
+    const exitFullscreen = doc.exitFullscreen?.bind(doc) ?? doc.webkitExitFullscreen?.bind(doc)
+    const requestFullscreen =
+      target.requestFullscreen?.bind(target) ?? target.webkitRequestFullscreen?.bind(target)
+
+    if (!requestFullscreen) {
+      return
+    }
+
+    if (doc.fullscreenElement || doc.webkitFullscreenElement) {
+      exitFullscreen?.()
+      return
+    }
+
+    requestFullscreen()
+  }, [videoContainerRef])
 
   const handleToggle = React.useCallback(() => {
     setIsExpanded(prev => {
@@ -856,7 +934,7 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
     )
   }
 
-  if (!broadcast || broadcast.st !== 'available' || !broadcast.url) {
+  if (!broadcastAvailable || !broadcast) {
     return (
       <div className="placeholder-tab">
         <p>Трансляция появится здесь, как только администраторы добавят ссылку.</p>
@@ -864,12 +942,25 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
     )
   }
 
-  const embedUrl = buildVkEmbedUrl(broadcast.url)
+  const broadcastUrl = broadcast.url?.trim() ?? ''
+  const embedUrl = broadcastUrl ? buildVkEmbedUrl(broadcastUrl) : null
+  const fullscreenControl = fullscreenSupported ? (
+    <div className="broadcast-controls">
+      <button
+        type="button"
+        className="broadcast-fullscreen-button"
+        onClick={handleToggleFullscreen}
+        aria-pressed={isFullscreen}
+      >
+        {isFullscreen ? 'Свернуть' : 'На весь экран'}
+      </button>
+    </div>
+  ) : null
 
   return (
     <div className="broadcast-view">
       {embedUrl ? (
-        <div className="broadcast-video">
+        <div className="broadcast-video" ref={videoContainerRef}>
           <iframe
             src={embedUrl}
             title="VK Видео"
@@ -877,6 +968,7 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
             allowFullScreen
             frameBorder={0}
           />
+          {fullscreenControl}
         </div>
       ) : (
         <div className="broadcast-fallback">
@@ -923,21 +1015,7 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
             )}
 
             <form className="comment-form" onSubmit={handleSubmit}>
-              {author ? (
-                <div className="comment-author-chip">
-                  <div className="comment-author-chip-avatar">
-                    {author.photoUrl ? (
-                      <img src={author.photoUrl} alt={author.name} />
-                    ) : (
-                      <span>{getAuthorInitial(author.name)}</span>
-                    )}
-                  </div>
-                  <div className="comment-author-chip-text">
-                    <span className="comment-author-chip-label">Вы как</span>
-                    <span className="comment-author-chip-name">{author.name}</span>
-                  </div>
-                </div>
-              ) : (
+              {author ? null : (
                 <div className="comment-auth-hint">
                   <p>Чтобы писать в чат, авторизуйтесь через Telegram.</p>
                   {onOpenProfile && (

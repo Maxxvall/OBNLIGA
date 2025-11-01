@@ -55,6 +55,15 @@ export interface AdBanner {
   updatedAt: string
 }
 
+export interface PublicAdBanner {
+  id: string
+  title: string
+  subtitle?: string | null
+  targetUrl?: string | null
+  image: AdBannerImage
+  displayOrder: number
+}
+
 export interface LeagueSeasonSummary {
   id: number
   name: string

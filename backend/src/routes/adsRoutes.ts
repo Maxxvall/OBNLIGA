@@ -19,20 +19,16 @@ interface AdBannerRow {
   imageHeight: number
   imageSize: number
   displayOrder: number
-  isActive: boolean
-  startsAt: Date | null
-  endsAt: Date | null
-  createdAt: Date
-  updatedAt: Date
 }
 
 const normalizeAd = (row: AdBannerRow) => {
   const base64 = Buffer.isBuffer(row.imageData) ? row.imageData.toString('base64') : ''
+  const trimmedUrl = row.targetUrl ? row.targetUrl.trim() : null
   return {
     id: row.id.toString(),
     title: row.title,
     subtitle: row.subtitle,
-    targetUrl: row.targetUrl,
+    targetUrl: trimmedUrl && trimmedUrl.length > 0 ? trimmedUrl : null,
     image: {
       mimeType: row.imageMime,
       base64,
@@ -41,11 +37,6 @@ const normalizeAd = (row: AdBannerRow) => {
       size: row.imageSize,
     },
     displayOrder: row.displayOrder,
-    isActive: row.isActive,
-    startsAt: row.startsAt ? row.startsAt.toISOString() : null,
-    endsAt: row.endsAt ? row.endsAt.toISOString() : null,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
   }
 }
 
@@ -62,12 +53,7 @@ const loadAds = async () => {
       image_width           AS "imageWidth",
       image_height          AS "imageHeight",
       image_size            AS "imageSize",
-      display_order         AS "displayOrder",
-      is_active             AS "isActive",
-      starts_at             AS "startsAt",
-      ends_at               AS "endsAt",
-      created_at            AS "createdAt",
-      updated_at            AS "updatedAt"
+      display_order         AS "displayOrder"
     FROM ad_banner
     WHERE is_active = TRUE
       AND (starts_at IS NULL OR starts_at <= ${now})

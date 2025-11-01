@@ -8,22 +8,8 @@
   align-self: center;
 }
 
-.ads-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 0 6px;
-}
-
-.ads-header h2 {
-  margin: 0;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  font-size: 20px;
-}
-
 .ads-meta {
+  margin: 0 6px;
   font-size: 12px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -205,13 +191,8 @@
     width: min(94vw, 360px);
   }
 
-  .ads-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
-  }
-
   .ads-meta {
+    margin: 0 4px;
     letter-spacing: 0.08em;
   }
 

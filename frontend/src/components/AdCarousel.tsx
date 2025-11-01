@@ -411,11 +411,8 @@ export function AdCarousel() {
 
   if (loading && displayAds.length === 0) {
     return (
-      <section className="ads-carousel" aria-busy="true" aria-label="Баннеры партнёров">
-        <header className="ads-header">
-          <h2>Баннеры</h2>
-          <span className="ads-meta">Загружаем баннеры…</span>
-        </header>
+      <section className="ads-carousel" aria-busy="true" aria-label="Партнёрские баннеры">
+        <p className="ads-meta">Загружаем баннеры…</p>
         <div className="ads-card">
           <div className="ads-skeleton skeleton" />
         </div>
@@ -425,11 +422,8 @@ export function AdCarousel() {
 
   if (error && displayAds.length === 0) {
     return (
-      <section className="ads-carousel" aria-live="polite" aria-label="Баннеры партнёров">
-        <header className="ads-header">
-          <h2>Баннеры</h2>
-          <span className="ads-meta">Ошибка загрузки</span>
-        </header>
+      <section className="ads-carousel" aria-live="polite" aria-label="Партнёрские баннеры">
+        <p className="ads-meta">Ошибка загрузки</p>
         <div className="ads-placeholder">Не удалось загрузить баннеры. Попробуйте позже.</div>
       </section>
     )
@@ -439,15 +433,16 @@ export function AdCarousel() {
     return null
   }
 
-  const headerMeta = displayAds.length > 1 ? 'Автопрокрутка каждые 7 секунд' : activeAd.safeTarget ? 'Тапните для перехода по ссылке' : null
+  const helperText = displayAds.length > 1
+    ? 'Автопрокрутка каждые 7 секунд'
+    : activeAd.safeTarget
+      ? 'Тапните для перехода по ссылке'
+      : null
   const slideLabel = activeAd.subtitle ? `${activeAd.title}. ${activeAd.subtitle}` : activeAd.title
 
   return (
-    <section className="ads-carousel" aria-roledescription="карусель" aria-label="Баннеры партнёров">
-      <header className="ads-header">
-        <h2>Баннеры</h2>
-        {headerMeta ? <span className="ads-meta">{headerMeta}</span> : null}
-      </header>
+    <section className="ads-carousel" aria-roledescription="карусель" aria-label="Партнёрские баннеры">
+      {helperText ? <p className="ads-meta">{helperText}</p> : null}
 
       <article
         className="ads-card"

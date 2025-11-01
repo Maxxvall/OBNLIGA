@@ -90,6 +90,7 @@ MATCH_WINDOW_POST_GRACE_MINUTES=30
 
 * `md:{match_id}:meta` — статичная часть: **10 min** (или дольше вне окна).
 * `md:{match_id}:live` — live‑поля (score, events): **3–5s** в окне; автоудаление через 3 часа после окончания.
+* `md:{match_id}:comments` — временные комментарии под трансляцией: **4h** (SWR **4h**), хранит до 120 последних сообщений.
 * `etag:md:{match_id}` — atomic bump при изменениях.
 
 ### Predictions

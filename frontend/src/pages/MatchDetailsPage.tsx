@@ -5,6 +5,7 @@ import type {
   MatchDetailsStats,
   MatchDetailsEvents,
   MatchDetailsBroadcast,
+  MatchComment,
   MatchStatus,
   LeagueMatchLocation,
 } from '@shared/types'
@@ -86,12 +87,260 @@ const shouldShowStatsTab = (status?: MatchStatus, matchDateIso?: string | null):
   return Date.now() <= matchStart.getTime()
 }
 
+const COMMENT_MAX_LENGTH = 100
+const COMMENT_MIN_LENGTH = 2
+const PROFILE_CACHE_KEY = 'obnliga_profile_cache'
+const PROFILE_CACHE_TTL_MS = 5 * 60 * 1000
+
+type CommentSubmitPayload = {
+  userId: string
+  text: string
+}
+
+type CommentAuthorInfo = {
+  userId: string
+  name: string
+  photoUrl?: string
+}
+
+type TelegramWindow = Window & {
+  Telegram?: {
+    WebApp?: {
+      initDataUnsafe?: {
+        user?: {
+          id?: number | string
+          first_name?: string
+          photo_url?: string
+        }
+      }
+    }
+  }
+}
+
+const resolveCommentAuthorFromCache = (): CommentAuthorInfo | null => {
+  if (typeof window === 'undefined') {
+    return null
+  }
+  try {
+    const stored = window.localStorage.getItem(PROFILE_CACHE_KEY)
+    if (!stored) {
+      return null
+    }
+    const parsed = JSON.parse(stored) as {
+      data?: {
+        telegramId?: unknown
+        firstName?: unknown
+        photoUrl?: unknown
+      }
+      timestamp?: unknown
+    }
+    if (!parsed || typeof parsed !== 'object') {
+      return null
+    }
+    const timestamp = typeof parsed.timestamp === 'number' ? parsed.timestamp : null
+    if (!timestamp || Date.now() - timestamp > PROFILE_CACHE_TTL_MS) {
+      window.localStorage.removeItem(PROFILE_CACHE_KEY)
+      return null
+    }
+    const data = parsed.data
+    if (!data || typeof data !== 'object') {
+      return null
+    }
+    const telegramIdRaw = (data as { telegramId?: unknown }).telegramId
+    let userId: string | null = null
+    if (typeof telegramIdRaw === 'string' && telegramIdRaw.trim().length > 0) {
+      userId = telegramIdRaw.trim()
+    } else if (typeof telegramIdRaw === 'number' && Number.isFinite(telegramIdRaw)) {
+      userId = String(Math.trunc(telegramIdRaw))
+    }
+    if (!userId) {
+      return null
+    }
+    const firstNameRaw = (data as { firstName?: unknown }).firstName
+    const name =
+      typeof firstNameRaw === 'string' && firstNameRaw.trim().length > 0
+        ? firstNameRaw.trim()
+        : 'Болельщик'
+    const photoRaw = (data as { photoUrl?: unknown }).photoUrl
+    const photoUrl =
+      typeof photoRaw === 'string' && photoRaw.trim().length > 0 ? photoRaw.trim() : undefined
+    return { userId, name, photoUrl }
+  } catch (_err) {
+    return null
+  }
+}
+
+const resolveCommentAuthorFromTelegram = (): CommentAuthorInfo | null => {
+  if (typeof window === 'undefined') {
+    return null
+  }
+  const telegramWindow = window as TelegramWindow
+  const tgUser = telegramWindow.Telegram?.WebApp?.initDataUnsafe?.user
+  if (!tgUser) {
+    return null
+  }
+  const rawId = tgUser.id
+  let userId: string | null = null
+  if (typeof rawId === 'number' && Number.isFinite(rawId)) {
+    userId = String(Math.trunc(rawId))
+  } else if (typeof rawId === 'string' && rawId.trim().length > 0) {
+    userId = rawId.trim()
+  }
+  if (!userId) {
+    return null
+  }
+  const firstName = typeof tgUser.first_name === 'string' ? tgUser.first_name.trim() : ''
+  const name = firstName.length > 0 ? firstName : 'Болельщик'
+  const photo =
+    typeof tgUser.photo_url === 'string' && tgUser.photo_url.trim().length > 0
+      ? tgUser.photo_url.trim()
+      : undefined
+  return { userId, name, photoUrl: photo }
+}
+
+const resolveCommentAuthorFromDevConfig = (): CommentAuthorInfo | null => {
+  if (!import.meta.env.DEV) {
+    return null
+  }
+  const rawId = import.meta.env.VITE_DEV_TELEGRAM_ID
+  if (!rawId) {
+    return null
+  }
+  const numericId = Number(rawId)
+  if (!Number.isFinite(numericId) || numericId <= 0) {
+    return null
+  }
+  const firstNameEnv = import.meta.env.VITE_DEV_TELEGRAM_FIRST_NAME
+  const photoEnv = import.meta.env.VITE_DEV_TELEGRAM_PHOTO_URL
+  const name =
+    typeof firstNameEnv === 'string' && firstNameEnv.trim().length > 0
+      ? firstNameEnv.trim()
+      : 'Болельщик'
+  const photo =
+    typeof photoEnv === 'string' && photoEnv.trim().length > 0 ? photoEnv.trim() : undefined
+  return {
+    userId: String(Math.trunc(numericId)),
+    name,
+    photoUrl: photo,
+  }
+}
+
+const resolveCommentAuthor = (): CommentAuthorInfo | null => {
+  const fromCache = resolveCommentAuthorFromCache()
+  if (fromCache) {
+    return fromCache
+  }
+  const fromTelegram = resolveCommentAuthorFromTelegram()
+  if (fromTelegram) {
+    return fromTelegram
+  }
+  return resolveCommentAuthorFromDevConfig()
+}
+
+const getAuthorInitial = (name: string): string => {
+  const trimmed = name.trim()
+  if (!trimmed) {
+    return '•'
+  }
+  return trimmed.charAt(0).toUpperCase()
+}
+
+const formatCommentTime = (iso: string): string => {
+  try {
+    const date = new Date(iso)
+    if (Number.isNaN(date.getTime())) {
+      return ''
+    }
+
+    const now = new Date()
+    const sameDay = date.toDateString() === now.toDateString()
+
+    const timeFormatter = new Intl.DateTimeFormat('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+
+    if (sameDay) {
+      return timeFormatter.format(date)
+    }
+
+    const dateFormatter = new Intl.DateTimeFormat('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+    })
+
+    return `${dateFormatter.format(date)} ${timeFormatter.format(date)}`
+  } catch (_err) {
+    return ''
+  }
+}
+
+const resolveCommentError = (code?: string): string | null => {
+  if (!code) {
+    return null
+  }
+
+  const lookup: Record<string, string> = {
+    text_required: 'Введите сообщение (минимум 2 символа).',
+    user_required: 'Не удалось определить профиль Telegram. Авторизуйтесь и попробуйте снова.',
+    user_not_found: 'Пользователь не найден. Авторизуйтесь заново через Telegram.',
+    invalid_user: 'Некорректный идентификатор пользователя. Обновите страницу.',
+    user_too_long: 'Слишком длинный идентификатор пользователя.',
+    match_not_found: 'Матч не найден. Обновите список матчей.',
+    invalid_match: 'Некорректный идентификатор матча.',
+    rate_limited: 'Слишком часто. Отправлять сообщения можно раз в 3 минуты.',
+    network_error: 'Проблемы с сетью. Проверьте соединение и повторите попытку.',
+    empty_response: 'Сервер вернул пустой ответ. Попробуйте позже.',
+    response_error: 'Сервер вернул ошибку. Попробуйте позже.',
+    invalid_json: 'Не удалось обработать ответ сервера.',
+    internal_error: 'Сервер временно недоступен. Попробуйте ещё раз.',
+  }
+
+  return lookup[code] ?? 'Не удалось отправить комментарий. Попробуйте ещё раз.'
+}
+
 export const MatchDetailsPage: React.FC = () => {
   const matchDetails = useAppStore(state => state.matchDetails)
   const closeMatchDetails = useAppStore(state => state.closeMatchDetails)
   const setMatchDetailsTab = useAppStore(state => state.setMatchDetailsTab)
+  const setTab = useAppStore(state => state.setTab)
+  const fetchMatchComments = useAppStore(state => state.fetchMatchComments)
+  const submitMatchCommentAction = useAppStore(state => state.submitMatchComment)
 
-  const { header, lineups, stats, events, broadcast, activeTab, snapshot, loadingBroadcast, errorBroadcast } = matchDetails
+  const {
+    header,
+    lineups,
+    stats,
+    events,
+    broadcast,
+    comments,
+    activeTab,
+    snapshot,
+    loadingBroadcast,
+    loadingComments,
+    errorBroadcast,
+    errorComments,
+    submittingComment,
+  } = matchDetails
+  const matchId = matchDetails.matchId
+
+  const handleRetryComments = React.useCallback(() => {
+    if (!matchId) {
+      return
+    }
+    void fetchMatchComments(matchId, { force: true })
+  }, [fetchMatchComments, matchId])
+
+  const handleSubmitComment = React.useCallback(
+    async (payload: CommentSubmitPayload) => {
+      if (!matchId) {
+        return false
+      }
+      const result = await submitMatchCommentAction(matchId, payload)
+      return result.ok
+    },
+    [matchId, submitMatchCommentAction]
+  )
 
   const [homeScoreAnimated, setHomeScoreAnimated] = React.useState(false)
   const [awayScoreAnimated, setAwayScoreAnimated] = React.useState(false)
@@ -193,7 +442,7 @@ export const MatchDetailsPage: React.FC = () => {
     previousScoresRef.current = { home: homeScoreValue, away: awayScoreValue }
   }, [matchDetails.open, homeScoreValue, awayScoreValue])
 
-  if (!matchDetails.open || !matchDetails.matchId) {
+  if (!matchDetails.open || !matchId) {
     return null
   }
 
@@ -321,6 +570,13 @@ export const MatchDetailsPage: React.FC = () => {
               broadcast={broadcast}
               loading={loadingBroadcast}
               error={errorBroadcast}
+              comments={comments}
+              loadingComments={loadingComments}
+              commentsError={errorComments}
+              submittingComment={submittingComment}
+              onRetry={handleRetryComments}
+              onSubmit={handleSubmitComment}
+              onOpenProfile={() => setTab('profile')}
             />
           )}
         </div>
@@ -458,11 +714,133 @@ const StatsView: React.FC<{
   )
 }
 
-const BroadcastView: React.FC<{
+type BroadcastViewProps = {
   broadcast?: MatchDetailsBroadcast
   loading: boolean
   error?: string
-}> = ({ broadcast, loading, error }) => {
+  comments?: MatchComment[]
+  loadingComments: boolean
+  commentsError?: string
+  submittingComment: boolean
+  onRetry: () => void
+  onSubmit: (payload: CommentSubmitPayload) => Promise<boolean>
+  onOpenProfile?: () => void
+}
+
+const BroadcastView: React.FC<BroadcastViewProps> = ({
+  broadcast,
+  loading,
+  error,
+  comments,
+  loadingComments,
+  commentsError,
+  submittingComment,
+  onRetry,
+  onSubmit,
+  onOpenProfile,
+}) => {
+  const [commentText, setCommentText] = React.useState('')
+  const [authError, setAuthError] = React.useState<string | null>(null)
+  const [author, setAuthor] = React.useState<CommentAuthorInfo | null>(() => resolveCommentAuthor())
+  const [isExpanded, setIsExpanded] = React.useState(false)
+  const commentsBodyId = React.useId()
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    const updateAuthor = () => setAuthor(resolveCommentAuthor())
+    updateAuthor()
+    window.addEventListener('focus', updateAuthor)
+    return () => {
+      window.removeEventListener('focus', updateAuthor)
+    }
+  }, [])
+
+  const handleToggle = React.useCallback(() => {
+    setIsExpanded(prev => {
+      const next = !prev
+      if (!prev && next) {
+        setAuthor(resolveCommentAuthor())
+      }
+      return next
+    })
+  }, [])
+
+  const handleTextChange = React.useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = event.target.value
+    setCommentText(value.length > COMMENT_MAX_LENGTH ? value.slice(0, COMMENT_MAX_LENGTH) : value)
+  }, [])
+
+  const handleSubmit = React.useCallback(
+    async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      if (submittingComment) {
+        return
+      }
+      const preparedText = commentText.trim()
+      if (preparedText.length < COMMENT_MIN_LENGTH) {
+        return
+      }
+      const resolvedAuthor = resolveCommentAuthor()
+      if (!resolvedAuthor) {
+        setAuthor(null)
+        setAuthError('Чтобы отправлять сообщения, авторизуйтесь через Telegram.')
+        return
+      }
+      setAuthor(resolvedAuthor)
+      setAuthError(null)
+      const ok = await onSubmit({ userId: resolvedAuthor.userId, text: preparedText })
+      if (ok) {
+        setCommentText('')
+      }
+    },
+    [commentText, onSubmit, submittingComment]
+  )
+
+  const submitDisabled =
+    submittingComment || commentText.trim().length < COMMENT_MIN_LENGTH || !author
+  const remaining = Math.max(0, COMMENT_MAX_LENGTH - commentText.length)
+  const errorMessage = resolveCommentError(commentsError)
+
+  const commentsContent = React.useMemo(() => {
+    if (loadingComments && (!comments || comments.length === 0)) {
+      return <div className="comment-placeholder">Загружаем комментарии…</div>
+    }
+
+    if (!comments || comments.length === 0) {
+      return <div className="comment-empty">Будьте первым, кто оставит комментарий.</div>
+    }
+
+    return (
+      <ul className="comments-list">
+        {comments.map(comment => {
+          const trimmedName = comment.authorName.trim()
+          const authorName = trimmedName.length > 0 ? trimmedName : 'Болельщик'
+          const photoUrl =
+            typeof comment.authorPhotoUrl === 'string' && comment.authorPhotoUrl.trim().length > 0
+              ? comment.authorPhotoUrl.trim()
+              : null
+          const initial = getAuthorInitial(authorName)
+          return (
+            <li key={comment.id} className="comment-item">
+              <div className="comment-avatar" aria-hidden={photoUrl ? undefined : 'true'}>
+                {photoUrl ? <img src={photoUrl} alt={authorName} /> : <span>{initial}</span>}
+              </div>
+              <div className="comment-body">
+                <div className="comment-meta">
+                  <span className="comment-author">{authorName}</span>
+                  <span className="comment-time">{formatCommentTime(comment.createdAt)}</span>
+                </div>
+                <p className="comment-text">{comment.text}</p>
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+    )
+  }, [comments, loadingComments])
+
   if (loading) {
     return <div className="loading">Загрузка трансляции...</div>
   }
@@ -505,12 +883,104 @@ const BroadcastView: React.FC<{
           <p>Не удалось подготовить плеер для указанной ссылки.</p>
         </div>
       )}
-      <div className="broadcast-link">
-        <a href={broadcast.url} target="_blank" rel="noreferrer">
-          Смотреть трансляцию во VK
-        </a>
-        <p className="broadcast-hint">Если плеер не загрузился, откройте трансляцию по ссылке.</p>
-      </div>
+
+      <section className={`comments-section ${isExpanded ? 'expanded' : 'collapsed'}`}>
+        <button
+          type="button"
+          className="comments-toggle"
+          onClick={handleToggle}
+          aria-expanded={isExpanded}
+          aria-controls={commentsBodyId}
+        >
+          <div className="comments-toggle-text">
+            <span className="comments-title">Комментарии</span>
+            {loadingComments && <span className="comments-status">Обновляем…</span>}
+          </div>
+          <div className="comments-toggle-meta">
+            {!loadingComments && comments && comments.length > 0 && (
+              <span className="comments-count">{comments.length}</span>
+            )}
+            <span className="comments-toggle-icon" aria-hidden="true" />
+          </div>
+        </button>
+
+        {isExpanded && (
+          <div className="comments-body" id={commentsBodyId}>
+            {errorMessage ? (
+              <div className="comment-error-row">
+                <span className="comment-error">{errorMessage}</span>
+                <button
+                  type="button"
+                  className="comment-retry"
+                  onClick={onRetry}
+                  disabled={loadingComments}
+                >
+                  Повторить
+                </button>
+              </div>
+            ) : (
+              commentsContent
+            )}
+
+            <form className="comment-form" onSubmit={handleSubmit}>
+              {author ? (
+                <div className="comment-author-chip">
+                  <div className="comment-author-chip-avatar">
+                    {author.photoUrl ? (
+                      <img src={author.photoUrl} alt={author.name} />
+                    ) : (
+                      <span>{getAuthorInitial(author.name)}</span>
+                    )}
+                  </div>
+                  <div className="comment-author-chip-text">
+                    <span className="comment-author-chip-label">Вы как</span>
+                    <span className="comment-author-chip-name">{author.name}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="comment-auth-hint">
+                  <p>Чтобы писать в чат, авторизуйтесь через Telegram.</p>
+                  {onOpenProfile && (
+                    <button
+                      type="button"
+                      className="comment-auth-button"
+                      onClick={onOpenProfile}
+                    >
+                      Открыть профиль
+                    </button>
+                  )}
+                </div>
+              )}
+
+              <label className="comment-field">
+                <span className="comment-label">Сообщение</span>
+                <textarea
+                  value={commentText}
+                  onChange={handleTextChange}
+                  maxLength={COMMENT_MAX_LENGTH}
+                  placeholder="Поддержите команду (до 100 символов)."
+                  className="comment-textarea"
+                  rows={3}
+                  disabled={!author}
+                />
+              </label>
+
+              <p className="comment-hint">
+                Сообщения до 100 символов, отправлять можно раз в 3 минуты.
+              </p>
+
+              <div className="comment-controls">
+                <span className="comment-counter">{remaining}</span>
+                <button type="submit" className="comment-submit" disabled={submitDisabled}>
+                  {submittingComment ? 'Отправляем…' : 'Отправить'}
+                </button>
+              </div>
+
+              {authError && <div className="comment-auth-error">{authError}</div>}
+            </form>
+          </div>
+        )}
+      </section>
     </div>
   )
 }

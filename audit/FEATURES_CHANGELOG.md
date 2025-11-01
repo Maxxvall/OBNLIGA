@@ -329,6 +329,23 @@ MATCH_WINDOW_POST_GRACE_MINUTES=30
 - `admin/src/components/PlayoffBracket.tsx`
 - `prisma/schema.prisma` (enum `SeriesFormat`, модель `MatchSeries`)
 
+### Комментарии к трансляции
+**Дата:** Ноябрь 2025  
+**Связанные изменения:** 0051
+
+**Что реализовано:**
+- Публичный API для временных комментариев: `GET/POST /api/public/matches/:id/comments` с ETag и Redis TTL 4 часа.
+- Хранение до 120 последних сообщений в ключе `md:{matchId}:comments`, версия обновляется через `defaultCache`.
+- Клиентская вкладка «Трансляция» показывает список комментариев, индикаторы загрузки и форму отправки с локальным кешем имени.
+- Отправка комментария обновляет store и кэш `matchDetailsCache`, UI работает оптимистично.
+
+**Файлы:**
+- `backend/src/services/matchDetailsPublic.ts`
+- `backend/src/routes/matchPublicRoutes.ts`
+- `frontend/src/api/matchApi.ts`
+- `frontend/src/pages/MatchDetailsPage.tsx`
+- `frontend/src/styles/matchDetails.css`
+
 ---
 
 ## Модуль: Профиль и авторизация (Auth & Profile)

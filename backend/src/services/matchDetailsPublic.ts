@@ -4,6 +4,7 @@
  * with Redis caching and ETag support
  */
 
+import { randomUUID } from 'crypto'
 import prisma from '../db'
 import { defaultCache } from '../cache'
 import { MatchStatus, LineupRole } from '@prisma/client'
@@ -70,15 +71,53 @@ type MatchDetailsBroadcast = {
   url?: string
 }
 
+type MatchCommentPayload = {
+  id: string
+  userId: string
+  authorName: string
+  authorPhotoUrl?: string | null
+  text: string
+  createdAt: string
+}
+
 const REDIS_PREFIX = 'pub:md:'
 const TTL_HEADER_SECONDS = 6
 const TTL_LINEUPS_SECONDS = 15 * 60
 const TTL_STATS_SECONDS = 8
 const TTL_EVENTS_SECONDS = 6
 const TTL_BROADCAST_SECONDS = 24 * 60 * 60 // 1 day
+const TTL_COMMENTS_SECONDS = 4 * 60 * 60 // 4 hours
+
+const COMMENTS_LIMIT = 120
+const MAX_COMMENT_LENGTH = 100
+const MIN_COMMENT_LENGTH = 2
+const MAX_AUTHOR_NAME_LENGTH = 64
+const MAX_USER_ID_LENGTH = 64
+const MAX_PHOTO_URL_LENGTH = 512
+const COMMENT_COOLDOWN_SECONDS = 3 * 60
 
 export const matchBroadcastCacheKey = (matchId: bigint | string): string =>
   `${REDIS_PREFIX}${matchId.toString()}:broadcast`
+
+export const matchCommentsCacheKey = (matchId: bigint | string): string =>
+  `${REDIS_PREFIX}${matchId.toString()}:comments`
+
+const COMMENT_CACHE_OPTIONS = {
+  ttlSeconds: TTL_COMMENTS_SECONDS,
+  staleWhileRevalidateSeconds: TTL_COMMENTS_SECONDS,
+  lockTimeoutSeconds: 4,
+} as const
+
+export class CommentValidationError extends Error {
+  status: number
+  code: string
+
+  constructor(status: number, code: string, message?: string) {
+    super(message ?? code)
+    this.status = status
+    this.code = code
+  }
+}
 
 const parseMatchId = (value: string): bigint | null => {
   try {
@@ -492,6 +531,222 @@ export async function fetchMatchBroadcast(
   return {
     data: result.value,
     version: result.version,
+  }
+}
+
+/**
+ * Fetch comments for the broadcast tab (ephemeral Redis payload)
+ */
+export async function fetchMatchComments(
+  matchId: string
+): Promise<CachedResult<MatchCommentPayload[]> | null> {
+  const numericMatchId = parseMatchId(matchId)
+  if (!numericMatchId) {
+    return null
+  }
+
+  const key = matchCommentsCacheKey(numericMatchId)
+
+  const result = await defaultCache.getWithMeta(
+    key,
+    async () => [] as MatchCommentPayload[],
+    COMMENT_CACHE_OPTIONS
+  )
+
+  return {
+    data: sanitizeStoredComments(result.value),
+    version: result.version,
+  }
+}
+
+type CommentInputPayload = {
+  userId?: string
+  text?: string
+}
+
+const normalizeWhitespace = (value: string): string => value.replace(/\s+/g, ' ').trim()
+
+const sanitizeAuthorName = (value: unknown): string => {
+  if (typeof value === 'string') {
+    const normalized = normalizeWhitespace(value).slice(0, MAX_AUTHOR_NAME_LENGTH)
+    if (normalized.length > 0) {
+      return normalized
+    }
+  }
+  return 'Болельщик'
+}
+
+const sanitizePhotoUrl = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null
+  }
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return null
+  }
+  return trimmed.slice(0, MAX_PHOTO_URL_LENGTH)
+}
+
+const sanitizeStoredComment = (value: unknown): MatchCommentPayload | null => {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+
+  const record = value as Record<string, unknown>
+  const id = typeof record.id === 'string' && record.id.trim().length > 0 ? record.id : null
+  const userId =
+    typeof record.userId === 'string' && record.userId.trim().length > 0 ? record.userId : null
+  const text = typeof record.text === 'string' && record.text.trim().length > 0 ? record.text : null
+  const createdAt =
+    typeof record.createdAt === 'string' && record.createdAt.trim().length > 0
+      ? record.createdAt
+      : null
+
+  if (!id || !userId || !text || !createdAt) {
+    return null
+  }
+
+  const authorNameSource =
+    typeof record.authorName === 'string'
+      ? record.authorName
+      : typeof record.displayName === 'string'
+        ? record.displayName
+        : undefined
+
+  return {
+    id,
+    userId,
+    authorName: sanitizeAuthorName(authorNameSource),
+    authorPhotoUrl: sanitizePhotoUrl(record.authorPhotoUrl),
+    text,
+    createdAt,
+  }
+}
+
+const sanitizeStoredComments = (value: unknown): MatchCommentPayload[] => {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  const normalized: MatchCommentPayload[] = []
+  for (const entry of value) {
+    const comment = sanitizeStoredComment(entry)
+    if (comment) {
+      normalized.push(comment)
+    }
+  }
+
+  if (normalized.length > COMMENTS_LIMIT) {
+    return normalized.slice(normalized.length - COMMENTS_LIMIT)
+  }
+
+  return normalized
+}
+
+/**
+ * Append a new comment to Redis storage and bump version
+ */
+export async function appendMatchComment(
+  matchId: string,
+  input: CommentInputPayload
+): Promise<{ comment: MatchCommentPayload; version: number }> {
+  const numericMatchId = parseMatchId(matchId)
+  if (!numericMatchId) {
+    throw new CommentValidationError(400, 'invalid_match')
+  }
+
+  const rawUserId = typeof input.userId === 'string' ? input.userId.trim() : ''
+  if (!rawUserId) {
+    throw new CommentValidationError(400, 'user_required')
+  }
+  if (rawUserId.length > MAX_USER_ID_LENGTH) {
+    throw new CommentValidationError(400, 'user_too_long')
+  }
+
+  let telegramId: bigint
+  try {
+    telegramId = BigInt(rawUserId)
+  } catch (_err) {
+    throw new CommentValidationError(400, 'invalid_user')
+  }
+
+  const rawText = typeof input.text === 'string' ? input.text.trim() : ''
+  if (rawText.length < MIN_COMMENT_LENGTH) {
+    throw new CommentValidationError(400, 'text_required')
+  }
+  const normalizedText = normalizeWhitespace(rawText).slice(0, MAX_COMMENT_LENGTH)
+
+  const match = await prisma.match.findUnique({
+    where: { id: numericMatchId },
+    select: { id: true },
+  })
+
+  if (!match) {
+    throw new CommentValidationError(404, 'match_not_found')
+  }
+
+  const appUser = await prisma.appUser.findUnique({
+    where: { telegramId },
+    select: {
+      telegramId: true,
+      firstName: true,
+      photoUrl: true,
+    },
+  })
+
+  if (!appUser) {
+    throw new CommentValidationError(404, 'user_not_found')
+  }
+
+  const key = matchCommentsCacheKey(numericMatchId)
+  const existing = await defaultCache.getWithMeta(
+    key,
+    async () => [] as MatchCommentPayload[],
+    COMMENT_CACHE_OPTIONS
+  )
+
+  const existingComments = sanitizeStoredComments(existing.value)
+  const normalizedUserId = appUser.telegramId.toString()
+
+  const lastUserComment = [...existingComments]
+    .reverse()
+    .find(comment => comment.userId === normalizedUserId)
+
+  if (lastUserComment) {
+    const lastTimestamp = Date.parse(lastUserComment.createdAt)
+    if (!Number.isNaN(lastTimestamp)) {
+      const diffSeconds = (Date.now() - lastTimestamp) / 1000
+      if (diffSeconds < COMMENT_COOLDOWN_SECONDS) {
+        throw new CommentValidationError(429, 'rate_limited')
+      }
+    }
+  }
+
+  const comment: MatchCommentPayload = {
+    id: randomUUID(),
+    userId: normalizedUserId,
+    authorName: sanitizeAuthorName(appUser.firstName),
+    authorPhotoUrl: sanitizePhotoUrl(appUser.photoUrl),
+    text: normalizedText,
+    createdAt: new Date().toISOString(),
+  }
+
+  const nextComments = [...existingComments, comment]
+  if (nextComments.length > COMMENTS_LIMIT) {
+    nextComments.splice(0, nextComments.length - COMMENTS_LIMIT)
+  }
+
+  await defaultCache.set(key, nextComments, COMMENT_CACHE_OPTIONS)
+
+  const updated = await defaultCache.getWithMeta(
+    key,
+    async () => nextComments,
+    COMMENT_CACHE_OPTIONS
+  )
+
+  return {
+    comment,
+    version: updated.version,
   }
 }
 

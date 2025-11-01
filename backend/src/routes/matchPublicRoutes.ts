@@ -10,6 +10,9 @@ import {
   fetchMatchStats,
   fetchMatchEvents,
   fetchMatchBroadcast,
+  fetchMatchComments,
+  appendMatchComment,
+  CommentValidationError,
 } from '../services/matchDetailsPublic'
 
 const buildEtag = (version: number) => `"${version}"`
@@ -152,6 +155,9 @@ const matchPublicRoutes: FastifyPluginCallback = (server, _opts, done) => {
     async (request, reply) => {
       const { id } = request.params
       const cached = await fetchMatchBroadcast(id)
+      if (!cached) {
+        return reply.code(404).send({ ok: false, error: 'Match not found' })
+      }
       const { data, version } = cached
       const etag = buildEtag(version)
       const clientEtag = request.headers['if-none-match']
@@ -162,6 +168,62 @@ const matchPublicRoutes: FastifyPluginCallback = (server, _opts, done) => {
 
       setCachingHeaders(reply, etag, version, 'public, max-age=86400, stale-while-revalidate=86400')
       return reply.send({ ok: true, data })
+    }
+  )
+
+  /**
+   * GET /api/public/matches/:id/comments
+   * Returns ephemeral comments for broadcast tab
+   */
+  server.get<{ Params: { id: string } }>(
+    '/api/public/matches/:id/comments',
+    async (request, reply) => {
+      const { id } = request.params
+      const cached = await fetchMatchComments(id)
+
+      if (!cached) {
+        return reply.code(404).send({ ok: false, error: 'Match not found' })
+      }
+
+      const { data, version } = cached
+      const etag = buildEtag(version)
+      const clientEtag = request.headers['if-none-match']
+      if (hasMatchingEtag(clientEtag, etag)) {
+        setCachingHeaders(reply, etag, version, 'public, max-age=5, stale-while-revalidate=5')
+        return reply.code(304).send()
+      }
+
+      setCachingHeaders(reply, etag, version, 'public, max-age=5, stale-while-revalidate=5')
+      return reply.send({ ok: true, data })
+    }
+  )
+
+  /**
+   * POST /api/public/matches/:id/comments
+   * Append a new comment to Redis storage
+   */
+  server.post<{
+    Params: { id: string }
+    Body: { userId?: string; text?: string }
+  }>(
+    '/api/public/matches/:id/comments',
+    async (request, reply) => {
+      const { id } = request.params
+      const payload = request.body ?? {}
+
+      try {
+        const result = await appendMatchComment(id, payload)
+        const etag = buildEtag(result.version)
+        setCachingHeaders(reply, etag, result.version, 'no-store, max-age=0, must-revalidate')
+        return reply.code(201).send({ ok: true, data: result.comment })
+      } catch (err) {
+        if (err instanceof CommentValidationError) {
+          return reply.status(err.status).send({ ok: false, error: err.code })
+        }
+
+        request.log.error({ err }, 'failed to append match comment')
+        return reply.status(500).send({ ok: false, error: 'internal_error' })
+      }
     }
   )
 

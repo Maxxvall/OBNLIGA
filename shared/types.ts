@@ -419,3 +419,12 @@ export interface MatchDetailsBroadcast {
   st: 'not_available' | 'available' // status
   url?: string // broadcast URL if available
 }
+
+export interface MatchComment {
+  id: string
+  userId: string
+  authorName: string
+  authorPhotoUrl?: string | null
+  text: string
+  createdAt: string
+}

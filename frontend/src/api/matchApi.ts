@@ -9,6 +9,7 @@ import type {
   MatchDetailsStats,
   MatchDetailsEvents,
   MatchDetailsBroadcast,
+  MatchComment,
 } from '@shared/types'
 import { httpRequest, type ApiResponse } from './httpClient'
 
@@ -76,6 +77,32 @@ export const matchApi = {
       `/api/public/matches/${matchId}/broadcast`,
       mapRequestOptions(options)
     )
+  },
+
+  /**
+   * Fetch match comments (latest chronologically ascending)
+   */
+  fetchComments(matchId: string, options?: RequestOptions) {
+    return httpRequest<MatchComment[]>(
+      `/api/public/matches/${matchId}/comments`,
+      mapRequestOptions(options)
+    )
+  },
+
+  /**
+   * Submit a new match comment
+   */
+  submitComment(
+    matchId: string,
+    payload: { userId: string; text: string }
+  ) {
+    return httpRequest<MatchComment>(`/api/public/matches/${matchId}/comments`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
   },
 }
 

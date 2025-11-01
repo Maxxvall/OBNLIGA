@@ -41,6 +41,7 @@
 | `/api/league/stats?seasonId={id}` | 300 000 мс | `statsVersions[seasonId]` | Содержит лидерборды; поллинг включается только на подвкладке «Статистика» |
 | `/api/clubs/{id}/summary` | 45 000 мс | `teamSummaryVersions[clubId]` | Интервал активен, пока открыт Team View конкретного клуба |
 | `/api/clubs/{id}/matches` | 90 000 мс | `teamMatchesVersions[clubId]` | Возвращает все сыгранные и будущие матчи клуба по сезонам |
+| `/api/public/matches/{id}/comments` | — (по запросу) | `matchDetails.commentsEtag` | Комментарии загружаются при входе на вкладку «Трансляция», серверный TTL — 4 ч |
 | `/api/news` | 60 000 мс между запросами, локальный cache 30 мин | `localStorage` + `etagRef` внутри компонента | Компонент запоминает snapshot и `etag`, чтобы мгновенно показать карусель |
 | `/api/auth/me` | 90 000 мс между запросами, локальный cache 5 мин | `localStorage` | Профиль читает `ETag` из `/api/auth/telegram-init`, продлевает TTL при `304`; payload содержит `leaguePlayerStats` и массив `leaguePlayerCareer` по клубам |
 
@@ -54,6 +55,8 @@
 - `openTeamView(clubId)`, `closeTeamView()`, `setTeamSubTab(tab)`: управление карточкой клуба.
 - `setTeamMatchesMode(mode)`: переключатель под-вкладок «Расписание/Результаты» в карточке клуба.
 - `fetchClubSummary(clubId, { force? })`, `fetchClubMatches(clubId, { force? })`, `ensureTeamPolling()`, `stopTeamPolling()`: Team View опрашивает сводку и агрегированные матчи клуба каждые 20 с, пока карточка открыта.
+- `fetchMatchComments(matchId, { force? })` — условная загрузка комментариев с ETag, результат сохраняется в `matchDetailsCache` и состоянии модального окна.
+- `submitMatchComment(matchId, payload)` — POST-запрос добавляет новую запись и синхронизирует кэш (UI обновляется оптимистично при успехе).
 
 ### Merge и минимальные перерисовки
 
@@ -87,6 +90,15 @@
 - `fetchClubSummary` и `fetchClubMatches` валидируют входящий payload перед записью в store, чтобы избежать рендера невалидных данных.
 - `teamMatches` содержит готовую выборку матчей по всем сезонам; фильтрация по режимам (`schedule/results`) происходит на клиенте, без повторных запросов к `/api/league/*`.
 - При ошибке запросов сводки или матчей соответствующие флаги (`teamSummaryErrors`, `teamMatchesErrors`) получают код ошибки, polling останавливается до ручного перезапроса.
+
+### Матчевое модальное окно
+
+- `matchDetails.comments` хранит массив `MatchComment` для вкладки «Трансляция». Значение берётся из Redis-кеша `/api/public/matches/:id/comments` и переиспользуется через `matchDetailsCache`.
+- `matchDetails.commentsEtag` — последняя версия ресурса; `fetchMatchComments` всегда отправляет `If-None-Match` и на `304` лишь продлевает lifetime записи в LRU.
+- `matchDetails.loadingComments` управляет skeleton-отрисовкой списка; `matchDetails.submittingComment` блокирует форму отправки до ответа сервера.
+- `matchDetailsCache[matchId]` дополнен полями `comments` и `commentsEtag`, чтобы комментарии подключались мгновенно при повторном открытии окна.
+- `fetchMatchComments(matchId, { force? })` запускается при первом переходе на вкладку «Трансляция» или по кнопке «Повторить», синхронизирует store и кэш при `304/200`.
+- `submitMatchComment(matchId, payload)` делает POST, добавляет новый `MatchComment` в store и кеш `matchDetailsCache` при успехе; версию берёт из `ETag`/`X-Resource-Version` ответа.
 
 ## HTTP клиент (`frontend/src/api/httpClient.ts`)
 

@@ -16,6 +16,7 @@ import type {
   MatchDetailsStats,
   MatchDetailsEvents,
   MatchDetailsBroadcast,
+  MatchComment,
   MatchStatus,
 } from '@shared/types'
 import { leagueApi } from '../api/leagueApi'
@@ -47,21 +48,44 @@ type MatchDetailsState = {
   stats?: MatchDetailsStats
   events?: MatchDetailsEvents
   broadcast?: MatchDetailsBroadcast
+  comments?: MatchComment[]
   headerEtag?: string
   lineupsEtag?: string
   statsEtag?: string
   eventsEtag?: string
   broadcastEtag?: string
+  commentsEtag?: string
   loadingHeader: boolean
   loadingLineups: boolean
   loadingStats: boolean
   loadingEvents: boolean
   loadingBroadcast: boolean
+  loadingComments: boolean
+  submittingComment: boolean
   errorHeader?: string
   errorLineups?: string
   errorStats?: string
   errorEvents?: string
   errorBroadcast?: string
+  errorComments?: string
+}
+
+type MatchDetailsCacheEntry = {
+  snapshot?: LeagueMatchView
+  header?: MatchDetailsHeader
+  lineups?: MatchDetailsLineups
+  stats?: MatchDetailsStats
+  events?: MatchDetailsEvents
+  broadcast?: MatchDetailsBroadcast
+  comments?: MatchComment[]
+  headerEtag?: string
+  lineupsEtag?: string
+  statsEtag?: string
+  eventsEtag?: string
+  broadcastEtag?: string
+  commentsEtag?: string
+  seasonId?: number
+  updatedAt: number
 }
 
 const INITIAL_TEAM_VIEW: TeamViewState = {
@@ -82,6 +106,8 @@ const INITIAL_MATCH_DETAILS: MatchDetailsState = {
   loadingStats: false,
   loadingEvents: false,
   loadingBroadcast: false,
+  loadingComments: false,
+  submittingComment: false,
 }
 
 const SEASONS_TTL_MS = 55_000
@@ -92,11 +118,59 @@ const STATS_TTL_MS = 300_000
 const CLUB_SUMMARY_TTL_MS = 45_000
 const CLUB_MATCHES_TTL_MS = 86_400_000
 const DOUBLE_TAP_THRESHOLD_MS = 280
+const MATCH_DETAILS_CACHE_LIMIT = 8
 
 const LEAGUE_POLL_INTERVAL_MS = 10_000
 const TEAM_POLL_INTERVAL_MS = 20_000
 const MATCH_DETAILS_POLL_INTERVAL_MS = 10_000
 const hasWindow = typeof window !== 'undefined'
+
+const upsertMatchCacheEntry = (
+  cache: Record<string, MatchDetailsCacheEntry>,
+  order: string[],
+  matchId: string,
+  updater: (previous: MatchDetailsCacheEntry | undefined) => MatchDetailsCacheEntry | undefined
+): { cache: Record<string, MatchDetailsCacheEntry>; order: string[] } => {
+  const previous = cache[matchId]
+  const updated = updater(previous)
+  if (!updated) {
+    if (!previous) {
+      return { cache, order }
+    }
+    const nextCache = { ...cache }
+    delete nextCache[matchId]
+    const nextOrder = order.filter(id => id !== matchId)
+    return { cache: nextCache, order: nextOrder }
+  }
+
+  const nextCache = { ...cache, [matchId]: updated }
+  const nextOrder = [matchId, ...order.filter(id => id !== matchId)]
+
+  if (nextOrder.length > MATCH_DETAILS_CACHE_LIMIT) {
+    const trimmedOrder = nextOrder.slice(0, MATCH_DETAILS_CACHE_LIMIT)
+    const trimmedCache = { ...nextCache }
+    for (let index = MATCH_DETAILS_CACHE_LIMIT; index < nextOrder.length; index += 1) {
+      const staleId = nextOrder[index]
+      delete trimmedCache[staleId]
+    }
+    return { cache: trimmedCache, order: trimmedOrder }
+  }
+
+  return { cache: nextCache, order: nextOrder }
+}
+
+const touchMatchCacheEntry = (
+  cache: Record<string, MatchDetailsCacheEntry>,
+  order: string[],
+  matchId: string,
+  now: number
+): { cache: Record<string, MatchDetailsCacheEntry>; order: string[] } =>
+  upsertMatchCacheEntry(cache, order, matchId, existing => {
+    if (!existing) {
+      return undefined
+    }
+    return { ...existing, updatedAt: now }
+  })
 
 const areCompetitionsEqual = (
   left: LeagueSeasonSummary['competition'],
@@ -806,6 +880,8 @@ interface AppState {
   teamPollingAttached: boolean
   teamPollingClubId?: number
   matchDetails: MatchDetailsState
+  matchDetailsCache: Record<string, MatchDetailsCacheEntry>
+  matchDetailsCacheOrder: string[]
   matchDetailsPollingAttached: boolean
   setTab: (tab: UITab) => void
   setLeagueSubTab: (tab: LeagueSubTab) => void
@@ -836,6 +912,11 @@ interface AppState {
   fetchMatchStats: (matchId: string, options?: { force?: boolean }) => Promise<FetchResult>
   fetchMatchEvents: (matchId: string, options?: { force?: boolean }) => Promise<FetchResult>
   fetchMatchBroadcast: (matchId: string, options?: { force?: boolean }) => Promise<FetchResult>
+  fetchMatchComments: (matchId: string, options?: { force?: boolean }) => Promise<FetchResult>
+  submitMatchComment: (
+    matchId: string,
+    payload: { userId: string; text: string }
+  ) => Promise<FetchResult>
   ensureMatchDetailsPolling: () => void
   stopMatchDetailsPolling: () => void
 }
@@ -1067,6 +1148,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   teamPollingAttached: false,
   teamPollingClubId: undefined,
   matchDetails: { ...INITIAL_MATCH_DETAILS },
+  matchDetailsCache: {},
+  matchDetailsCacheOrder: [],
   matchDetailsPollingAttached: false,
   setTab: tab => {
     set(state => ({
@@ -1646,15 +1729,58 @@ export const useAppStore = create<AppState>((set, get) => ({
   openMatchDetails: (matchId, snapshot, seasonId) => {
     const state = get()
     state.stopLeaguePolling()
-    const resolvedSeasonId = seasonId ?? state.matchDetails.seasonId ?? state.selectedSeasonId ?? state.activeSeasonId
-    set({
-      matchDetails: {
-        ...INITIAL_MATCH_DETAILS,
-        open: true,
+    const resolvedSeasonId =
+      seasonId ?? state.matchDetails.seasonId ?? state.selectedSeasonId ?? state.activeSeasonId
+    const cachedEntry = state.matchDetailsCache[matchId]
+    const baseSnapshot = snapshot ?? cachedEntry?.snapshot ?? state.matchDetails.snapshot
+    const baseMatchDetails: MatchDetailsState = {
+      ...INITIAL_MATCH_DETAILS,
+      open: true,
+      matchId,
+      seasonId: resolvedSeasonId,
+      snapshot: baseSnapshot,
+      header: cachedEntry?.header,
+      headerEtag: cachedEntry?.headerEtag,
+      lineups: cachedEntry?.lineups,
+      lineupsEtag: cachedEntry?.lineupsEtag,
+      stats: cachedEntry?.stats,
+      statsEtag: cachedEntry?.statsEtag,
+      events: cachedEntry?.events,
+      eventsEtag: cachedEntry?.eventsEtag,
+      broadcast: cachedEntry?.broadcast,
+      broadcastEtag: cachedEntry?.broadcastEtag,
+      comments: cachedEntry?.comments,
+      commentsEtag: cachedEntry?.commentsEtag,
+    }
+
+    set(prev => {
+      const now = Date.now()
+      const { cache, order } = upsertMatchCacheEntry(
+        prev.matchDetailsCache,
+        prev.matchDetailsCacheOrder,
         matchId,
-        seasonId: resolvedSeasonId,
-        snapshot,
-      },
+        existing => {
+          const entry: MatchDetailsCacheEntry = existing ? { ...existing } : { updatedAt: now }
+          if (baseSnapshot) {
+            entry.snapshot = baseSnapshot
+          }
+          if (resolvedSeasonId !== undefined) {
+            entry.seasonId = resolvedSeasonId
+          }
+          if (cachedEntry?.comments) {
+            entry.comments = cachedEntry.comments
+            entry.commentsEtag = cachedEntry.commentsEtag
+          }
+          entry.updatedAt = now
+          return entry
+        }
+      )
+
+      return {
+        matchDetails: baseMatchDetails,
+        matchDetailsCache: cache,
+        matchDetailsCacheOrder: order,
+      }
     })
     void get().fetchMatchHeader(matchId)
     void get().fetchMatchLineups(matchId)
@@ -1686,8 +1812,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       void get().fetchMatchEvents(matchId)
     } else if (tab === 'stats' && !state.matchDetails.stats) {
       void get().fetchMatchStats(matchId)
-    } else if (tab === 'broadcast' && !state.matchDetails.broadcast) {
-      void get().fetchMatchBroadcast(matchId)
+    } else if (tab === 'broadcast') {
+      if (!state.matchDetails.broadcast) {
+        void get().fetchMatchBroadcast(matchId)
+      }
+      if (!state.matchDetails.comments && !state.matchDetails.loadingComments) {
+        void get().fetchMatchComments(matchId)
+      }
     }
   },
   fetchMatchHeader: async (matchId, options) => {
@@ -1696,8 +1827,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { ok: true }
     }
 
+    const shouldShowLoader = options?.force || !state.matchDetails.header
     set(prev => ({
-      matchDetails: { ...prev.matchDetails, loadingHeader: true, errorHeader: undefined },
+      matchDetails: {
+        ...prev.matchDetails,
+        loadingHeader: shouldShowLoader,
+        errorHeader: undefined,
+      },
     }))
 
     const requestEtag = options?.force ? undefined : state.matchDetails.headerEtag
@@ -1707,16 +1843,31 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (!response.ok) {
       set(prev => ({
-        matchDetails: { ...prev.matchDetails, loadingHeader: false, errorHeader: response.error },
+        matchDetails: {
+          ...prev.matchDetails,
+          loadingHeader: false,
+          errorHeader: response.error,
+        },
       }))
       return { ok: false }
     }
 
+    const now = Date.now()
+
     if (!('data' in response)) {
-      // 304 Not Modified - data is still fresh
-      set(prev => ({
-        matchDetails: { ...prev.matchDetails, loadingHeader: false },
-      }))
+      set(prev => {
+        const { cache, order } = touchMatchCacheEntry(
+          prev.matchDetailsCache,
+          prev.matchDetailsCacheOrder,
+          matchId,
+          now
+        )
+        return {
+          matchDetails: { ...prev.matchDetails, loadingHeader: false },
+          matchDetailsCache: cache,
+          matchDetailsCacheOrder: order,
+        }
+      })
       get().ensureMatchDetailsPolling()
       return { ok: true }
     }
@@ -1772,6 +1923,23 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       const nextSnapshot = syncSnapshotWithHeader(prev.matchDetails.snapshot, matchId, summary)
 
+      const { cache, order } = upsertMatchCacheEntry(
+        prev.matchDetailsCache,
+        prev.matchDetailsCacheOrder,
+        matchId,
+        existing => {
+          const entry: MatchDetailsCacheEntry = existing ? { ...existing } : { updatedAt: now }
+          entry.header = response.data
+          entry.headerEtag = response.version
+          entry.snapshot = nextSnapshot ?? entry.snapshot
+          if (targetSeasonId !== undefined) {
+            entry.seasonId = targetSeasonId
+          }
+          entry.updatedAt = now
+          return entry
+        }
+      )
+
       return {
         ...prev,
         schedules: scheduleChanged ? schedulesMap : prev.schedules,
@@ -1784,6 +1952,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           errorHeader: undefined,
           snapshot: nextSnapshot,
         },
+        matchDetailsCache: cache,
+        matchDetailsCacheOrder: order,
       }
     })
     const headerStatus = response.data.st
@@ -1809,8 +1979,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { ok: true }
     }
 
+    const shouldShowLoader = options?.force || !state.matchDetails.lineups
     set(prev => ({
-      matchDetails: { ...prev.matchDetails, loadingLineups: true, errorLineups: undefined },
+      matchDetails: {
+        ...prev.matchDetails,
+        loadingLineups: shouldShowLoader,
+        errorLineups: undefined,
+      },
     }))
 
     const requestEtag = options?.force ? undefined : state.matchDetails.lineupsEtag
@@ -1829,22 +2004,61 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { ok: false }
     }
 
+    const now = Date.now()
+
     if (!('data' in response)) {
-      set(prev => ({
-        matchDetails: { ...prev.matchDetails, loadingLineups: false },
-      }))
+      set(prev => {
+        const { cache, order } = touchMatchCacheEntry(
+          prev.matchDetailsCache,
+          prev.matchDetailsCacheOrder,
+          matchId,
+          now
+        )
+        return {
+          matchDetails: { ...prev.matchDetails, loadingLineups: false },
+          matchDetailsCache: cache,
+          matchDetailsCacheOrder: order,
+        }
+      })
       return { ok: true }
     }
 
-    set(prev => ({
-      matchDetails: {
-        ...prev.matchDetails,
-        lineups: response.data,
-        lineupsEtag: response.version,
-        loadingLineups: false,
-        errorLineups: undefined,
-      },
-    }))
+    set(prev => {
+      const { cache, order } = upsertMatchCacheEntry(
+        prev.matchDetailsCache,
+        prev.matchDetailsCacheOrder,
+        matchId,
+        existing => {
+          const entry: MatchDetailsCacheEntry = existing ? { ...existing } : { updatedAt: now }
+          entry.lineups = response.data
+          entry.lineupsEtag = response.version
+          entry.updatedAt = now
+          return entry
+        }
+      )
+
+      return {
+        matchDetails: {
+          ...prev.matchDetails,
+          lineups: response.data,
+          lineupsEtag: response.version,
+          loadingLineups: false,
+          errorLineups: undefined,
+        },
+        matchDetailsCache: cache,
+        matchDetailsCacheOrder: order,
+      }
+    })
+
+    const latest = get().matchDetails
+    if (
+      latest.matchId === matchId &&
+      latest.activeTab === 'broadcast' &&
+      !latest.loadingComments &&
+      (!latest.comments || options?.force)
+    ) {
+      void get().fetchMatchComments(matchId)
+    }
     return { ok: true }
   },
   fetchMatchStats: async (matchId, options) => {
@@ -1853,8 +2067,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { ok: true }
     }
 
+    const shouldShowLoader = options?.force || !state.matchDetails.stats
     set(prev => ({
-      matchDetails: { ...prev.matchDetails, loadingStats: true, errorStats: undefined },
+      matchDetails: {
+        ...prev.matchDetails,
+        loadingStats: shouldShowLoader,
+        errorStats: undefined,
+      },
     }))
 
     const requestEtag = options?.force ? undefined : state.matchDetails.statsEtag
@@ -1869,22 +2088,51 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { ok: false }
     }
 
+    const now = Date.now()
+
     if (!('data' in response)) {
-      set(prev => ({
-        matchDetails: { ...prev.matchDetails, loadingStats: false },
-      }))
+      set(prev => {
+        const { cache, order } = touchMatchCacheEntry(
+          prev.matchDetailsCache,
+          prev.matchDetailsCacheOrder,
+          matchId,
+          now
+        )
+        return {
+          matchDetails: { ...prev.matchDetails, loadingStats: false },
+          matchDetailsCache: cache,
+          matchDetailsCacheOrder: order,
+        }
+      })
       return { ok: true }
     }
 
-    set(prev => ({
-      matchDetails: {
-        ...prev.matchDetails,
-        stats: response.data,
-        statsEtag: response.version,
-        loadingStats: false,
-        errorStats: undefined,
-      },
-    }))
+    set(prev => {
+      const { cache, order } = upsertMatchCacheEntry(
+        prev.matchDetailsCache,
+        prev.matchDetailsCacheOrder,
+        matchId,
+        existing => {
+          const entry: MatchDetailsCacheEntry = existing ? { ...existing } : { updatedAt: now }
+          entry.stats = response.data
+          entry.statsEtag = response.version
+          entry.updatedAt = now
+          return entry
+        }
+      )
+
+      return {
+        matchDetails: {
+          ...prev.matchDetails,
+          stats: response.data,
+          statsEtag: response.version,
+          loadingStats: false,
+          errorStats: undefined,
+        },
+        matchDetailsCache: cache,
+        matchDetailsCacheOrder: order,
+      }
+    })
     return { ok: true }
   },
   fetchMatchEvents: async (matchId, options) => {
@@ -1893,8 +2141,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { ok: true }
     }
 
+    const shouldShowLoader = options?.force || !state.matchDetails.events
     set(prev => ({
-      matchDetails: { ...prev.matchDetails, loadingEvents: true, errorEvents: undefined },
+      matchDetails: {
+        ...prev.matchDetails,
+        loadingEvents: shouldShowLoader,
+        errorEvents: undefined,
+      },
     }))
 
     const requestEtag = options?.force ? undefined : state.matchDetails.eventsEtag
@@ -1909,22 +2162,51 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { ok: false }
     }
 
+    const now = Date.now()
+
     if (!('data' in response)) {
-      set(prev => ({
-        matchDetails: { ...prev.matchDetails, loadingEvents: false },
-      }))
+      set(prev => {
+        const { cache, order } = touchMatchCacheEntry(
+          prev.matchDetailsCache,
+          prev.matchDetailsCacheOrder,
+          matchId,
+          now
+        )
+        return {
+          matchDetails: { ...prev.matchDetails, loadingEvents: false },
+          matchDetailsCache: cache,
+          matchDetailsCacheOrder: order,
+        }
+      })
       return { ok: true }
     }
 
-    set(prev => ({
-      matchDetails: {
-        ...prev.matchDetails,
-        events: response.data,
-        eventsEtag: response.version,
-        loadingEvents: false,
-        errorEvents: undefined,
-      },
-    }))
+    set(prev => {
+      const { cache, order } = upsertMatchCacheEntry(
+        prev.matchDetailsCache,
+        prev.matchDetailsCacheOrder,
+        matchId,
+        existing => {
+          const entry: MatchDetailsCacheEntry = existing ? { ...existing } : { updatedAt: now }
+          entry.events = response.data
+          entry.eventsEtag = response.version
+          entry.updatedAt = now
+          return entry
+        }
+      )
+
+      return {
+        matchDetails: {
+          ...prev.matchDetails,
+          events: response.data,
+          eventsEtag: response.version,
+          loadingEvents: false,
+          errorEvents: undefined,
+        },
+        matchDetailsCache: cache,
+        matchDetailsCacheOrder: order,
+      }
+    })
     return { ok: true }
   },
   fetchMatchBroadcast: async (matchId, options) => {
@@ -1933,10 +2215,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { ok: true }
     }
 
+    const shouldShowLoader = options?.force || !state.matchDetails.broadcast
     set(prev => ({
       matchDetails: {
         ...prev.matchDetails,
-        loadingBroadcast: true,
+        loadingBroadcast: shouldShowLoader,
         errorBroadcast: undefined,
       },
     }))
@@ -1957,25 +2240,200 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { ok: false }
     }
 
+    const now = Date.now()
+
     if (!('data' in response)) {
+      set(prev => {
+        const { cache, order } = touchMatchCacheEntry(
+          prev.matchDetailsCache,
+          prev.matchDetailsCacheOrder,
+          matchId,
+          now
+        )
+        return {
+          matchDetails: {
+            ...prev.matchDetails,
+            loadingBroadcast: false,
+          },
+          matchDetailsCache: cache,
+          matchDetailsCacheOrder: order,
+        }
+      })
+      return { ok: true }
+    }
+
+    set(prev => {
+      const { cache, order } = upsertMatchCacheEntry(
+        prev.matchDetailsCache,
+        prev.matchDetailsCacheOrder,
+        matchId,
+        existing => {
+          const entry: MatchDetailsCacheEntry = existing ? { ...existing } : { updatedAt: now }
+          entry.broadcast = response.data
+          entry.broadcastEtag = response.version
+          if (prev.matchDetails.comments && !existing?.comments) {
+            entry.comments = prev.matchDetails.comments
+            entry.commentsEtag = prev.matchDetails.commentsEtag
+          }
+          entry.updatedAt = now
+          return entry
+        }
+      )
+
+      return {
+        matchDetails: {
+          ...prev.matchDetails,
+          broadcast: response.data,
+          broadcastEtag: response.version,
+          loadingBroadcast: false,
+          errorBroadcast: undefined,
+        },
+        matchDetailsCache: cache,
+        matchDetailsCacheOrder: order,
+      }
+    })
+    return { ok: true }
+  },
+  fetchMatchComments: async (matchId, options) => {
+    const state = get()
+    if (state.matchDetails.loadingComments && !options?.force) {
+      return { ok: true }
+    }
+
+    const shouldShowLoader = options?.force || !state.matchDetails.comments
+    set(prev => ({
+      matchDetails: {
+        ...prev.matchDetails,
+        loadingComments: shouldShowLoader,
+        errorComments: undefined,
+      },
+    }))
+
+    const requestEtag = options?.force ? undefined : state.matchDetails.commentsEtag
+    const response = await matchApi.fetchComments(matchId, {
+      etag: requestEtag,
+    })
+
+    if (!response.ok) {
       set(prev => ({
         matchDetails: {
           ...prev.matchDetails,
-          loadingBroadcast: false,
+          loadingComments: false,
+          errorComments: response.error,
         },
       }))
+      return { ok: false }
+    }
+
+    const now = Date.now()
+
+    if (!('data' in response)) {
+      set(prev => {
+        const { cache, order } = touchMatchCacheEntry(
+          prev.matchDetailsCache,
+          prev.matchDetailsCacheOrder,
+          matchId,
+          now
+        )
+        return {
+          matchDetails: {
+            ...prev.matchDetails,
+            loadingComments: false,
+          },
+          matchDetailsCache: cache,
+          matchDetailsCacheOrder: order,
+        }
+      })
+      return { ok: true }
+    }
+
+    set(prev => {
+      const { cache, order } = upsertMatchCacheEntry(
+        prev.matchDetailsCache,
+        prev.matchDetailsCacheOrder,
+        matchId,
+        existing => {
+          const entry: MatchDetailsCacheEntry = existing ? { ...existing } : { updatedAt: now }
+          entry.comments = response.data
+          entry.commentsEtag = response.version
+          entry.updatedAt = now
+          return entry
+        }
+      )
+
+      return {
+        matchDetails: {
+          ...prev.matchDetails,
+          comments: response.data,
+          commentsEtag: response.version,
+          loadingComments: false,
+          errorComments: undefined,
+        },
+        matchDetailsCache: cache,
+        matchDetailsCacheOrder: order,
+      }
+    })
+    return { ok: true }
+  },
+  submitMatchComment: async (matchId, payload) => {
+    const state = get()
+    if (state.matchDetails.submittingComment) {
       return { ok: true }
     }
 
     set(prev => ({
       matchDetails: {
         ...prev.matchDetails,
-        broadcast: response.data,
-        broadcastEtag: response.version,
-        loadingBroadcast: false,
-        errorBroadcast: undefined,
+        submittingComment: true,
+        errorComments: undefined,
       },
     }))
+
+    const response = await matchApi.submitComment(matchId, payload)
+
+    if (!response.ok || !('data' in response)) {
+      set(prev => ({
+        matchDetails: {
+          ...prev.matchDetails,
+          submittingComment: false,
+          errorComments: response.ok ? 'empty_response' : response.error,
+        },
+      }))
+      return { ok: false }
+    }
+
+    const now = Date.now()
+
+    set(prev => {
+      const existingComments = prev.matchDetails.comments ?? []
+      const nextComments = [...existingComments, response.data]
+
+      const { cache, order } = upsertMatchCacheEntry(
+        prev.matchDetailsCache,
+        prev.matchDetailsCacheOrder,
+        matchId,
+        entry => {
+          const base: MatchDetailsCacheEntry = entry ? { ...entry } : { updatedAt: now }
+          base.comments = nextComments
+          base.commentsEtag = response.version ?? undefined
+          base.updatedAt = now
+          return base
+        }
+      )
+
+      return {
+        matchDetails: {
+          ...prev.matchDetails,
+          comments: nextComments,
+          commentsEtag: response.version ?? undefined,
+          submittingComment: false,
+          errorComments: undefined,
+        },
+        matchDetailsCache: cache,
+        matchDetailsCacheOrder: order,
+      }
+    })
+
     return { ok: true }
   },
   ensureMatchDetailsPolling: () => {

@@ -105,7 +105,7 @@ MATCH_WINDOW_POST_GRACE_MINUTES=30
 ### Achievements / Ads / Admin stats
 
 * Achievements — TTL **30 min**.
-* Ads — TTL **5–15 min**.
+* Ads — TTL **600 s**, ключ `ads:all`; отдаём через `defaultCache` + `ETag`/`X-Resource-Version` и инвалидируем при любом CRUD из админки. Клиент кеширует снапшот и ETag в localStorage на 14 суток и всегда запрашивает `If-None-Match`.
 * Admin stats — TTL **1–2 h**; event‑driven инвалидация при финализации.
 
 ### Public aggregates / client store

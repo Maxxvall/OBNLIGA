@@ -283,6 +283,226 @@ const sendSerialized = <T>(reply: FastifyReply, data: T) =>
 const SEASON_STATS_CACHE_TTL_SECONDS = Number(process.env.ADMIN_CACHE_TTL_SEASON_STATS ?? '60')
 const CAREER_STATS_CACHE_TTL_SECONDS = Number(process.env.ADMIN_CACHE_TTL_CAREER_STATS ?? '180')
 const NEWS_CACHE_KEY = 'news:all'
+const ADS_CACHE_KEY = 'ads:all'
+
+const MAX_AD_TITLE_LENGTH = 80
+const MAX_AD_SUBTITLE_LENGTH = 160
+const MAX_AD_TARGET_URL_LENGTH = 2000
+const MAX_AD_DISPLAY_ORDER = 9999
+const MAX_AD_IMAGE_SIZE_BYTES = 1_000_000
+const MAX_AD_IMAGE_DIMENSION = 4096
+const ALLOWED_AD_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
+
+interface AdBannerRow {
+  id: bigint
+  title: string
+  subtitle: string | null
+  targetUrl: string | null
+  imageData: Buffer
+  imageMime: string
+  imageWidth: number
+  imageHeight: number
+  imageSize: number
+  displayOrder: number
+  isActive: boolean
+  startsAt: Date | null
+  endsAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+interface ParsedAdImage {
+  buffer: Buffer
+  mimeType: string
+  width: number
+  height: number
+  size: number
+}
+
+const normalizeAdBannerRow = (row: AdBannerRow) => {
+  const base64 = Buffer.isBuffer(row.imageData) ? row.imageData.toString('base64') : ''
+  return {
+    id: row.id.toString(),
+    title: row.title,
+    subtitle: row.subtitle,
+    targetUrl: row.targetUrl,
+    image: {
+      mimeType: row.imageMime,
+      base64,
+      width: row.imageWidth,
+      height: row.imageHeight,
+      size: row.imageSize,
+    },
+    displayOrder: row.displayOrder,
+    isActive: row.isActive,
+    startsAt: row.startsAt ? row.startsAt.toISOString() : null,
+    endsAt: row.endsAt ? row.endsAt.toISOString() : null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  }
+}
+
+const parseOptionalDateTime = (value: unknown, field: string): Date | null => {
+  if (value === undefined || value === null || value === '') {
+    return null
+  }
+  const date = new Date(String(value))
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`${field}_invalid`)
+  }
+  return date
+}
+
+const normalizeAdTargetUrl = (value: unknown): string | null => {
+  if (value === undefined || value === null) {
+    return null
+  }
+  const raw = String(value).trim()
+  if (!raw) {
+    return null
+  }
+  if (raw.length > MAX_AD_TARGET_URL_LENGTH) {
+    throw new Error('ad_target_url_too_long')
+  }
+  try {
+    const url = new URL(raw)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      throw new Error('ad_target_url_invalid')
+    }
+  } catch (err) {
+    throw new Error('ad_target_url_invalid')
+  }
+  return raw
+}
+
+const decodeAdImagePayload = (value: unknown, required: boolean): ParsedAdImage | null => {
+  if (value === undefined || value === null) {
+    if (required) {
+      throw new Error('ad_image_required')
+    }
+    return null
+  }
+
+  if (typeof value !== 'object' || value === null) {
+    throw new Error('ad_image_invalid')
+  }
+
+  const payload = value as Record<string, unknown>
+  const mimeTypeRaw = typeof payload.mimeType === 'string' ? payload.mimeType.trim() : ''
+  if (!mimeTypeRaw) {
+    throw new Error('ad_image_mime_required')
+  }
+  const normalizedMime = mimeTypeRaw.toLowerCase()
+  if (!ALLOWED_AD_IMAGE_MIME_TYPES.has(normalizedMime)) {
+    throw new Error('ad_image_mime_unsupported')
+  }
+
+  let base64 = typeof payload.base64 === 'string' ? payload.base64.trim() : ''
+  if (!base64) {
+    throw new Error('ad_image_base64_required')
+  }
+  const commaIndex = base64.indexOf(',')
+  if (base64.startsWith('data:') && commaIndex !== -1) {
+    base64 = base64.slice(commaIndex + 1)
+  }
+
+  let buffer: Buffer
+  try {
+    buffer = Buffer.from(base64, 'base64')
+  } catch (err) {
+    throw new Error('ad_image_invalid')
+  }
+
+  if (!buffer || buffer.length === 0) {
+    throw new Error('ad_image_invalid')
+  }
+
+  if (buffer.length > MAX_AD_IMAGE_SIZE_BYTES) {
+    throw new Error('ad_image_too_large')
+  }
+
+  const widthValue = Number(payload.width)
+  const heightValue = Number(payload.height)
+  if (!Number.isFinite(widthValue) || !Number.isFinite(heightValue)) {
+    throw new Error('ad_image_dimensions_invalid')
+  }
+  const width = Math.trunc(widthValue)
+  const height = Math.trunc(heightValue)
+  if (
+    width <= 0 ||
+    height <= 0 ||
+    width > MAX_AD_IMAGE_DIMENSION ||
+    height > MAX_AD_IMAGE_DIMENSION
+  ) {
+    throw new Error('ad_image_dimensions_invalid')
+  }
+
+  const sizeValue = Number(payload.size)
+  if (!Number.isFinite(sizeValue) || sizeValue <= 0) {
+    throw new Error('ad_image_size_invalid')
+  }
+  const declaredSize = Math.trunc(sizeValue)
+  if (Math.abs(declaredSize - buffer.length) > 32) {
+    throw new Error('ad_image_size_mismatch')
+  }
+
+  return {
+    buffer,
+    mimeType: normalizedMime,
+    width,
+    height,
+    size: buffer.length,
+  }
+}
+
+const loadAdBannerById = async (id: bigint): Promise<AdBannerRow | null> => {
+  const rows = await prisma.$queryRaw<AdBannerRow[]>`
+    SELECT
+      ad_banner_id          AS id,
+      title,
+      subtitle,
+      target_url            AS "targetUrl",
+      image_data            AS "imageData",
+      image_mime            AS "imageMime",
+      image_width           AS "imageWidth",
+      image_height          AS "imageHeight",
+      image_size            AS "imageSize",
+      display_order         AS "displayOrder",
+      is_active             AS "isActive",
+      starts_at             AS "startsAt",
+      ends_at               AS "endsAt",
+      created_at            AS "createdAt",
+      updated_at            AS "updatedAt"
+    FROM ad_banner
+    WHERE ad_banner_id = ${id}
+    LIMIT 1
+  `
+  return rows.length ? rows[0] : null
+}
+
+const listAllAdBanners = async (): Promise<ReturnType<typeof normalizeAdBannerRow>[]> => {
+  const rows = await prisma.$queryRaw<AdBannerRow[]>`
+    SELECT
+      ad_banner_id          AS id,
+      title,
+      subtitle,
+      target_url            AS "targetUrl",
+      image_data            AS "imageData",
+      image_mime            AS "imageMime",
+      image_width           AS "imageWidth",
+      image_height          AS "imageHeight",
+      image_size            AS "imageSize",
+      display_order         AS "displayOrder",
+      is_active             AS "isActive",
+      starts_at             AS "startsAt",
+      ends_at               AS "endsAt",
+      created_at            AS "createdAt",
+      updated_at            AS "updatedAt"
+    FROM ad_banner
+    ORDER BY display_order ASC, updated_at DESC, ad_banner_id DESC
+  `
+  return rows.map(normalizeAdBannerRow)
+}
 
 const seasonStatsCacheKey = (seasonId: number, suffix: string) => `season:${seasonId}:${suffix}`
 const competitionStatsCacheKey = (competitionId: number, suffix: string) =>
@@ -1133,6 +1353,420 @@ export default async function (server: FastifyInstance) {
         }
 
         return sendSerialized(reply, deleted)
+      })
+
+      // Advertisement management
+      admin.get('/news/ads', async (_request, reply) => {
+        const ads = await listAllAdBanners()
+        return reply.send({ ok: true, data: ads })
+      })
+
+      admin.post('/news/ads', async (request, reply) => {
+        const body = (request.body ?? {}) as Record<string, unknown>
+
+        const titleRaw = typeof body.title === 'string' ? body.title.trim() : ''
+        if (!titleRaw) {
+          return reply.status(400).send({ ok: false, error: 'ad_title_required' })
+        }
+        if (titleRaw.length > MAX_AD_TITLE_LENGTH) {
+          return reply.status(400).send({ ok: false, error: 'ad_title_too_long' })
+        }
+
+        const subtitleRaw =
+          typeof body.subtitle === 'string' ? body.subtitle.trim() : body.subtitle === null ? null : undefined
+        if (typeof subtitleRaw === 'string' && subtitleRaw.length > MAX_AD_SUBTITLE_LENGTH) {
+          return reply.status(400).send({ ok: false, error: 'ad_subtitle_too_long' })
+        }
+
+        const targetUrlRaw = body.targetUrl
+        let targetUrl: string | null
+        try {
+          targetUrl = normalizeAdTargetUrl(targetUrlRaw)
+        } catch (err) {
+          const code = err instanceof Error ? err.message : 'ad_target_url_invalid'
+          return reply.status(400).send({ ok: false, error: code })
+        }
+
+        const displayOrderValue =
+          Object.prototype.hasOwnProperty.call(body, 'displayOrder') && body.displayOrder !== undefined
+            ? Number(body.displayOrder)
+            : 0
+        if (!Number.isFinite(displayOrderValue)) {
+          return reply.status(400).send({ ok: false, error: 'ad_display_order_invalid' })
+        }
+        const displayOrder = Math.trunc(displayOrderValue)
+        if (displayOrder < 0 || displayOrder > MAX_AD_DISPLAY_ORDER) {
+          return reply.status(400).send({ ok: false, error: 'ad_display_order_invalid' })
+        }
+
+        const isActive = Object.prototype.hasOwnProperty.call(body, 'isActive')
+          ? Boolean(body.isActive)
+          : true
+
+        let startsAt: Date | null = null
+        let endsAt: Date | null = null
+        try {
+          startsAt = parseOptionalDateTime(body.startsAt, 'ad_starts_at')
+          endsAt = parseOptionalDateTime(body.endsAt, 'ad_ends_at')
+        } catch (err) {
+          const code = err instanceof Error ? err.message : 'ad_schedule_invalid'
+          return reply.status(400).send({ ok: false, error: code })
+        }
+
+        if (startsAt && endsAt && endsAt.getTime() < startsAt.getTime()) {
+          return reply.status(400).send({ ok: false, error: 'ad_schedule_range_invalid' })
+        }
+
+        let image: ParsedAdImage
+        try {
+          const parsed = decodeAdImagePayload(body.image, true)
+          if (!parsed) {
+            return reply.status(400).send({ ok: false, error: 'ad_image_required' })
+          }
+          image = parsed
+        } catch (err) {
+          const code = err instanceof Error ? err.message : 'ad_image_invalid'
+          return reply.status(400).send({ ok: false, error: code })
+        }
+
+        try {
+          const [created] = await prisma.$queryRaw<AdBannerRow[]>`
+            INSERT INTO ad_banner (
+              title,
+              subtitle,
+              target_url,
+              image_data,
+              image_mime,
+              image_width,
+              image_height,
+              image_size,
+              display_order,
+              is_active,
+              starts_at,
+              ends_at
+            ) VALUES (
+              ${titleRaw},
+              ${subtitleRaw ?? null},
+              ${targetUrl},
+              ${image.buffer},
+              ${image.mimeType},
+              ${image.width},
+              ${image.height},
+              ${image.size},
+              ${displayOrder},
+              ${isActive},
+              ${startsAt},
+              ${endsAt}
+            )
+            RETURNING
+              ad_banner_id          AS id,
+              title,
+              subtitle,
+              target_url            AS "targetUrl",
+              image_data            AS "imageData",
+              image_mime            AS "imageMime",
+              image_width           AS "imageWidth",
+              image_height          AS "imageHeight",
+              image_size            AS "imageSize",
+              display_order         AS "displayOrder",
+              is_active             AS "isActive",
+              starts_at             AS "startsAt",
+              ends_at               AS "endsAt",
+              created_at            AS "createdAt",
+              updated_at            AS "updatedAt"
+          `
+
+          const normalized = normalizeAdBannerRow(created)
+
+          await defaultCache.invalidate(ADS_CACHE_KEY)
+
+          try {
+            if (typeof admin.publishTopic === 'function') {
+              await admin.publishTopic('home', {
+                type: 'ads.full',
+                payload: normalized,
+              })
+            }
+          } catch (err) {
+            admin.log.warn({ err }, 'failed to publish ad create websocket event')
+          }
+
+          reply.status(201)
+          return reply.send({ ok: true, data: normalized })
+        } catch (err) {
+          request.server.log.error({ err }, 'ad banner create failed')
+          return reply.status(500).send({ ok: false, error: 'request_failed' })
+        }
+      })
+
+      admin.patch('/news/ads/:adId', async (request, reply) => {
+        let adId: bigint
+        try {
+          adId = parseBigIntId((request.params as { adId?: string }).adId, 'adId')
+        } catch (err) {
+          return reply.status(400).send({ ok: false, error: 'ad_id_invalid' })
+        }
+
+        const existing = await loadAdBannerById(adId)
+        if (!existing) {
+          return reply.status(404).send({ ok: false, error: 'ad_not_found' })
+        }
+
+        const body = (request.body ?? {}) as Record<string, unknown>
+        let hasChanges = false
+
+        const titleProvided = Object.prototype.hasOwnProperty.call(body, 'title')
+        let nextTitle = existing.title
+        if (titleProvided) {
+          const titleRaw = typeof body.title === 'string' ? body.title.trim() : ''
+          if (!titleRaw) {
+            return reply.status(400).send({ ok: false, error: 'ad_title_required' })
+          }
+          if (titleRaw.length > MAX_AD_TITLE_LENGTH) {
+            return reply.status(400).send({ ok: false, error: 'ad_title_too_long' })
+          }
+          if (titleRaw !== existing.title) {
+            nextTitle = titleRaw
+            hasChanges = true
+          }
+        }
+
+        const subtitleProvided = Object.prototype.hasOwnProperty.call(body, 'subtitle')
+        let nextSubtitle: string | null = existing.subtitle
+        if (subtitleProvided) {
+          const subtitleRaw =
+            typeof body.subtitle === 'string'
+              ? body.subtitle.trim()
+              : body.subtitle === null
+                ? null
+                : undefined
+          if (typeof subtitleRaw === 'string' && subtitleRaw.length > MAX_AD_SUBTITLE_LENGTH) {
+            return reply.status(400).send({ ok: false, error: 'ad_subtitle_too_long' })
+          }
+          const normalizedSubtitle = subtitleRaw ?? null
+          if (normalizedSubtitle !== (existing.subtitle ?? null)) {
+            nextSubtitle = normalizedSubtitle
+            hasChanges = true
+          }
+        }
+
+        const targetUrlProvided = Object.prototype.hasOwnProperty.call(body, 'targetUrl')
+        let nextTargetUrl: string | null = existing.targetUrl ?? null
+        if (targetUrlProvided) {
+          let targetUrl: string | null
+          try {
+            targetUrl = normalizeAdTargetUrl(body.targetUrl)
+          } catch (err) {
+            const code = err instanceof Error ? err.message : 'ad_target_url_invalid'
+            return reply.status(400).send({ ok: false, error: code })
+          }
+          if (targetUrl !== (existing.targetUrl ?? null)) {
+            nextTargetUrl = targetUrl
+            hasChanges = true
+          }
+        }
+
+        const displayOrderProvided = Object.prototype.hasOwnProperty.call(body, 'displayOrder')
+        let nextDisplayOrder = existing.displayOrder
+        if (displayOrderProvided) {
+          const displayOrderValue = Number(body.displayOrder)
+          if (!Number.isFinite(displayOrderValue)) {
+            return reply.status(400).send({ ok: false, error: 'ad_display_order_invalid' })
+          }
+          const displayOrder = Math.trunc(displayOrderValue)
+          if (displayOrder < 0 || displayOrder > MAX_AD_DISPLAY_ORDER) {
+            return reply.status(400).send({ ok: false, error: 'ad_display_order_invalid' })
+          }
+          if (displayOrder !== existing.displayOrder) {
+            nextDisplayOrder = displayOrder
+            hasChanges = true
+          }
+        }
+
+        const isActiveProvided = Object.prototype.hasOwnProperty.call(body, 'isActive')
+        let nextIsActive = existing.isActive
+        if (isActiveProvided) {
+          const isActive = Boolean(body.isActive)
+          if (isActive !== existing.isActive) {
+            nextIsActive = isActive
+            hasChanges = true
+          }
+        }
+
+        const scheduleProvided =
+          Object.prototype.hasOwnProperty.call(body, 'startsAt') ||
+          Object.prototype.hasOwnProperty.call(body, 'endsAt')
+        let nextStartsAt: Date | null = existing.startsAt
+        let nextEndsAt: Date | null = existing.endsAt
+        if (scheduleProvided) {
+          try {
+            if (Object.prototype.hasOwnProperty.call(body, 'startsAt')) {
+              nextStartsAt = parseOptionalDateTime(body.startsAt, 'ad_starts_at')
+            }
+            if (Object.prototype.hasOwnProperty.call(body, 'endsAt')) {
+              nextEndsAt = parseOptionalDateTime(body.endsAt, 'ad_ends_at')
+            }
+          } catch (err) {
+            const code = err instanceof Error ? err.message : 'ad_schedule_invalid'
+            return reply.status(400).send({ ok: false, error: code })
+          }
+          if (nextStartsAt && nextEndsAt && nextEndsAt.getTime() < nextStartsAt.getTime()) {
+            return reply.status(400).send({ ok: false, error: 'ad_schedule_range_invalid' })
+          }
+          if (
+            (nextStartsAt ? nextStartsAt.getTime() : null) !==
+            (existing.startsAt ? existing.startsAt.getTime() : null)
+          ) {
+            hasChanges = true
+          }
+          if (
+            (nextEndsAt ? nextEndsAt.getTime() : null) !==
+            (existing.endsAt ? existing.endsAt.getTime() : null)
+          ) {
+            hasChanges = true
+          }
+        }
+
+        const existingImage = {
+          buffer: existing.imageData,
+          mimeType: existing.imageMime,
+          width: existing.imageWidth,
+          height: existing.imageHeight,
+          size: existing.imageSize,
+        }
+        let nextImage = existingImage
+        if (Object.prototype.hasOwnProperty.call(body, 'image')) {
+          let image: ParsedAdImage
+          try {
+            const parsed = decodeAdImagePayload(body.image, true)
+            if (!parsed) {
+              return reply.status(400).send({ ok: false, error: 'ad_image_required' })
+            }
+            image = parsed
+          } catch (err) {
+            const code = err instanceof Error ? err.message : 'ad_image_invalid'
+            return reply.status(400).send({ ok: false, error: code })
+          }
+          nextImage = image
+          hasChanges = true
+        }
+
+        if (!hasChanges) {
+          return reply.status(400).send({ ok: false, error: 'ad_update_payload_empty' })
+        }
+
+        try {
+          const [updated] = await prisma.$queryRaw<AdBannerRow[]>`
+            UPDATE ad_banner
+            SET
+              title = ${nextTitle},
+              subtitle = ${nextSubtitle},
+              target_url = ${nextTargetUrl},
+              image_data = ${nextImage.buffer},
+              image_mime = ${nextImage.mimeType},
+              image_width = ${nextImage.width},
+              image_height = ${nextImage.height},
+              image_size = ${nextImage.size},
+              display_order = ${nextDisplayOrder},
+              is_active = ${nextIsActive},
+              starts_at = ${nextStartsAt},
+              ends_at = ${nextEndsAt},
+              updated_at = NOW()
+            WHERE ad_banner_id = ${adId}
+            RETURNING
+              ad_banner_id          AS id,
+              title,
+              subtitle,
+              target_url            AS "targetUrl",
+              image_data            AS "imageData",
+              image_mime            AS "imageMime",
+              image_width           AS "imageWidth",
+              image_height          AS "imageHeight",
+              image_size            AS "imageSize",
+              display_order         AS "displayOrder",
+              is_active             AS "isActive",
+              starts_at             AS "startsAt",
+              ends_at               AS "endsAt",
+              created_at            AS "createdAt",
+              updated_at            AS "updatedAt"
+          `
+
+          const normalized = normalizeAdBannerRow(updated)
+
+          await defaultCache.invalidate(ADS_CACHE_KEY)
+
+          try {
+            if (typeof admin.publishTopic === 'function') {
+              await admin.publishTopic('home', {
+                type: 'ads.full',
+                payload: normalized,
+              })
+            }
+          } catch (err) {
+            admin.log.warn({ err }, 'failed to publish ad update websocket event')
+          }
+
+          return reply.send({ ok: true, data: normalized })
+        } catch (err) {
+          request.server.log.error({ err, adId: adId.toString() }, 'ad banner update failed')
+          return reply.status(500).send({ ok: false, error: 'request_failed' })
+        }
+      })
+
+      admin.delete('/news/ads/:adId', async (request, reply) => {
+        let adId: bigint
+        try {
+          adId = parseBigIntId((request.params as { adId?: string }).adId, 'adId')
+        } catch (err) {
+          return reply.status(400).send({ ok: false, error: 'ad_id_invalid' })
+        }
+
+        try {
+          const rows = await prisma.$queryRaw<AdBannerRow[]>`
+            DELETE FROM ad_banner
+            WHERE ad_banner_id = ${adId}
+            RETURNING
+              ad_banner_id          AS id,
+              title,
+              subtitle,
+              target_url            AS "targetUrl",
+              image_data            AS "imageData",
+              image_mime            AS "imageMime",
+              image_width           AS "imageWidth",
+              image_height          AS "imageHeight",
+              image_size            AS "imageSize",
+              display_order         AS "displayOrder",
+              is_active             AS "isActive",
+              starts_at             AS "startsAt",
+              ends_at               AS "endsAt",
+              created_at            AS "createdAt",
+              updated_at            AS "updatedAt"
+          `
+
+          if (!rows.length) {
+            return reply.status(404).send({ ok: false, error: 'ad_not_found' })
+          }
+
+          const normalized = normalizeAdBannerRow(rows[0])
+
+          await defaultCache.invalidate(ADS_CACHE_KEY)
+
+          try {
+            if (typeof admin.publishTopic === 'function') {
+              await admin.publishTopic('home', {
+                type: 'ads.remove',
+                payload: { id: normalized.id },
+              })
+            }
+          } catch (err) {
+            admin.log.warn({ err }, 'failed to publish ad remove websocket event')
+          }
+
+          return reply.send({ ok: true, data: normalized })
+        } catch (err) {
+          request.server.log.error({ err, adId: adId.toString() }, 'ad banner delete failed')
+          return reply.status(500).send({ ok: false, error: 'request_failed' })
+        }
       })
 
       // Clubs CRUD

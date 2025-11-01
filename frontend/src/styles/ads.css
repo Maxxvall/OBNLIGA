@@ -1,0 +1,255 @@
+.ads-carousel {
+  width: min(92vw, 700px);
+  margin: 0 auto 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: stretch;
+  align-self: center;
+}
+
+.ads-meta {
+  margin: 0 6px;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(191, 239, 255, 0.76);
+}
+
+.ads-card {
+  position: relative;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow:
+    0 26px 70px rgba(3, 8, 18, 0.72),
+    0 8px 20px rgba(0, 240, 255, 0.14);
+  border: 1px solid rgba(0, 240, 255, 0.18);
+  background: rgba(4, 10, 20, 0.92);
+}
+
+.ads-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 18% 12%, rgba(0, 240, 255, 0.24), transparent 58%);
+  opacity: 0.32;
+  pointer-events: none;
+}
+
+.ads-link {
+  position: relative;
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.ads-link:focus-visible {
+  outline: 2px solid rgba(0, 240, 255, 0.7);
+  outline-offset: 6px;
+}
+
+.ads-image {
+  width: 100%;
+  height: clamp(190px, 38vw, 320px);
+  object-fit: cover;
+  display: block;
+  filter: saturate(1.02) contrast(1.02);
+}
+
+.ads-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 22px 26px 24px;
+  background: linear-gradient(180deg, rgba(6, 12, 24, 0) 0%, rgba(6, 12, 24, 0.88) 72%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.ads-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 78%;
+}
+
+.ads-title {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f2fcff;
+  text-shadow: 0 0 18px rgba(0, 240, 255, 0.36);
+}
+
+.ads-subtitle {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: rgba(199, 236, 255, 0.9);
+}
+
+.ads-cta {
+  flex-shrink: 0;
+  border-radius: 999px;
+  padding: 8px 18px;
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.9), rgba(120, 31, 143, 0.85));
+  color: #041019;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  box-shadow:
+    0 14px 32px rgba(0, 240, 255, 0.32),
+    0 10px 24px rgba(120, 31, 143, 0.28);
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.2s ease,
+    filter 0.22s ease;
+}
+
+.ads-link:hover .ads-cta,
+.ads-link:focus-visible .ads-cta {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+  outline: none;
+}
+
+.ads-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding-bottom: 4px;
+}
+
+.ads-dot {
+  width: 22px;
+  height: 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 240, 255, 0.48);
+  background: rgba(6, 14, 26, 0.66);
+  transition:
+    background 0.18s ease,
+    transform 0.18s ease,
+    border-color 0.18s ease;
+  cursor: pointer;
+  padding: 0;
+}
+
+.ads-dot.active {
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.92), rgba(120, 31, 143, 0.92));
+  border-color: rgba(0, 240, 255, 0.74);
+  transform: scale(1.1);
+}
+
+.ads-skeleton {
+  height: clamp(190px, 38vw, 320px);
+  border-radius: 24px;
+}
+
+.ads-placeholder {
+  border-radius: 18px;
+  border: 1px dashed rgba(0, 240, 255, 0.32);
+  background: rgba(0, 240, 255, 0.08);
+  padding: 20px;
+  text-align: center;
+  color: rgba(186, 236, 255, 0.82);
+  letter-spacing: 0.02em;
+}
+
+@media (max-width: 720px) {
+  .ads-carousel {
+    width: min(94vw, 560px);
+    gap: 12px;
+  }
+
+  .ads-overlay {
+    padding: 18px 20px 20px;
+    gap: 14px;
+  }
+
+  .ads-title {
+    font-size: 20px;
+  }
+
+  .ads-subtitle {
+    font-size: 13px;
+  }
+
+  .ads-cta {
+    padding: 7px 16px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 480px) {
+  .ads-carousel {
+    width: min(94vw, 360px);
+  }
+
+  .ads-meta {
+    margin: 0 4px;
+    letter-spacing: 0.08em;
+  }
+
+  .ads-overlay {
+    padding: 16px 18px 18px;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .ads-text {
+    max-width: 100%;
+  }
+
+  .ads-title {
+    font-size: 18px;
+  }
+
+  .ads-subtitle {
+    font-size: 12.5px;
+  }
+
+  .ads-cta {
+    align-self: flex-end;
+  }
+
+  .ads-dot {
+    width: 20px;
+  }
+}
+
+@media (max-width: 400px) {
+  .ads-carousel {
+    width: min(94vw, 320px);
+    margin-bottom: 24px;
+  }
+
+  .ads-image,
+  .ads-skeleton {
+    height: clamp(180px, 48vw, 260px);
+  }
+
+  .ads-overlay {
+    padding: 14px 16px 16px;
+  }
+
+  .ads-title {
+    font-size: 17px;
+  }
+
+  .ads-subtitle {
+    font-size: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ads-cta,
+  .ads-dot {
+    transition: none;
+  }
+}

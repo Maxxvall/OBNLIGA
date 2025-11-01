@@ -8,10 +8,11 @@ import {
   lineupLogin,
   translateAdminError,
   adminDelete,
+  adminFetchAds,
 } from '../api/adminClient'
 import { assistantLogin } from '../api/assistantClient'
 import { judgeLogin } from '../api/judgeClient'
-import type { NewsItem } from '@shared/types'
+import type { AdBanner, NewsItem } from '@shared/types'
 import { wsClient } from '../wsClient'
 import type { WsMessage, WsPatchMessage } from '../wsClient'
 import {
@@ -125,6 +126,7 @@ interface AdminData {
   userAchievements: UserAchievement[]
   disqualifications: Disqualification[]
   news: NewsItem[]
+  ads: AdBanner[]
 }
 
 interface AdminState {
@@ -163,6 +165,9 @@ interface AdminState {
   prependNews(item: NewsItem): void
   updateNews(item: NewsItem): void
   removeNews(id: string): void
+  fetchAds(options?: FetchOptions): Promise<void>
+  upsertAd(item: AdBanner): void
+  removeAd(id: string): void
   refreshTab(tab?: AdminTab): Promise<void>
 }
 
@@ -184,6 +189,7 @@ type FetchKey =
   | 'achievements'
   | 'disqualifications'
   | 'news'
+  | 'ads'
 
 type FetchOptions = {
   force?: boolean
@@ -201,6 +207,7 @@ const FETCH_TTL: Record<FetchKey, number> = {
   achievements: 120_000,
   disqualifications: 30_000,
   news: 60_000,
+  ads: 60_000,
 }
 
 const createEmptyData = (): AdminData => ({
@@ -222,6 +229,7 @@ const createEmptyData = (): AdminData => ({
   userAchievements: [],
   disqualifications: [],
   news: [],
+  ads: [],
 })
 
 const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
@@ -247,6 +255,17 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     }
     return translateAdminError(value)
   }
+
+  const sortAdsList = (items: AdBanner[]): AdBanner[] =>
+    [...items].sort((left, right) => {
+      if (left.displayOrder !== right.displayOrder) {
+        return left.displayOrder - right.displayOrder
+      }
+      if (left.updatedAt !== right.updatedAt) {
+        return right.updatedAt.localeCompare(left.updatedAt)
+      }
+      return right.id.localeCompare(left.id)
+    })
 
   const run = async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
     set(state => ({
@@ -374,6 +393,45 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         data: {
           ...state.data,
           news: state.data.news.filter(entry => entry.id !== id),
+        },
+      }))
+      return
+    }
+
+    if (patchType === 'ads.full') {
+      const rawAd = patch.payload
+      if (!rawAd || typeof rawAd !== 'object') {
+        return
+      }
+      const ad = rawAd as AdBanner
+      const cacheKey = composeCacheKey('ads', [])
+      fetchTimestamps[cacheKey] = Date.now()
+      set(state => {
+        const nextAds = state.data.ads.filter(entry => entry.id !== ad.id)
+        nextAds.push(ad)
+        return {
+          data: {
+            ...state.data,
+            ads: sortAdsList(nextAds),
+          },
+        }
+      })
+      return
+    }
+
+    if (patchType === 'ads.remove') {
+      const rawPayload = patch.payload as { id?: string | number } | undefined
+      const rawId = rawPayload?.id
+      if (rawId === undefined || rawId === null) {
+        return
+      }
+      const id = typeof rawId === 'string' ? rawId : rawId.toString()
+      const cacheKey = composeCacheKey('ads', [])
+      fetchTimestamps[cacheKey] = Date.now()
+      set(state => ({
+        data: {
+          ...state.data,
+          ads: state.data.ads.filter(entry => entry.id !== id),
         },
       }))
     }
@@ -918,6 +976,42 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         set(state => ({ data: { ...state.data, disqualifications } }))
       })
     },
+    async fetchAds(options?: FetchOptions) {
+      if (get().mode !== 'admin') return
+      await runCachedFetch(
+        'ads',
+        [],
+        async () => {
+          const token = ensureToken()
+          const ads = await adminFetchAds(token)
+          set(state => ({
+            data: { ...state.data, ads: sortAdsList(ads) },
+          }))
+        },
+        options?.force ? 0 : undefined
+      )
+    },
+    upsertAd(item: AdBanner) {
+      const cacheKey = composeCacheKey('ads', [])
+      fetchTimestamps[cacheKey] = Date.now()
+      set(state => {
+        const nextAds = state.data.ads.filter(entry => entry.id !== item.id)
+        nextAds.push(item)
+        return {
+          data: { ...state.data, ads: sortAdsList(nextAds) },
+        }
+      })
+    },
+    removeAd(id: string) {
+      const cacheKey = composeCacheKey('ads', [])
+      fetchTimestamps[cacheKey] = Date.now()
+      set(state => ({
+        data: {
+          ...state.data,
+          ads: state.data.ads.filter(entry => entry.id !== id),
+        },
+      }))
+    },
     async fetchNews(options?: FetchOptions) {
       if (get().mode !== 'admin') return
       await runCachedFetch(
@@ -1004,7 +1098,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           break
         }
         case 'news':
-          await get().fetchNews({ force: true })
+          await Promise.all([get().fetchNews({ force: true }), get().fetchAds({ force: true })])
           break
         case 'users':
           await Promise.all([

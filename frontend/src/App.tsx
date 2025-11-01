@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import './app.css'
 import './styles/splash.css'
 import Profile from './Profile'
+import { AdCarousel } from './components/AdCarousel'
 import { NewsSection } from './components/NewsSection'
 import LeaguePage from './pages/LeaguePage'
 import { TeamView } from './components/team/TeamView'
@@ -65,7 +66,12 @@ export default function App() {
   return (
     <div className="app-root main">
       <div className="content-wrapper">
-        {currentTab === 'home' && <NewsSection />}
+        {currentTab === 'home' && (
+          <>
+            <AdCarousel />
+            <NewsSection />
+          </>
+        )}
         {currentTab === 'league' && <LeaguePage />}
         {currentTab === 'profile' ? (
           <Profile />

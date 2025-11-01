@@ -83,10 +83,12 @@ server.register(bracketRoutes)
 
 // register public news routes
 import newsRoutes from './routes/newsRoutes'
+import adsRoutes from './routes/adsRoutes'
 import leagueRoutes from './routes/leagueRoutes'
 import clubRoutes from './routes/clubRoutes'
 import matchPublicRoutes from './routes/matchPublicRoutes'
 server.register(newsRoutes)
+server.register(adsRoutes)
 server.register(leagueRoutes)
 server.register(clubRoutes)
 server.register(matchPublicRoutes)

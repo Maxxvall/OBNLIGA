@@ -923,7 +923,13 @@ const isCompactTeam = (value: unknown): value is ClubMatchesResponse['s'][number
     return false
   }
   const team = value as Record<string, unknown>
-  return typeof team.n === 'string'
+  if (typeof team.n !== 'string' || typeof team.i !== 'number') {
+    return false
+  }
+  if (!(team.l === null || typeof team.l === 'string')) {
+    return false
+  }
+  return true
 }
 
 const isCompactScore = (value: unknown): value is ClubMatchesResponse['s'][number]['m'][number]['sc'] => {
@@ -940,13 +946,10 @@ const isCompactMatch = (value: unknown): value is ClubMatchesResponse['s'][numbe
     return false
   }
   const match = value as Record<string, unknown>
-  if (typeof match.d !== 'string' || typeof match.st !== 'string') {
+  if (typeof match.i !== 'string' || typeof match.d !== 'string' || typeof match.st !== 'string') {
     return false
   }
   if (!COMPACT_MATCH_STATUS_VALUES.has(match.st as MatchStatus)) {
-    return false
-  }
-  if (!(match.r === null || typeof match.r === 'string')) {
     return false
   }
   if (!isCompactTeam(match.h) || !isCompactTeam(match.a)) {
@@ -964,6 +967,7 @@ const isCompactSeason = (value: unknown): value is ClubMatchesResponse['s'][numb
   }
   const season = value as Record<string, unknown>
   return (
+    typeof season.i === 'number' &&
     typeof season.n === 'string' &&
     Array.isArray(season.m) &&
     season.m.every(isCompactMatch)

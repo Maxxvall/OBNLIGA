@@ -410,10 +410,7 @@ export function AdCarousel() {
   const activeAd = displayAds[activeIndex] ?? null
   const helperText = useMemo(() => {
     if (displayAds.length === 0) {
-      return 'Рекламный блок.'
-    }
-    if (displayAds.length > 1) {
-      return 'Автопрокрутка каждые 7 секунд'
+      return 'Рекламный блок'
     }
     const single = displayAds[0]
     return single.safeTarget ? 'Тапните для перехода по ссылке' : null
@@ -461,16 +458,7 @@ export function AdCarousel() {
       draggable={false}
     />
   )
-  const overlay = activeAd.safeTarget ? (
-    <div className="ads-overlay">
-      <span className="ads-cta" aria-hidden="true">
-        Перейти
-      </span>
-      <span className="sr-only">Открыть ссылку партнёра</span>
-    </div>
-  ) : (
-    <div className="ads-overlay" aria-hidden="true" />
-  )
+  const overlay = <div className="ads-overlay" aria-hidden="true" />
 
   return (
     <section className="ads-carousel" aria-roledescription="карусель" aria-label="Партнёрские баннеры">

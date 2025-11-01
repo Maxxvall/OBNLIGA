@@ -125,12 +125,14 @@ const toAbsoluteAngle = (value: number) => GAUGE_START_ANGLE - value
 type CompactMatch = ClubMatchesResponse['s'][number]['m'][number]
 
 type TeamMatchItem = {
+  seasonId: number
   seasonName: string
   match: CompactMatch
 }
 
 type TeamMatchGroup = {
   id: string
+  seasonId: number
   seasonName: string
   matches: TeamMatchItem[]
 }
@@ -143,6 +145,7 @@ const collectTeamMatches = (snapshot?: ClubMatchesResponse): TeamMatchItem[] => 
   snapshot.s.forEach(seasonEntry => {
     seasonEntry.m.forEach(match => {
       items.push({
+        seasonId: seasonEntry.i,
         seasonName: seasonEntry.n,
         match,
       })
@@ -199,11 +202,12 @@ const groupMatchesBySeason = (matches: TeamMatchItem[]): TeamMatchGroup[] => {
   const map = new Map<string, TeamMatchGroup>()
 
   matches.forEach(item => {
-    const key = item.seasonName
+    const key = `${item.seasonId}:${item.seasonName}`
     let group = map.get(key)
     if (!group) {
       group = {
         id: key,
+        seasonId: item.seasonId,
         seasonName: item.seasonName,
         matches: [],
       }
@@ -229,13 +233,6 @@ const MATCH_DATE_FORMATTER = new Intl.DateTimeFormat('ru-RU', {
   minute: '2-digit',
 })
 
-const MATCH_STATUS_LABEL: Record<MatchStatus, string> = {
-  SCHEDULED: 'Запланирован',
-  LIVE: 'Матч идёт',
-  POSTPONED: 'Перенесён',
-  FINISHED: 'Завершён',
-}
-
 const formatMatchDate = (value: string): string => {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) {
@@ -249,6 +246,17 @@ const formatScore = (score: CompactMatch['sc']): string => {
     return '—'
   }
   return `${score.h}:${score.a}`
+}
+
+const getFallbackInitials = (name: string): string => {
+  const words = name.trim().split(/\s+/)
+  if (words.length === 0) {
+    return '??'
+  }
+  if (words.length === 1) {
+    return words[0].slice(0, 2).toUpperCase()
+  }
+  return (words[0][0] + words[1][0]).toUpperCase()
 }
 
 const getRoot = () => {
@@ -505,14 +513,10 @@ type TeamMatchesListProps = {
   onRetry: () => void
 }
 
-const MATCH_STATUS_BADGE: Record<MatchStatus, string> = {
-  SCHEDULED: 'scheduled',
-  LIVE: 'live',
-  POSTPONED: 'postponed',
-  FINISHED: 'finished',
-}
-
 const TeamMatchesList: React.FC<TeamMatchesListProps> = ({ mode, data, loading, error, onRetry }) => {
+  const openTeamView = useAppStore(state => state.openTeamView)
+  const openMatchDetails = useAppStore(state => state.openMatchDetails)
+
   const matches = useMemo(() => collectTeamMatches(data), [data])
   const selectedMatches = useMemo(() => selectMatchesForMode(matches, mode, 5), [matches, mode])
   const groups = useMemo(() => groupMatchesBySeason(selectedMatches), [selectedMatches])
@@ -568,42 +572,75 @@ const TeamMatchesList: React.FC<TeamMatchesListProps> = ({ mode, data, loading, 
           </header>
           <div className="league-round-card-body">
             {group.matches.map(item => {
-              const match = item.match
-              const badgeTone = MATCH_STATUS_BADGE[match.st]
-              const cardModifier = match.st === 'LIVE' ? 'live' : match.st === 'POSTPONED' ? 'postponed' : undefined
+              const { match } = item
               const cardClasses = ['league-match-card', 'team-match-card']
-              if (cardModifier) {
-                cardClasses.push(cardModifier)
+              const handleOpenMatch = () => {
+                openMatchDetails(match.i, undefined, group.seasonId)
               }
+
               return (
-                <div className={cardClasses.join(' ')} key={`${match.d}-${match.h.n}-${match.a.n}`}>
+                <div
+                  className={cardClasses.join(' ')}
+                  key={match.i}
+                  role="button"
+                  tabIndex={0}
+                  onClick={handleOpenMatch}
+                  onKeyDown={event => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      handleOpenMatch()
+                    }
+                  }}
+                >
                   <div className="league-match-top">
                     <span className="match-datetime">{formatMatchDate(match.d)}</span>
-                    <span className={`match-badge${badgeTone ? ` ${badgeTone}` : ''}`}>
-                      {MATCH_STATUS_LABEL[match.st]}
-                    </span>
                   </div>
-                  <div className="league-match-main compact">
-                    <div className="league-match-team compact-team">
+                  <div className="league-match-main">
+                    <div className="league-match-team">
+                      <button
+                        type="button"
+                        className="club-logo-button"
+                        onClick={event => {
+                          event.stopPropagation()
+                          openTeamView(match.h.i)
+                        }}
+                        aria-label={`Открыть страницу клуба ${match.h.n}`}
+                      >
+                        {match.h.l ? (
+                          <img src={match.h.l} alt="" aria-hidden="true" className="club-logo" />
+                        ) : (
+                          <span className="club-logo fallback" aria-hidden="true">
+                            {getFallbackInitials(match.h.n)}
+                          </span>
+                        )}
+                      </button>
                       <span className="team-name">{match.h.n}</span>
                     </div>
                     <div className="league-match-score">
                       <span className="score-main">{formatScore(match.sc)}</span>
                     </div>
-                    <div className="league-match-team compact-team">
+                    <div className="league-match-team">
+                      <button
+                        type="button"
+                        className="club-logo-button"
+                        onClick={event => {
+                          event.stopPropagation()
+                          openTeamView(match.a.i)
+                        }}
+                        aria-label={`Открыть страницу клуба ${match.a.n}`}
+                      >
+                        {match.a.l ? (
+                          <img src={match.a.l} alt="" aria-hidden="true" className="club-logo" />
+                        ) : (
+                          <span className="club-logo fallback" aria-hidden="true">
+                            {getFallbackInitials(match.a.n)}
+                          </span>
+                        )}
+                      </button>
                       <span className="team-name">{match.a.n}</span>
                     </div>
                   </div>
-                  {match.r ? (
-                    <div className="team-match-meta">
-                      <span className="team-match-round">{match.r}</span>
-                      <span className="team-match-season">{item.seasonName}</span>
-                    </div>
-                  ) : (
-                    <div className="team-match-meta">
-                      <span className="team-match-season">{item.seasonName}</span>
-                    </div>
-                  )}
+                  <div className="team-match-season-label">{item.seasonName}</div>
                 </div>
               )
             })}

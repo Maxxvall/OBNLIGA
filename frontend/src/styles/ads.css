@@ -23,13 +23,13 @@
 
 .ads-card {
   position: relative;
-  border-radius: 24px;
+  border-radius: 14px;
   overflow: hidden;
   box-shadow:
     0 26px 70px rgba(3, 8, 18, 0.72),
     0 8px 20px rgba(0, 240, 255, 0.14);
   border: 1px solid rgba(0, 240, 255, 0.18);
-  background: rgba(4, 10, 20, 0.92);
+  background: transparent;
 }
 
 .ads-card::before {
@@ -39,6 +39,7 @@
   background: radial-gradient(circle at 18% 12%, rgba(0, 240, 255, 0.24), transparent 58%);
   opacity: 0.32;
   pointer-events: none;
+  border-radius: inherit;
 }
 
 .ads-link {
@@ -55,7 +56,6 @@
 
 .ads-image {
   width: 100%;
-  height: clamp(190px, 38vw, 320px);
   object-fit: cover;
   display: block;
   filter: saturate(1.02) contrast(1.02);
@@ -67,7 +67,7 @@
   right: 0;
   bottom: 0;
   padding: 22px 26px 24px;
-  background: linear-gradient(180deg, rgba(6, 12, 24, 0) 0%, rgba(6, 12, 24, 0.88) 72%);
+  background: linear-gradient(180deg, rgba(4, 65, 185, 0) 0%, rgba(6, 12, 24, 0.88) 72%);
   display: flex;
   align-items: flex-end;
   justify-content: flex-end;
@@ -143,6 +143,7 @@
   letter-spacing: 0.02em;
 }
 
+  /* CTA removed — banner itself is clickable */
 @media (max-width: 720px) {
   .ads-carousel {
     width: min(94vw, 560px);
@@ -187,11 +188,6 @@
   .ads-carousel {
     width: min(94vw, 320px);
     margin-bottom: 24px;
-  }
-
-  .ads-image,
-  .ads-skeleton {
-    height: clamp(180px, 48vw, 260px);
   }
 
   .ads-overlay {

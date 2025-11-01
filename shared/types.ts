@@ -183,7 +183,9 @@ export interface LeagueRoundCollection {
 }
 
 export interface ClubMatchCompactTeam {
+  i: number
   n: string
+  l: string | null
 }
 
 export interface ClubMatchCompactScore {
@@ -192,15 +194,16 @@ export interface ClubMatchCompactScore {
 }
 
 export interface ClubMatchCompact {
+  i: string
   d: string
   st: MatchStatus
-  r: string | null
   h: ClubMatchCompactTeam
   a: ClubMatchCompactTeam
   sc: ClubMatchCompactScore
 }
 
 export interface ClubMatchesSeasonCompact {
+  i: number
   n: string
   m: ClubMatchCompact[]
 }

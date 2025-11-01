@@ -12,15 +12,16 @@ const PUBLIC_CLUB_MATCHES_TTL_SECONDS = 86_400
 export const publicClubMatchesKey = (clubId: number) => `public:club:${clubId}:matches`
 
 type ClubMatchCompact = {
+  i: string
   d: string
   st: 'SCHEDULED' | 'LIVE' | 'POSTPONED' | 'FINISHED'
-  r: string | null
-  h: { n: string }
-  a: { n: string }
+  h: { i: number; n: string; l: string | null }
+  a: { i: number; n: string; l: string | null }
   sc: { h: number | null; a: number | null }
 }
 
 type ClubMatchesSeasonSnapshot = {
+  i: number
   n: string
   m: ClubMatchCompact[]
 }
@@ -31,24 +32,21 @@ type ClubMatchesSnapshot = {
   s: ClubMatchesSeasonSnapshot[]
 }
 
-const pickDisplayName = (name: string, shortName?: string | null) => {
-  if (shortName && shortName.trim().length <= 10) {
-    return shortName
-  }
-  return name
-}
-
-const toCompactMatch = (match: LeagueRoundMatches['matches'][number], roundLabel: string): ClubMatchCompact => {
+const toCompactMatch = (match: LeagueRoundMatches['matches'][number]): ClubMatchCompact => {
   const isScheduled = match.status === 'SCHEDULED'
   return {
+    i: match.id,
     d: match.matchDateTime,
     st: match.status,
-    r: roundLabel || null,
     h: {
-      n: pickDisplayName(match.homeClub.name, match.homeClub.shortName),
+      i: match.homeClub.id,
+      n: match.homeClub.name,
+      l: match.homeClub.logoUrl,
     },
     a: {
-      n: pickDisplayName(match.awayClub.name, match.awayClub.shortName),
+      i: match.awayClub.id,
+      n: match.awayClub.name,
+      l: match.awayClub.logoUrl,
     },
     sc: {
       h: isScheduled ? null : match.homeScore,
@@ -67,7 +65,7 @@ const collectMatches = (
       if (match.homeClub.id !== clubId && match.awayClub.id !== clubId) {
         continue
       }
-      const compact = toCompactMatch(match, round.roundLabel)
+      const compact = toCompactMatch(match)
       store.set(match.id, compact)
     }
   }
@@ -120,6 +118,7 @@ export const buildClubMatches = async (clubId: number): Promise<ClubMatchesSnaps
     )
 
     seasonSnapshots.push({
+      i: schedule.season.id,
       n: schedule.season.name,
       m: sorted,
     })

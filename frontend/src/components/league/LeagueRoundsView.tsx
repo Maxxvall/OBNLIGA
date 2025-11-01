@@ -1,6 +1,7 @@
 import React from 'react'
 import type { LeagueMatchView, LeagueRoundCollection } from '@shared/types'
 import { useAppStore } from '../../store/appStore'
+import { buildLocationLabel, buildMatchDescriptor } from '../../utils/matchPresentation'
 import '../../styles/leagueRounds.css'
 
 type LeagueRoundsViewProps = {
@@ -15,116 +16,6 @@ type PlayoffPodiumSummary = {
   champion: { club: LeagueMatchView['homeClub'] }
   runnerUp: { club: LeagueMatchView['homeClub'] }
   thirdPlace?: { club: LeagueMatchView['homeClub'] }
-}
-
-const TIME_FORMATTER = new Intl.DateTimeFormat('ru-RU', {
-  hour: '2-digit',
-  minute: '2-digit',
-})
-
-const parseMatchDateTime = (value: string): {
-  isValid: boolean
-  fullLabel: string
-} => {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return {
-      isValid: false,
-      fullLabel: 'Дата уточняется',
-    }
-  }
-  const day = String(date.getDate()).padStart(2, '0')
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const year = String(date.getFullYear()).slice(-2)
-  return {
-    isValid: true,
-    fullLabel: `${day}.${month}.${year} ${TIME_FORMATTER.format(date)}`,
-  }
-}
-
-const buildLocationLabel = (match: LeagueMatchView): string => {
-  const { location } = match
-  if (!location) {
-    return 'Локация уточняется'
-  }
-  const parts = [location.city, location.stadiumName].filter(Boolean)
-  if (parts.length === 0) {
-    return 'Локация уточняется'
-  }
-  return parts.join(' · ')
-}
-
-const buildSeriesDescriptor = (match: LeagueMatchView, mode: 'schedule' | 'results') => {
-  const { series } = match
-  if (!series) {
-    return null
-  }
-
-  const useAfter = mode === 'results' || match.status === 'FINISHED'
-  const leftIsSeriesHome = match.homeClub.id === series.homeClubId
-
-  const leftWinsBefore = leftIsSeriesHome ? series.homeWinsBefore : series.awayWinsBefore
-  const leftWinsAfter = leftIsSeriesHome ? series.homeWinsAfter : series.awayWinsAfter
-  const rightWinsBefore = leftIsSeriesHome ? series.awayWinsBefore : series.homeWinsBefore
-  const rightWinsAfter = leftIsSeriesHome ? series.awayWinsAfter : series.homeWinsAfter
-
-  const leftWins = useAfter ? leftWinsAfter : leftWinsBefore
-  const rightWins = useAfter ? rightWinsAfter : rightWinsBefore
-
-  return {
-    stageName: series.stageName,
-    seriesScore: `${leftWins}-${rightWins}`,
-  }
-}
-
-const buildMatchDescriptor = (match: LeagueMatchView, mode: 'schedule' | 'results') => {
-  const { fullLabel } = parseMatchDateTime(match.matchDateTime)
-  const isLive = match.status === 'LIVE'
-  const isFinished = match.status === 'FINISHED'
-  const isPostponed = match.status === 'POSTPONED'
-
-  const badge = isPostponed
-    ? { label: 'Перенесён', tone: 'postponed' as const }
-    : isLive
-      ? { label: 'Матч идёт', tone: 'live' as const }
-      : null
-
-  if (isPostponed) {
-    return {
-      dateTime: fullLabel,
-      score: '—',
-      detail: null,
-      badge,
-      modifier: 'postponed' as const,
-    }
-  }
-
-  if (mode === 'results' || isFinished || isLive) {
-    const score = `${match.homeScore} : ${match.awayScore}`
-    const penalty =
-      match.hasPenaltyShootout &&
-      match.penaltyHomeScore !== null &&
-      match.penaltyAwayScore !== null
-        ? `Пенальти ${match.penaltyHomeScore}:${match.penaltyAwayScore}`
-        : null
-    return {
-      dateTime: fullLabel,
-      score,
-      detail: penalty,
-      badge,
-      modifier: isLive ? 'live' : undefined,
-      series: buildSeriesDescriptor(match, mode),
-    }
-  }
-
-  return {
-    dateTime: fullLabel,
-    score: '—',
-    detail: null,
-    badge: null,
-    modifier: undefined,
-    series: buildSeriesDescriptor(match, mode),
-  }
 }
 
 const getEmptyMessage = (mode: 'schedule' | 'results'): string => {

@@ -182,6 +182,35 @@ export interface LeagueRoundCollection {
   generatedAt: string
 }
 
+export interface ClubMatchCompactTeam {
+  n: string
+}
+
+export interface ClubMatchCompactScore {
+  h: number | null
+  a: number | null
+}
+
+export interface ClubMatchCompact {
+  d: string
+  st: MatchStatus
+  r: string | null
+  h: ClubMatchCompactTeam
+  a: ClubMatchCompactTeam
+  sc: ClubMatchCompactScore
+}
+
+export interface ClubMatchesSeasonCompact {
+  n: string
+  m: ClubMatchCompact[]
+}
+
+export interface ClubMatchesResponse {
+  c: number
+  s: ClubMatchesSeasonCompact[]
+  g: string
+}
+
 export type LeagueStatsCategory = 'goalContribution' | 'scorers' | 'assists'
 
 export interface LeaguePlayerLeaderboardEntry {

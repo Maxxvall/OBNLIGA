@@ -216,7 +216,7 @@ body {
   margin: 0 auto;
   width: min(960px, 100%);
   box-sizing: border-box;
-  padding: 0 10px;
+  padding: 16px 8px 50px;
 }
 
 .league-sidebar {

@@ -9,6 +9,7 @@ import type {
   LeagueStatsResponse,
   LeagueStatsCategory,
   LeaguePlayerLeaderboardEntry,
+  ClubMatchesResponse,
   ClubSummaryResponse,
   MatchDetailsHeader,
   MatchDetailsLineups,
@@ -83,6 +84,7 @@ const SCHEDULE_TTL_MS = 12_000
 const RESULTS_TTL_MS = 20_000
 const STATS_TTL_MS = 300_000
 const CLUB_SUMMARY_TTL_MS = 45_000
+const CLUB_MATCHES_TTL_MS = 86_400_000
 const DOUBLE_TAP_THRESHOLD_MS = 280
 
 const LEAGUE_POLL_INTERVAL_MS = 10_000
@@ -732,6 +734,9 @@ const startTeamPolling = (get: () => AppState, clubId: number) => {
     }
 
     void state.fetchClubSummary(clubId)
+    if (state.teamView.activeTab === 'matches') {
+      void state.fetchClubMatches(clubId)
+    }
   }
 
   teamPollingTimer = window.setInterval(tick, TEAM_POLL_INTERVAL_MS)
@@ -787,6 +792,11 @@ interface AppState {
   teamSummaryVersions: Record<number, string | undefined>
   teamSummaryLoadingId: number | null
   teamSummaryErrors: Record<number, string | undefined>
+  teamMatches: Record<number, ClubMatchesResponse>
+  teamMatchesFetchedAt: Record<number, number>
+  teamMatchesVersions: Record<number, string | undefined>
+  teamMatchesLoadingId: number | null
+  teamMatchesErrors: Record<number, string | undefined>
   teamPollingAttached: boolean
   teamPollingClubId?: number
   matchDetails: MatchDetailsState
@@ -809,6 +819,7 @@ interface AppState {
   setTeamSubTab: (tab: TeamSubTab) => void
   setTeamMatchesMode: (mode: TeamMatchesMode) => void
   fetchClubSummary: (clubId: number, options?: { force?: boolean }) => Promise<FetchResult>
+  fetchClubMatches: (clubId: number, options?: { force?: boolean }) => Promise<FetchResult>
   ensureTeamPolling: () => void
   stopTeamPolling: () => void
   openMatchDetails: (matchId: string, snapshot?: LeagueMatchView, seasonId?: number) => void
@@ -900,6 +911,81 @@ const isClubSummaryAchievement = (
   )
 }
 
+const COMPACT_MATCH_STATUS_VALUES: ReadonlySet<MatchStatus> = new Set([
+  'SCHEDULED',
+  'LIVE',
+  'POSTPONED',
+  'FINISHED',
+])
+
+const isCompactTeam = (value: unknown): value is ClubMatchesResponse['s'][number]['m'][number]['h'] => {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const team = value as Record<string, unknown>
+  return typeof team.n === 'string'
+}
+
+const isCompactScore = (value: unknown): value is ClubMatchesResponse['s'][number]['m'][number]['sc'] => {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const score = value as Record<string, unknown>
+  const isValid = (entry: unknown) => entry === null || typeof entry === 'number'
+  return isValid(score.h) && isValid(score.a)
+}
+
+const isCompactMatch = (value: unknown): value is ClubMatchesResponse['s'][number]['m'][number] => {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const match = value as Record<string, unknown>
+  if (typeof match.d !== 'string' || typeof match.st !== 'string') {
+    return false
+  }
+  if (!COMPACT_MATCH_STATUS_VALUES.has(match.st as MatchStatus)) {
+    return false
+  }
+  if (!(match.r === null || typeof match.r === 'string')) {
+    return false
+  }
+  if (!isCompactTeam(match.h) || !isCompactTeam(match.a)) {
+    return false
+  }
+  if (!isCompactScore(match.sc)) {
+    return false
+  }
+  return true
+}
+
+const isCompactSeason = (value: unknown): value is ClubMatchesResponse['s'][number] => {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const season = value as Record<string, unknown>
+  return (
+    typeof season.n === 'string' &&
+    Array.isArray(season.m) &&
+    season.m.every(isCompactMatch)
+  )
+}
+
+const isClubMatchesResponsePayload = (
+  payload: unknown
+): payload is ClubMatchesResponse => {
+  if (!payload || typeof payload !== 'object') {
+    return false
+  }
+  const candidate = payload as Record<string, unknown>
+  if (typeof candidate.c !== 'number' || typeof candidate.g !== 'string') {
+    return false
+  }
+  if (!Array.isArray(candidate.s) || !candidate.s.every(isCompactSeason)) {
+    return false
+  }
+  return true
+}
+
 const isClubSummaryResponsePayload = (
   payload: unknown
 ): payload is ClubSummaryResponse => {
@@ -962,6 +1048,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   teamSummaryVersions: {},
   teamSummaryLoadingId: null,
   teamSummaryErrors: {},
+  teamMatches: {},
+  teamMatchesFetchedAt: {},
+  teamMatchesVersions: {},
+  teamMatchesLoadingId: null,
+  teamMatchesErrors: {},
   teamPollingAttached: false,
   teamPollingClubId: undefined,
   matchDetails: { ...INITIAL_MATCH_DETAILS },
@@ -1336,27 +1427,46 @@ export const useAppStore = create<AppState>((set, get) => ({
           matchesMode: sameClub ? prev.teamView.matchesMode : 'schedule',
         },
         teamSummaryErrors: { ...prev.teamSummaryErrors, [clubId]: undefined },
+        teamMatchesErrors: { ...prev.teamMatchesErrors, [clubId]: undefined },
       }
     })
-    get().ensureTeamPolling()
-    void get().fetchClubSummary(clubId)
+    const stateAfterOpen = get()
+    stateAfterOpen.ensureTeamPolling()
+    void stateAfterOpen.fetchClubSummary(clubId)
+    if (
+      stateAfterOpen.teamView.open &&
+      stateAfterOpen.teamView.clubId === clubId &&
+      stateAfterOpen.teamView.activeTab === 'matches'
+    ) {
+      void stateAfterOpen.fetchClubMatches(clubId)
+    }
   },
   closeTeamView: () => {
     const state = get()
     get().stopTeamPolling()
     const shouldClearLoading =
       state.teamSummaryLoadingId !== null && state.teamSummaryLoadingId === state.teamView.clubId
+    const shouldClearMatchesLoading =
+      state.teamMatchesLoadingId !== null && state.teamMatchesLoadingId === state.teamView.clubId
     set(prev => ({
       teamView: { ...INITIAL_TEAM_VIEW },
       teamPollingAttached: false,
       teamPollingClubId: undefined,
       teamSummaryLoadingId: shouldClearLoading ? null : prev.teamSummaryLoadingId,
+      teamMatchesLoadingId: shouldClearMatchesLoading ? null : prev.teamMatchesLoadingId,
     }))
   },
   setTeamSubTab: tab => {
     set(prev => ({
       teamView: prev.teamView.open ? { ...prev.teamView, activeTab: tab } : prev.teamView,
     }))
+    if (tab === 'matches') {
+      const state = get()
+      const clubId = state.teamView.clubId
+      if (state.teamView.open && typeof clubId === 'number') {
+        void state.fetchClubMatches(clubId)
+      }
+    }
   },
   setTeamMatchesMode: mode => {
     set(prev => ({
@@ -1431,6 +1541,78 @@ export const useAppStore = create<AppState>((set, get) => ({
       teamSummaryErrors: { ...prev.teamSummaryErrors, [clubId]: undefined },
     }))
     get().ensureTeamPolling()
+    return { ok: true }
+  },
+  fetchClubMatches: async (clubId, options) => {
+    const state = get()
+    const now = Date.now()
+    const lastFetched = state.teamMatchesFetchedAt[clubId] ?? 0
+    const hasFreshData = now - lastFetched < CLUB_MATCHES_TTL_MS
+    if (!options?.force && state.teamMatches[clubId] && hasFreshData) {
+      return { ok: true }
+    }
+    if (state.teamMatchesLoadingId === clubId && !options?.force) {
+      return { ok: true }
+    }
+
+    set(prev => ({
+      teamMatchesLoadingId: clubId,
+      teamMatchesErrors: { ...prev.teamMatchesErrors, [clubId]: undefined },
+    }))
+
+    const requestVersion = options?.force ? undefined : state.teamMatchesVersions[clubId]
+    const response = await clubApi.fetchMatches(clubId, {
+      version: requestVersion,
+    })
+
+    if (!response.ok) {
+      set(prev => ({
+        teamMatchesLoadingId:
+          prev.teamMatchesLoadingId === clubId ? null : prev.teamMatchesLoadingId,
+        teamMatchesErrors: { ...prev.teamMatchesErrors, [clubId]: response.error },
+      }))
+      return { ok: false }
+    }
+
+    if (!('data' in response)) {
+      if (!state.teamMatches[clubId]) {
+        set(prev => ({
+          teamMatchesLoadingId:
+            prev.teamMatchesLoadingId === clubId ? null : prev.teamMatchesLoadingId,
+          teamMatchesErrors: { ...prev.teamMatchesErrors, [clubId]: 'empty_cache' },
+        }))
+        return { ok: false }
+      }
+
+      set(prev => ({
+        teamMatchesFetchedAt: { ...prev.teamMatchesFetchedAt, [clubId]: Date.now() },
+        teamMatchesLoadingId:
+          prev.teamMatchesLoadingId === clubId ? null : prev.teamMatchesLoadingId,
+        teamMatchesErrors: { ...prev.teamMatchesErrors, [clubId]: undefined },
+      }))
+      return { ok: true }
+    }
+
+    const payload = response.data as unknown
+    if (!isClubMatchesResponsePayload(payload)) {
+      set(prev => ({
+        teamMatchesLoadingId:
+          prev.teamMatchesLoadingId === clubId ? null : prev.teamMatchesLoadingId,
+        teamMatchesErrors: { ...prev.teamMatchesErrors, [clubId]: 'invalid_payload' },
+      }))
+      return { ok: false }
+    }
+
+    const fetchedAt = Date.now()
+    const nextVersion = response.version ?? state.teamMatchesVersions[clubId]
+    set(prev => ({
+      teamMatches: { ...prev.teamMatches, [clubId]: payload },
+      teamMatchesVersions: { ...prev.teamMatchesVersions, [clubId]: nextVersion },
+      teamMatchesFetchedAt: { ...prev.teamMatchesFetchedAt, [clubId]: fetchedAt },
+      teamMatchesLoadingId: prev.teamMatchesLoadingId === clubId ? null : prev.teamMatchesLoadingId,
+      teamMatchesErrors: { ...prev.teamMatchesErrors, [clubId]: undefined },
+    }))
+
     return { ok: true }
   },
   ensureTeamPolling: () => {

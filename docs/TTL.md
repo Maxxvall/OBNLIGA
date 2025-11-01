@@ -48,6 +48,13 @@
 - Ответ `200 OK`: payload валидируется (`isClubSummaryResponsePayload`), затем сохраняется в `teamSummaries[id]`, версия в `teamSummaryVersions[id]`, таймстемп в `teamSummaryFetchedAt[id]`, ошибки очищаются.
 - Ответ `304`: обновляется только `teamSummaryFetchedAt[id]`; polling остаётся активным.
 
+### `/api/clubs/{id}/matches`
+- TTL: 90 000 мс (90 с) для каждого клуба.
+- Поллинг: каждые 20 с вместе со сводкой (`ensureTeamPolling`).
+- Заголовок запроса: `If-None-Match: <teamMatchesVersions[id]>`.
+- Ответ `200 OK`: payload валидируется (`isClubMatchesResponsePayload`) и сохраняется в `teamMatches[id]`, версия фиксируется в `teamMatchesVersions[id]`, таймстемп — в `teamMatchesFetchedAt[id]`.
+- Ответ `304`: продлевается `teamMatchesFetchedAt[id]`, данные и группы сезонов переиспользуются без изменений.
+
 ### `/api/news`
 - TTL: 60 000 мс между запросами + локальный cache в `localStorage` на 30 минут.
 - Поллинг: всегда в фоне, если вкладка активна (компонент `NewsSection`), с проверкой `document.hidden`.

@@ -782,12 +782,15 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
   const videoContainerRef = React.useRef<HTMLDivElement | null>(null)
   const [fullscreenSupported, setFullscreenSupported] = React.useState(false)
   const [isFullscreen, setIsFullscreen] = React.useState(false)
+  const [isTelegramMobile, setIsTelegramMobile] = React.useState(false)
   const broadcastAvailable = React.useMemo(
     () =>
       Boolean(broadcast?.st === 'available' && broadcast.url && broadcast.url.trim().length > 0),
     [broadcast]
   )
   const landscapeActive = Boolean(landscapeMode)
+  const pseudoFullscreenActive = landscapeActive && isTelegramMobile
+  const rawBroadcastUrl = broadcast?.url ?? null
 
   React.useEffect(() => {
     if (typeof window === 'undefined') {
@@ -800,6 +803,62 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
       window.removeEventListener('focus', updateAuthor)
     }
   }, [])
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    const telegramWindow = window as TelegramWindow
+    const hasTelegram = Boolean(telegramWindow.Telegram?.WebApp)
+    const userAgent = navigator.userAgent
+    const mobileRegex = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i
+    const isMobileUA = mobileRegex.test(userAgent)
+    const touchPoints = navigator.maxTouchPoints ?? 0
+    const isTouchDevice = 'ontouchstart' in window || touchPoints > 0
+    setIsTelegramMobile(hasTelegram && (isMobileUA || isTouchDevice))
+  }, [])
+
+  React.useEffect(() => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') {
+      return
+    }
+
+    const body = document.body
+    const orientation = window.screen?.orientation
+    const orientationControl = orientation as unknown as {
+      lock?: (type: string) => Promise<void>
+      unlock?: () => void
+    }
+
+    if (pseudoFullscreenActive) {
+      body.classList.add('allow-landscape')
+      if (orientationControl.lock) {
+        orientationControl.lock('landscape').catch(() => {
+          /* ignore */
+        })
+      }
+    } else {
+      body.classList.remove('allow-landscape')
+      if (orientationControl.unlock) {
+        try {
+          orientationControl.unlock()
+        } catch (_err) {
+          /* ignore */
+        }
+      }
+    }
+
+    return () => {
+      body.classList.remove('allow-landscape')
+      if (orientationControl.unlock) {
+        try {
+          orientationControl.unlock()
+        } catch (_err) {
+          /* ignore */
+        }
+      }
+    }
+  }, [pseudoFullscreenActive])
 
   React.useEffect(() => {
     if (!onLandscapeModeChange) {
@@ -931,8 +990,43 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
   }, [])
 
   React.useEffect(() => {
-    setIsExpanded(landscapeActive)
+    if (landscapeActive) {
+      setIsExpanded(false)
+    }
   }, [landscapeActive])
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    const container = videoContainerRef.current
+    if (!container) {
+      return
+    }
+    const iframe = container.querySelector('iframe')
+    if (!iframe) {
+      return
+    }
+
+    let lastTap = 0
+    const handleTouchEnd = (event: TouchEvent) => {
+      const now = Date.now()
+      if (now - lastTap < 300) {
+        event.preventDefault()
+        if (!isFullscreen) {
+          handleToggleFullscreen()
+        }
+      }
+      lastTap = now
+    }
+
+    const options: AddEventListenerOptions = { passive: false }
+    iframe.addEventListener('touchend', handleTouchEnd, options)
+
+    return () => {
+      iframe.removeEventListener('touchend', handleTouchEnd, options)
+    }
+  }, [rawBroadcastUrl, handleToggleFullscreen, isFullscreen])
 
   const handleTextChange = React.useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = event.target.value
@@ -1031,9 +1125,9 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
     )
   }
 
-  const broadcastUrl = broadcast.url?.trim() ?? ''
+  const broadcastUrl = rawBroadcastUrl?.trim() ?? ''
   const embedUrl = broadcastUrl ? buildVkEmbedUrl(broadcastUrl) : null
-  const fullscreenControl = fullscreenSupported && !landscapeActive ? (
+  const fullscreenControl = fullscreenSupported && !pseudoFullscreenActive ? (
     <div className="broadcast-controls">
       <button
         type="button"
@@ -1047,13 +1141,9 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
   ) : null
 
   const broadcastViewClassName = `broadcast-view${landscapeActive ? ' landscape-active' : ''}`
-  const commentsExpanded = landscapeActive || isExpanded
-  const commentsSectionClasses = ['comments-section', commentsExpanded ? 'expanded' : 'collapsed']
-  if (landscapeActive) {
-    commentsSectionClasses.push('landscape-mode')
-  }
-  const commentsSectionClassName = commentsSectionClasses.join(' ')
-  const showToggle = !landscapeActive
+  const showComments = !landscapeActive
+  const commentsExpanded = isExpanded
+  const commentsSectionClassName = `comments-section ${commentsExpanded ? 'expanded' : 'collapsed'}`
 
   const commentsBody = (
     <div className="comments-body" id={commentsBodyId}>
@@ -1112,39 +1202,39 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
     </div>
   )
 
-  const commentsSection = (
+  const commentsSection = showComments ? (
     <section className={commentsSectionClassName}>
-      {showToggle && (
-        <button
-          type="button"
-          className="comments-toggle"
-          onClick={handleToggle}
-          aria-expanded={commentsExpanded}
-          aria-controls={commentsBodyId}
-        >
-          <div className="comments-toggle-text">
-            <span className="comments-title">Комментарии</span>
-            {loadingComments && <span className="comments-status">Обновляем…</span>}
-          </div>
-          <div className="comments-toggle-meta">
-            {!loadingComments && comments && comments.length > 0 && (
-              <span className="comments-count">{comments.length}</span>
-            )}
-            <span className="comments-toggle-icon" aria-hidden="true" />
-          </div>
-        </button>
-      )}
+      <button
+        type="button"
+        className="comments-toggle"
+        onClick={handleToggle}
+        aria-expanded={commentsExpanded}
+        aria-controls={commentsBodyId}
+      >
+        <div className="comments-toggle-text">
+          <span className="comments-title">Комментарии</span>
+          {loadingComments && <span className="comments-status">Обновляем…</span>}
+        </div>
+        <div className="comments-toggle-meta">
+          {!loadingComments && comments && comments.length > 0 && (
+            <span className="comments-count">{comments.length}</span>
+          )}
+          <span className="comments-toggle-icon" aria-hidden="true" />
+        </div>
+      </button>
 
       {commentsExpanded && commentsBody}
     </section>
-  )
+  ) : null
+
+  const videoClassName = `broadcast-video${pseudoFullscreenActive ? ' pseudo-fullscreen' : ''}`
 
   const videoElement = embedUrl ? (
-    <div className="broadcast-video" ref={videoContainerRef}>
+    <div className={videoClassName} ref={videoContainerRef}>
       <iframe
         src={embedUrl}
         title="VK Видео"
-        allow="autoplay; fullscreen; picture-in-picture"
+        allow="autoplay; fullscreen; picture-in-picture; encrypted-media; screen-wake-lock"
         allowFullScreen
         frameBorder={0}
       />
@@ -1157,14 +1247,7 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
   )
 
   if (landscapeActive) {
-    return (
-      <div className={broadcastViewClassName}>
-        <div className="broadcast-landscape">
-          {videoElement}
-          {commentsSection}
-        </div>
-      </div>
-    )
+    return <div className={broadcastViewClassName}>{videoElement}</div>
   }
 
   return (

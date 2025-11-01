@@ -523,11 +523,9 @@
 }
 
 .team-squad-table {
-  width: 100%;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-width: 400px;
 }
 
 .team-squad-row {

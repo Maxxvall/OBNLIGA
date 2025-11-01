@@ -449,7 +449,28 @@ export function AdCarousel() {
       </section>
     )
   }
-  const slideLabel = activeAd.subtitle ? `${activeAd.title}. ${activeAd.subtitle}` : activeAd.title
+  const totalSlides = Math.max(1, displayAds.length)
+  const slideLabel = `Рекламный баннер ${activeIndex + 1} из ${totalSlides}`
+  const bannerImage = (
+    <img
+      className="ads-image"
+      src={activeAd.imageUrl}
+      alt="Рекламный баннер"
+      loading="eager"
+      decoding="async"
+      draggable={false}
+    />
+  )
+  const overlay = activeAd.safeTarget ? (
+    <div className="ads-overlay">
+      <span className="ads-cta" aria-hidden="true">
+        Перейти
+      </span>
+      <span className="sr-only">Открыть ссылку партнёра</span>
+    </div>
+  ) : (
+    <div className="ads-overlay" aria-hidden="true" />
+  )
 
   return (
     <section className="ads-carousel" aria-roledescription="карусель" aria-label="Партнёрские баннеры">
@@ -474,40 +495,13 @@ export function AdCarousel() {
             target="_blank"
             rel="noopener noreferrer"
           >
-            <img
-              className="ads-image"
-              src={activeAd.imageUrl}
-              alt={activeAd.title}
-              loading="eager"
-              decoding="async"
-              draggable={false}
-            />
-            <div className="ads-overlay">
-              <div className="ads-text">
-                <h3 className="ads-title">{activeAd.title}</h3>
-                {activeAd.subtitle ? <p className="ads-subtitle">{activeAd.subtitle}</p> : null}
-              </div>
-              <span className="ads-cta" aria-hidden="true">
-                Перейти
-              </span>
-            </div>
+            {bannerImage}
+            {overlay}
           </a>
         ) : (
           <div className="ads-link" role="presentation">
-            <img
-              className="ads-image"
-              src={activeAd.imageUrl}
-              alt={activeAd.title}
-              loading="eager"
-              decoding="async"
-              draggable={false}
-            />
-            <div className="ads-overlay">
-              <div className="ads-text">
-                <h3 className="ads-title">{activeAd.title}</h3>
-                {activeAd.subtitle ? <p className="ads-subtitle">{activeAd.subtitle}</p> : null}
-              </div>
-            </div>
+            {bannerImage}
+            {overlay}
           </div>
         )}
       </article>
@@ -523,7 +517,7 @@ export function AdCarousel() {
               className={`ads-dot${index === activeIndex ? ' active' : ''}`}
               onClick={() => handleDotClick(index)}
             >
-              <span className="sr-only">{banner.title}</span>
+              <span className="sr-only">Баннер {index + 1}</span>
             </button>
           ))}
         </div>

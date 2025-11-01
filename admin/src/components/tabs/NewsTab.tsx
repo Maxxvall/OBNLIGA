@@ -435,10 +435,9 @@ export const NewsTab = () => {
 const MAX_AD_IMAGE_SIZE_BYTES = 1_000_000
 const MAX_AD_DISPLAY_ORDER = 9999
 const ACCEPTED_AD_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp']
+const DEFAULT_AD_TITLE = 'Реклама'
 
 interface AdFormState {
-  title: string
-  subtitle: string
   targetUrl: string
   displayOrder: string
   isActive: boolean
@@ -459,8 +458,6 @@ interface AdsManagerProps {
 }
 
 const createInitialAdForm = (): AdFormState => ({
-  title: '',
-  subtitle: '',
   targetUrl: '',
   displayOrder: '0',
   isActive: true,
@@ -577,8 +574,6 @@ const AdsManager = ({ token, ads, fetchAds, upsertAd, removeAd, isLoading }: Ads
     setEditingAd(ad)
     setFeedback(null)
     setForm({
-      title: ad.title,
-      subtitle: ad.subtitle ?? '',
       targetUrl: ad.targetUrl ?? '',
       displayOrder: ad.displayOrder.toString(),
       isActive: ad.isActive,
@@ -642,16 +637,6 @@ const AdsManager = ({ token, ads, fetchAds, upsertAd, removeAd, isLoading }: Ads
     const adminToken = ensureToken()
     if (!adminToken) return
 
-    const title = form.title.trim()
-    if (!title) {
-      setFeedback({ kind: 'error', message: 'Введите название баннера.' })
-      return
-    }
-    if (title.length > 80) {
-      setFeedback({ kind: 'error', message: 'Название баннера не должно превышать 80 символов.' })
-      return
-    }
-
     const displayOrderValue = Number(form.displayOrder)
     if (!Number.isFinite(displayOrderValue)) {
       setFeedback({ kind: 'error', message: 'Порядок показа должен быть числом.' })
@@ -678,15 +663,6 @@ const AdsManager = ({ token, ads, fetchAds, upsertAd, removeAd, isLoading }: Ads
       }
     }
 
-    const subtitle = form.subtitle.trim()
-    if (subtitle.length > 160) {
-      setFeedback({
-        kind: 'error',
-        message: 'Подзаголовок не должен превышать 160 символов.',
-      })
-      return
-    }
-
     const targetUrl = form.targetUrl.trim()
 
     if (!editingAd && !form.imagePayload) {
@@ -694,9 +670,8 @@ const AdsManager = ({ token, ads, fetchAds, upsertAd, removeAd, isLoading }: Ads
       return
     }
 
-    const payloadBase = {
-      title,
-      subtitle: subtitle ? subtitle : null,
+    const payloadBase: Omit<AdminAdCreatePayload, 'title' | 'image'> = {
+      subtitle: null,
       targetUrl: targetUrl ? targetUrl : null,
       displayOrder,
       isActive: form.isActive,
@@ -711,6 +686,7 @@ const AdsManager = ({ token, ads, fetchAds, upsertAd, removeAd, isLoading }: Ads
       if (editingAd) {
         const updatePayload: AdminAdUpdatePayload = {
           ...payloadBase,
+          title: DEFAULT_AD_TITLE,
         }
         if (form.imageDirty && form.imagePayload) {
           updatePayload.image = form.imagePayload
@@ -726,6 +702,7 @@ const AdsManager = ({ token, ads, fetchAds, upsertAd, removeAd, isLoading }: Ads
       } else {
         const createPayload: AdminAdCreatePayload = {
           ...payloadBase,
+          title: DEFAULT_AD_TITLE,
           image: form.imagePayload as AdBannerImage,
         }
         const created = await adminCreateAd(adminToken, createPayload)
@@ -816,40 +793,11 @@ const AdsManager = ({ token, ads, fetchAds, upsertAd, removeAd, isLoading }: Ads
           <header>
             <h4>{editingAd ? 'Редактирование баннера' : 'Новый баннер'}</h4>
             <p>
-              Добавьте изображение (PNG, JPEG или WebP до 1 МБ) и укажите ссылку для перехода. Можно
-              настроить расписание показа.
+              Добавьте изображение (PNG, JPEG или WebP до 1 МБ) и укажите ссылку для перехода. Заголовок
+              формируется автоматически, можно настроить расписание показа.
             </p>
           </header>
           <form className="stacked" onSubmit={handleSubmit}>
-            <label>
-              Заголовок
-              <input
-                name="ad-title"
-                maxLength={80}
-                required
-                value={form.title}
-                onChange={event =>
-                  setForm(state => ({
-                    ...state,
-                    title: event.target.value,
-                  }))
-                }
-              />
-            </label>
-            <label>
-              Подзаголовок
-              <input
-                name="ad-subtitle"
-                maxLength={160}
-                value={form.subtitle}
-                onChange={event =>
-                  setForm(state => ({
-                    ...state,
-                    subtitle: event.target.value,
-                  }))
-                }
-              />
-            </label>
             <label>
               Ссылка (HTTP/HTTPS)
               <input
@@ -981,20 +929,23 @@ const AdsManager = ({ token, ads, fetchAds, upsertAd, removeAd, isLoading }: Ads
           </header>
           {sortedAds.length ? (
             <ul className="ads-list-items">
-              {sortedAds.map(ad => (
+              {sortedAds.map((ad, index) => (
                 <li key={ad.id} className={`ads-item${editingAd && editingAd.id === ad.id ? ' editing' : ''}`}>
                   <div className="ads-item-preview">
-                    <img src={buildAdPreview(ad)} alt={ad.title} />
+                    <img src={buildAdPreview(ad)} alt="Превью баннера" />
                   </div>
                   <div className="ads-item-body">
                     <div className="ads-item-header">
-                      <h5>{ad.title}</h5>
+                      <h5>Баннер #{index + 1}</h5>
                       <span className={`ads-status${ad.isActive ? ' active' : ''}`}>
                         {ad.isActive ? 'Активен' : 'Выключен'}
                       </span>
                     </div>
-                    {ad.subtitle ? <p className="ads-item-subtitle">{ad.subtitle}</p> : null}
                     <dl className="ads-item-meta">
+                      <div>
+                        <dt>ID</dt>
+                        <dd>{ad.id}</dd>
+                      </div>
                       <div>
                         <dt>Порядок</dt>
                         <dd>{ad.displayOrder}</dd>

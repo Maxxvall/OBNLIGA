@@ -6,6 +6,11 @@
   gap: 14px;
   align-items: stretch;
   align-self: center;
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  padding-top: env(safe-area-inset-top, 0);
+  background: linear-gradient(180deg, rgba(11, 15, 26, 0.96) 0%, rgba(11, 15, 26, 0.6) 45%, rgba(11, 15, 26, 0) 100%);
 }
 
 .ads-meta {
@@ -64,32 +69,9 @@
   padding: 22px 26px 24px;
   background: linear-gradient(180deg, rgba(6, 12, 24, 0) 0%, rgba(6, 12, 24, 0.88) 72%);
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-}
-
-.ads-text {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-width: 78%;
-}
-
-.ads-title {
-  margin: 0;
-  font-size: 22px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #f2fcff;
-  text-shadow: 0 0 18px rgba(0, 240, 255, 0.36);
-}
-
-.ads-subtitle {
-  margin: 0;
-  font-size: 14px;
-  line-height: 1.5;
-  color: rgba(199, 236, 255, 0.9);
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
 .ads-cta {
@@ -169,15 +151,7 @@
 
   .ads-overlay {
     padding: 18px 20px 20px;
-    gap: 14px;
-  }
-
-  .ads-title {
-    font-size: 20px;
-  }
-
-  .ads-subtitle {
-    font-size: 13px;
+    gap: 12px;
   }
 
   .ads-cta {
@@ -198,20 +172,6 @@
 
   .ads-overlay {
     padding: 16px 18px 18px;
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .ads-text {
-    max-width: 100%;
-  }
-
-  .ads-title {
-    font-size: 18px;
-  }
-
-  .ads-subtitle {
-    font-size: 12.5px;
   }
 
   .ads-cta {
@@ -236,14 +196,6 @@
 
   .ads-overlay {
     padding: 14px 16px 16px;
-  }
-
-  .ads-title {
-    font-size: 17px;
-  }
-
-  .ads-subtitle {
-    font-size: 12px;
   }
 }
 

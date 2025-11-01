@@ -17,6 +17,7 @@ import {
 import { handleMatchFinalization, rebuildCareerStatsForClubs } from '../services/matchAggregation'
 import { buildLeagueTable } from '../services/leagueTable'
 import { refreshLeagueMatchAggregates } from '../services/leagueSchedule'
+import { matchBroadcastCacheKey } from '../services/matchDetailsPublic'
 import { createSeasonPlayoffs, runSeasonAutomation } from '../services/seasonAutomation'
 import { serializePrisma } from '../utils/serialization'
 import { defaultCache, PUBLIC_LEAGUE_RESULTS_KEY, PUBLIC_LEAGUE_SCHEDULE_KEY } from '../cache'
@@ -373,6 +374,50 @@ const normalizeAdTargetUrl = (value: unknown): string | null => {
     throw new Error('ad_target_url_invalid')
   }
   return raw
+}
+
+const VK_BROADCAST_HOSTS = new Set([
+  'vk.com',
+  'www.vk.com',
+  'm.vk.com',
+  'vkvideo.ru',
+  'www.vkvideo.ru',
+])
+
+const VK_VIDEO_ID_PATTERN = /video-?\d+_\d+/i
+
+const normalizeBroadcastUrl = (value: string): string | null => {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return ''
+  }
+
+  let parsed: URL
+  try {
+    parsed = new URL(trimmed)
+  } catch (_err) {
+    return null
+  }
+
+  if (parsed.protocol !== 'https:') {
+    return null
+  }
+
+  const hostname = parsed.hostname.toLowerCase()
+  if (!VK_BROADCAST_HOSTS.has(hostname)) {
+    return null
+  }
+
+  const decodedHref = decodeURIComponent(parsed.href)
+  if (!VK_VIDEO_ID_PATTERN.test(decodedHref)) {
+    return null
+  }
+
+  if (decodedHref.length > 2048) {
+    return null
+  }
+
+  return parsed.toString()
 }
 
 const decodeAdImagePayload = (value: unknown, required: boolean): ParsedAdImage | null => {
@@ -3283,6 +3328,7 @@ export default async function (server: FastifyInstance) {
           hasPenaltyShootout: boolean
           penaltyHomeScore: number
           penaltyAwayScore: number
+          broadcastUrl: string | null
         }>
 
         const existing = await prisma.match.findUnique({
@@ -3321,6 +3367,18 @@ export default async function (server: FastifyInstance) {
           refereeId: body.refereeId ?? undefined,
           roundId: body.roundId ?? undefined,
           isArchived: typeof body.isArchived === 'boolean' ? body.isArchived : undefined,
+        }
+
+        let broadcastUrlUpdate: string | null | undefined
+        if (body.broadcastUrl !== undefined) {
+          const candidate =
+            typeof body.broadcastUrl === 'string' ? body.broadcastUrl : ''
+          const normalized = normalizeBroadcastUrl(candidate)
+          if (normalized === null) {
+            return reply.status(400).send({ ok: false, error: 'broadcast_url_invalid' })
+          }
+          broadcastUrlUpdate = normalized === '' ? null : normalized
+          data.broadcastUrl = broadcastUrlUpdate
         }
 
         const normalizeScore = (value: number | undefined, fallback: number | null): number => {
@@ -3402,6 +3460,13 @@ export default async function (server: FastifyInstance) {
           where: { id: matchId },
           data,
         })
+
+        if (
+          broadcastUrlUpdate !== undefined &&
+          (existing.broadcastUrl ?? null) !== (broadcastUrlUpdate ?? null)
+        ) {
+          await defaultCache.invalidate(matchBroadcastCacheKey(matchId)).catch(() => undefined)
+        }
 
         const publishTopic =
           typeof request.server.publishTopic === 'function'

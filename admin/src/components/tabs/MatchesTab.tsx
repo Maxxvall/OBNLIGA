@@ -94,6 +94,7 @@ type MatchUpdateFormState = {
   hasPenaltyShootout: boolean
   penaltyHomeScore: number
   penaltyAwayScore: number
+  broadcastUrl: string
 }
 
 const playoffBestOfOptions = [3, 5, 7]
@@ -199,6 +200,7 @@ const buildMatchUpdateForm = (match: MatchSummary): MatchUpdateFormState => ({
   hasPenaltyShootout: match.hasPenaltyShootout ?? false,
   penaltyHomeScore: match.penaltyHomeScore ?? 0,
   penaltyAwayScore: match.penaltyAwayScore ?? 0,
+  broadcastUrl: match.broadcastUrl ?? '',
 })
 
 const seriesFormatNames: Record<SeriesFormat, string> = {
@@ -1076,6 +1078,7 @@ export const MatchesTab = () => {
         hasPenaltyShootout: form.hasPenaltyShootout,
         penaltyHomeScore: Math.max(0, Math.trunc(form.penaltyHomeScore)),
         penaltyAwayScore: Math.max(0, Math.trunc(form.penaltyAwayScore)),
+        broadcastUrl: form.broadcastUrl.trim(),
       })
       await fetchSeries(seasonId, { force: true })
       await fetchMatches(seasonId, { force: true })
@@ -1236,6 +1239,19 @@ export const MatchesTab = () => {
         [match.id]: {
           ...current,
           stadiumId: value,
+        },
+      }
+    })
+  }
+
+  const setMatchBroadcastUrl = (match: MatchSummary, value: string) => {
+    setMatchUpdateForms(forms => {
+      const current = forms[match.id] ?? buildMatchUpdateForm(match)
+      return {
+        ...forms,
+        [match.id]: {
+          ...current,
+          broadcastUrl: value,
         },
       }
     })
@@ -2738,6 +2754,21 @@ export const MatchesTab = () => {
                       </option>
                     ))}
                   </select>
+                </label>
+
+                <label>
+                  Ссылка на трансляцию (VK)
+                  <input
+                    type="url"
+                    inputMode="url"
+                    value={selectedMatchForm?.broadcastUrl ?? ''}
+                    onChange={event => {
+                      if (!selectedMatch) return
+                      setMatchBroadcastUrl(selectedMatch, event.target.value)
+                    }}
+                    placeholder="https://vk.com/video-123_456"
+                  />
+                  <p className="muted">Поддерживаются только ссылки на VK Видео.</p>
                 </label>
 
                 <label className="stacked">

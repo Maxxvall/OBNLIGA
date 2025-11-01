@@ -77,6 +77,21 @@ const TTL_STATS_SECONDS = 8
 const TTL_EVENTS_SECONDS = 6
 const TTL_BROADCAST_SECONDS = 24 * 60 * 60 // 1 day
 
+export const matchBroadcastCacheKey = (matchId: bigint | string): string =>
+  `${REDIS_PREFIX}${matchId.toString()}:broadcast`
+
+const parseMatchId = (value: string): bigint | null => {
+  try {
+    const numeric = BigInt(value)
+    if (numeric <= 0) {
+      return null
+    }
+    return numeric
+  } catch (_err) {
+    return null
+  }
+}
+
 const mapMatchStatus = (status: MatchStatus): MatchDetailsHeader['st'] => {
   return status as MatchDetailsHeader['st']
 }
@@ -432,16 +447,46 @@ export async function fetchMatchEvents(
  */
 export async function fetchMatchBroadcast(
   matchId: string
-): Promise<CachedResult<MatchDetailsBroadcast>> {
-  const key = `${REDIS_PREFIX}${matchId}:broadcast`
+): Promise<CachedResult<MatchDetailsBroadcast> | null> {
+  const numericMatchId = parseMatchId(matchId)
+  if (!numericMatchId) {
+    return {
+      data: { st: 'not_available' },
+      version: 0,
+    }
+  }
+
+  const key = matchBroadcastCacheKey(numericMatchId)
 
   const result = await defaultCache.getWithMeta(
     key,
     async () => {
-      // Stub: always return not_available
-      return { st: 'not_available' as const }
+      const match = await prisma.match.findUnique({
+        where: { id: numericMatchId },
+        select: {
+          broadcastUrl: true,
+        },
+      })
+
+      if (!match) {
+        return { st: 'not_available' as const }
+      }
+
+      const url = match.broadcastUrl?.trim()
+      if (!url) {
+        return { st: 'not_available' as const }
+      }
+
+      return {
+        st: 'available' as const,
+        url,
+      }
     },
-    { ttlSeconds: TTL_BROADCAST_SECONDS }
+    {
+      ttlSeconds: TTL_BROADCAST_SECONDS,
+      staleWhileRevalidateSeconds: TTL_BROADCAST_SECONDS,
+      lockTimeoutSeconds: 4,
+    }
   )
 
   return {

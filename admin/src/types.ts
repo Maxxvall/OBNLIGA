@@ -155,6 +155,7 @@ export interface MatchSummary {
     roundNumber?: number | null
     label: string
   }
+  broadcastUrl?: string | null
 }
 
 export interface JudgeMatchSummary {

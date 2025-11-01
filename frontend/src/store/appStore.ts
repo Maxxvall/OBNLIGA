@@ -15,6 +15,7 @@ import type {
   MatchDetailsLineups,
   MatchDetailsStats,
   MatchDetailsEvents,
+  MatchDetailsBroadcast,
   MatchStatus,
 } from '@shared/types'
 import { leagueApi } from '../api/leagueApi'
@@ -45,18 +46,22 @@ type MatchDetailsState = {
   lineups?: MatchDetailsLineups
   stats?: MatchDetailsStats
   events?: MatchDetailsEvents
+  broadcast?: MatchDetailsBroadcast
   headerEtag?: string
   lineupsEtag?: string
   statsEtag?: string
   eventsEtag?: string
+  broadcastEtag?: string
   loadingHeader: boolean
   loadingLineups: boolean
   loadingStats: boolean
   loadingEvents: boolean
+  loadingBroadcast: boolean
   errorHeader?: string
   errorLineups?: string
   errorStats?: string
   errorEvents?: string
+  errorBroadcast?: string
 }
 
 const INITIAL_TEAM_VIEW: TeamViewState = {
@@ -76,6 +81,7 @@ const INITIAL_MATCH_DETAILS: MatchDetailsState = {
   loadingLineups: false,
   loadingStats: false,
   loadingEvents: false,
+  loadingBroadcast: false,
 }
 
 const SEASONS_TTL_MS = 55_000
@@ -829,6 +835,7 @@ interface AppState {
   fetchMatchLineups: (matchId: string, options?: { force?: boolean }) => Promise<FetchResult>
   fetchMatchStats: (matchId: string, options?: { force?: boolean }) => Promise<FetchResult>
   fetchMatchEvents: (matchId: string, options?: { force?: boolean }) => Promise<FetchResult>
+  fetchMatchBroadcast: (matchId: string, options?: { force?: boolean }) => Promise<FetchResult>
   ensureMatchDetailsPolling: () => void
   stopMatchDetailsPolling: () => void
 }
@@ -1651,6 +1658,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     })
     void get().fetchMatchHeader(matchId)
     void get().fetchMatchLineups(matchId)
+    void get().fetchMatchBroadcast(matchId)
     if (snapshot?.status === 'LIVE' || snapshot?.status === 'FINISHED') {
       void get().fetchMatchEvents(matchId)
       void get().fetchMatchStats(matchId)
@@ -1678,6 +1686,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       void get().fetchMatchEvents(matchId)
     } else if (tab === 'stats' && !state.matchDetails.stats) {
       void get().fetchMatchStats(matchId)
+    } else if (tab === 'broadcast' && !state.matchDetails.broadcast) {
+      void get().fetchMatchBroadcast(matchId)
     }
   },
   fetchMatchHeader: async (matchId, options) => {
@@ -1913,6 +1923,57 @@ export const useAppStore = create<AppState>((set, get) => ({
         eventsEtag: response.version,
         loadingEvents: false,
         errorEvents: undefined,
+      },
+    }))
+    return { ok: true }
+  },
+  fetchMatchBroadcast: async (matchId, options) => {
+    const state = get()
+    if (state.matchDetails.loadingBroadcast && !options?.force) {
+      return { ok: true }
+    }
+
+    set(prev => ({
+      matchDetails: {
+        ...prev.matchDetails,
+        loadingBroadcast: true,
+        errorBroadcast: undefined,
+      },
+    }))
+
+    const requestEtag = options?.force ? undefined : state.matchDetails.broadcastEtag
+    const response = await matchApi.fetchBroadcast(matchId, {
+      etag: requestEtag,
+    })
+
+    if (!response.ok) {
+      set(prev => ({
+        matchDetails: {
+          ...prev.matchDetails,
+          loadingBroadcast: false,
+          errorBroadcast: response.error,
+        },
+      }))
+      return { ok: false }
+    }
+
+    if (!('data' in response)) {
+      set(prev => ({
+        matchDetails: {
+          ...prev.matchDetails,
+          loadingBroadcast: false,
+        },
+      }))
+      return { ok: true }
+    }
+
+    set(prev => ({
+      matchDetails: {
+        ...prev.matchDetails,
+        broadcast: response.data,
+        broadcastEtag: response.version,
+        loadingBroadcast: false,
+        errorBroadcast: undefined,
       },
     }))
     return { ok: true }

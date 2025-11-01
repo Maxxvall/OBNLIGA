@@ -4,6 +4,7 @@ import type {
   MatchDetailsLineups,
   MatchDetailsStats,
   MatchDetailsEvents,
+  MatchDetailsBroadcast,
   MatchStatus,
   LeagueMatchLocation,
 } from '@shared/types'
@@ -90,7 +91,7 @@ export const MatchDetailsPage: React.FC = () => {
   const closeMatchDetails = useAppStore(state => state.closeMatchDetails)
   const setMatchDetailsTab = useAppStore(state => state.setMatchDetailsTab)
 
-  const { header, lineups, stats, events, activeTab, snapshot } = matchDetails
+  const { header, lineups, stats, events, broadcast, activeTab, snapshot, loadingBroadcast, errorBroadcast } = matchDetails
 
   const [homeScoreAnimated, setHomeScoreAnimated] = React.useState(false)
   const [awayScoreAnimated, setAwayScoreAnimated] = React.useState(false)
@@ -118,6 +119,9 @@ export const MatchDetailsPage: React.FC = () => {
   const status: MatchStatus | undefined = header?.st ?? snapshot?.status
   const matchDateIso = header?.dt ?? snapshot?.matchDateTime
   const dateLabel = formatMatchDateLabel(matchDateIso)
+  const broadcastAvailable = Boolean(
+    broadcast?.st === 'available' && broadcast.url && broadcast.url.trim().length > 0
+  )
 
   const showNumericScore = status === 'LIVE' || status === 'FINISHED'
   const homeScoreValue = showNumericScore
@@ -297,7 +301,8 @@ export const MatchDetailsPage: React.FC = () => {
           <button
             className={`tab ${activeTab === 'broadcast' ? 'active' : ''}`}
             onClick={() => setMatchDetailsTab('broadcast')}
-            disabled
+            disabled={!broadcastAvailable}
+            aria-disabled={!broadcastAvailable}
           >
             Трансляция
           </button>
@@ -312,9 +317,11 @@ export const MatchDetailsPage: React.FC = () => {
           )}
           {activeTab === 'stats' && <StatsView stats={stats} loading={matchDetails.loadingStats} />}
           {activeTab === 'broadcast' && (
-            <div className="placeholder-tab">
-              <p>Трансляция пока недоступна</p>
-            </div>
+            <BroadcastView
+              broadcast={broadcast}
+              loading={loadingBroadcast}
+              error={errorBroadcast}
+            />
           )}
         </div>
       </div>
@@ -449,4 +456,100 @@ const StatsView: React.FC<{
       </table>
     </div>
   )
+}
+
+const BroadcastView: React.FC<{
+  broadcast?: MatchDetailsBroadcast
+  loading: boolean
+  error?: string
+}> = ({ broadcast, loading, error }) => {
+  if (loading) {
+    return <div className="loading">Загрузка трансляции...</div>
+  }
+
+  if (error) {
+    return (
+      <div className="error">
+        <div>
+          <p>Не удалось загрузить трансляцию.</p>
+          <p className="broadcast-hint">{error}</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!broadcast || broadcast.st !== 'available' || !broadcast.url) {
+    return (
+      <div className="placeholder-tab">
+        <p>Трансляция появится здесь, как только администраторы добавят ссылку.</p>
+      </div>
+    )
+  }
+
+  const embedUrl = buildVkEmbedUrl(broadcast.url)
+
+  return (
+    <div className="broadcast-view">
+      {embedUrl ? (
+        <div className="broadcast-video">
+          <iframe
+            src={embedUrl}
+            title="VK Видео"
+            allow="autoplay; fullscreen; picture-in-picture"
+            allowFullScreen
+            frameBorder={0}
+          />
+        </div>
+      ) : (
+        <div className="broadcast-fallback">
+          <p>Не удалось подготовить плеер для указанной ссылки.</p>
+        </div>
+      )}
+      <div className="broadcast-link">
+        <a href={broadcast.url} target="_blank" rel="noreferrer">
+          Смотреть трансляцию во VK
+        </a>
+        <p className="broadcast-hint">Если плеер не загрузился, откройте трансляцию по ссылке.</p>
+      </div>
+    </div>
+  )
+}
+
+const buildVkEmbedUrl = (value: string): string | null => {
+  try {
+    const parsed = new URL(value)
+    const hostname = parsed.hostname.replace(/^www\./, '')
+    if (hostname !== 'vk.com' && hostname !== 'm.vk.com') {
+      return null
+    }
+
+    if (parsed.pathname === '/video_ext.php') {
+      const oid = parsed.searchParams.get('oid')
+      const id = parsed.searchParams.get('id')
+      if (!oid || !id) {
+        return null
+      }
+      const params = new URLSearchParams()
+      params.set('oid', oid)
+      params.set('id', id)
+      params.set('autoplay', '0')
+      params.set('hd', parsed.searchParams.get('hd') ?? '2')
+      return `https://vk.com/video_ext.php?${params.toString()}`
+    }
+
+    const match = parsed.pathname.match(/\/video(-?\d+)_(\d+)/)
+    if (!match) {
+      return null
+    }
+
+    const [, ownerId, videoId] = match
+    const params = new URLSearchParams()
+    params.set('oid', ownerId)
+    params.set('id', videoId)
+    params.set('autoplay', '0')
+    params.set('hd', '2')
+    return `https://vk.com/video_ext.php?${params.toString()}`
+  } catch {
+    return null
+  }
 }

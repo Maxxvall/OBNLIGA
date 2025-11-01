@@ -93,6 +93,7 @@ const ERROR_DICTIONARY: Record<string, string> = {
   friendly_match_fields_required: 'Заполните данные товарищеского матча.',
   friendly_match_not_found: 'Товарищеский матч не найден.',
   friendly_match_same_teams: 'Выберите разные команды для товарищеского матча.',
+  broadcast_url_invalid: 'Введите корректную ссылку на трансляцию VK Видео.',
   internal: 'Внутренняя ошибка сервера. Попробуйте позже.',
   invalid_full_name: 'Введите имя и фамилию через пробел.',
   lineup_fields_required: 'Заполните поля заявки.',

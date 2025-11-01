@@ -931,9 +931,7 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
   }, [])
 
   React.useEffect(() => {
-    if (landscapeActive) {
-      setIsExpanded(false)
-    }
+    setIsExpanded(landscapeActive)
   }, [landscapeActive])
 
   const handleTextChange = React.useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -1049,111 +1047,130 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
   ) : null
 
   const broadcastViewClassName = `broadcast-view${landscapeActive ? ' landscape-active' : ''}`
+  const commentsExpanded = landscapeActive || isExpanded
+  const commentsSectionClasses = ['comments-section', commentsExpanded ? 'expanded' : 'collapsed']
+  if (landscapeActive) {
+    commentsSectionClasses.push('landscape-mode')
+  }
+  const commentsSectionClassName = commentsSectionClasses.join(' ')
+  const showToggle = !landscapeActive
+
+  const commentsBody = (
+    <div className="comments-body" id={commentsBodyId}>
+      {errorMessage ? (
+        <div className="comment-error-row">
+          <span className="comment-error">{errorMessage}</span>
+          <button
+            type="button"
+            className="comment-retry"
+            onClick={onRetry}
+            disabled={loadingComments}
+          >
+            Повторить
+          </button>
+        </div>
+      ) : (
+        commentsContent
+      )}
+
+      <form className="comment-form" onSubmit={handleSubmit}>
+        {author ? null : (
+          <div className="comment-auth-hint">
+            <p>Чтобы писать в чат, авторизуйтесь через Telegram.</p>
+            {onOpenProfile && (
+              <button type="button" className="comment-auth-button" onClick={onOpenProfile}>
+                Открыть профиль
+              </button>
+            )}
+          </div>
+        )}
+
+        <label className="comment-field">
+          <span className="comment-label">Сообщение</span>
+          <textarea
+            value={commentText}
+            onChange={handleTextChange}
+            maxLength={COMMENT_MAX_LENGTH}
+            placeholder="Поддержите команду (до 100 символов)."
+            className="comment-textarea"
+            rows={3}
+            disabled={!author}
+          />
+        </label>
+
+        <p className="comment-hint">Сообщения до 100 символов, отправлять можно раз в 3 минуты.</p>
+
+        <div className="comment-controls">
+          <span className="comment-counter">{remaining}</span>
+          <button type="submit" className="comment-submit" disabled={submitDisabled}>
+            {submittingComment ? 'Отправляем…' : 'Отправить'}
+          </button>
+        </div>
+
+        {authError && <div className="comment-auth-error">{authError}</div>}
+      </form>
+    </div>
+  )
+
+  const commentsSection = (
+    <section className={commentsSectionClassName}>
+      {showToggle && (
+        <button
+          type="button"
+          className="comments-toggle"
+          onClick={handleToggle}
+          aria-expanded={commentsExpanded}
+          aria-controls={commentsBodyId}
+        >
+          <div className="comments-toggle-text">
+            <span className="comments-title">Комментарии</span>
+            {loadingComments && <span className="comments-status">Обновляем…</span>}
+          </div>
+          <div className="comments-toggle-meta">
+            {!loadingComments && comments && comments.length > 0 && (
+              <span className="comments-count">{comments.length}</span>
+            )}
+            <span className="comments-toggle-icon" aria-hidden="true" />
+          </div>
+        </button>
+      )}
+
+      {commentsExpanded && commentsBody}
+    </section>
+  )
+
+  const videoElement = embedUrl ? (
+    <div className="broadcast-video" ref={videoContainerRef}>
+      <iframe
+        src={embedUrl}
+        title="VK Видео"
+        allow="autoplay; fullscreen; picture-in-picture"
+        allowFullScreen
+        frameBorder={0}
+      />
+      {fullscreenControl}
+    </div>
+  ) : (
+    <div className="broadcast-fallback">
+      <p>Не удалось подготовить плеер для указанной ссылки.</p>
+    </div>
+  )
+
+  if (landscapeActive) {
+    return (
+      <div className={broadcastViewClassName}>
+        <div className="broadcast-landscape">
+          {videoElement}
+          {commentsSection}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className={broadcastViewClassName}>
-      {embedUrl ? (
-        <div className="broadcast-video" ref={videoContainerRef}>
-          <iframe
-            src={embedUrl}
-            title="VK Видео"
-            allow="autoplay; fullscreen; picture-in-picture"
-            allowFullScreen
-            frameBorder={0}
-          />
-          {fullscreenControl}
-        </div>
-      ) : (
-        <div className="broadcast-fallback">
-          <p>Не удалось подготовить плеер для указанной ссылки.</p>
-        </div>
-      )}
-
-      {!landscapeActive && (
-        <section className={`comments-section ${isExpanded ? 'expanded' : 'collapsed'}`}>
-          <button
-            type="button"
-            className="comments-toggle"
-            onClick={handleToggle}
-            aria-expanded={isExpanded}
-            aria-controls={commentsBodyId}
-          >
-            <div className="comments-toggle-text">
-              <span className="comments-title">Комментарии</span>
-              {loadingComments && <span className="comments-status">Обновляем…</span>}
-            </div>
-            <div className="comments-toggle-meta">
-              {!loadingComments && comments && comments.length > 0 && (
-                <span className="comments-count">{comments.length}</span>
-              )}
-              <span className="comments-toggle-icon" aria-hidden="true" />
-            </div>
-          </button>
-
-          {isExpanded && (
-            <div className="comments-body" id={commentsBodyId}>
-              {errorMessage ? (
-                <div className="comment-error-row">
-                  <span className="comment-error">{errorMessage}</span>
-                  <button
-                    type="button"
-                    className="comment-retry"
-                    onClick={onRetry}
-                    disabled={loadingComments}
-                  >
-                    Повторить
-                  </button>
-                </div>
-              ) : (
-                commentsContent
-              )}
-
-              <form className="comment-form" onSubmit={handleSubmit}>
-                {author ? null : (
-                  <div className="comment-auth-hint">
-                    <p>Чтобы писать в чат, авторизуйтесь через Telegram.</p>
-                    {onOpenProfile && (
-                      <button
-                        type="button"
-                        className="comment-auth-button"
-                        onClick={onOpenProfile}
-                      >
-                        Открыть профиль
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                <label className="comment-field">
-                  <span className="comment-label">Сообщение</span>
-                  <textarea
-                    value={commentText}
-                    onChange={handleTextChange}
-                    maxLength={COMMENT_MAX_LENGTH}
-                    placeholder="Поддержите команду (до 100 символов)."
-                    className="comment-textarea"
-                    rows={3}
-                    disabled={!author}
-                  />
-                </label>
-
-                <p className="comment-hint">
-                  Сообщения до 100 символов, отправлять можно раз в 3 минуты.
-                </p>
-
-                <div className="comment-controls">
-                  <span className="comment-counter">{remaining}</span>
-                  <button type="submit" className="comment-submit" disabled={submitDisabled}>
-                    {submittingComment ? 'Отправляем…' : 'Отправить'}
-                  </button>
-                </div>
-
-                {authError && <div className="comment-auth-error">{authError}</div>}
-              </form>
-            </div>
-          )}
-        </section>
-      )}
+      {videoElement}
+      {commentsSection}
     </div>
   )
 }

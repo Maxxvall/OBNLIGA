@@ -359,6 +359,11 @@ export const MatchDetailsPage: React.FC = () => {
     away: null,
   })
   const scoreTimersRef = React.useRef<{ home?: number; away?: number }>({})
+  const [landscapeBroadcastMode, setLandscapeBroadcastMode] = React.useState(false)
+
+  const handleLandscapeModeChange = React.useCallback((value: boolean) => {
+    setLandscapeBroadcastMode(prev => (prev === value ? prev : value))
+  }, [])
 
   React.useEffect(() => {
     const cleanupTimers = scoreTimersRef.current
@@ -452,13 +457,27 @@ export const MatchDetailsPage: React.FC = () => {
     previousScoresRef.current = { home: homeScoreValue, away: awayScoreValue }
   }, [matchDetails.open, homeScoreValue, awayScoreValue])
 
+  React.useEffect(() => {
+    if (activeTab !== 'broadcast') {
+      setLandscapeBroadcastMode(false)
+    }
+  }, [activeTab])
+
+  React.useEffect(() => {
+    if (!matchDetails.open) {
+      setLandscapeBroadcastMode(false)
+    }
+  }, [matchDetails.open])
+
+  const pageClassName = `match-details-page${landscapeBroadcastMode ? ' landscape-video-active' : ''}`
+
   if (!matchDetails.open || !matchId) {
     return null
   }
 
   if (!header && !snapshot) {
     return (
-      <div className="match-details-page">
+      <div className={pageClassName}>
         <div className="match-details-shell">
           <div className="match-details-loading">
             <p>Загрузка...</p>
@@ -490,7 +509,7 @@ export const MatchDetailsPage: React.FC = () => {
   const showStatsTab = shouldShowStatsTab(status, matchDateIso)
 
   return (
-    <div className="match-details-page">
+    <div className={pageClassName}>
       <div className="match-details-shell">
         <div className="match-details-header">
           <button className="back-btn" onClick={closeMatchDetails} aria-label="Назад">
@@ -587,6 +606,8 @@ export const MatchDetailsPage: React.FC = () => {
               onRetry={handleRetryComments}
               onSubmit={handleSubmitComment}
               onOpenProfile={() => setTab('profile')}
+              onLandscapeModeChange={handleLandscapeModeChange}
+              landscapeMode={landscapeBroadcastMode}
             />
           )}
         </div>
@@ -735,6 +756,8 @@ type BroadcastViewProps = {
   onRetry: () => void
   onSubmit: (payload: CommentSubmitPayload) => Promise<boolean>
   onOpenProfile?: () => void
+  onLandscapeModeChange?: (value: boolean) => void
+  landscapeMode?: boolean
 }
 
 const BroadcastView: React.FC<BroadcastViewProps> = ({
@@ -748,6 +771,8 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
   onRetry,
   onSubmit,
   onOpenProfile,
+  onLandscapeModeChange,
+  landscapeMode = false,
 }) => {
   const [commentText, setCommentText] = React.useState('')
   const [authError, setAuthError] = React.useState<string | null>(null)
@@ -762,6 +787,7 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
       Boolean(broadcast?.st === 'available' && broadcast.url && broadcast.url.trim().length > 0),
     [broadcast]
   )
+  const landscapeActive = Boolean(landscapeMode)
 
   React.useEffect(() => {
     if (typeof window === 'undefined') {
@@ -774,6 +800,65 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
       window.removeEventListener('focus', updateAuthor)
     }
   }, [])
+
+  React.useEffect(() => {
+    if (!onLandscapeModeChange) {
+      return
+    }
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const orientationMedia = window.matchMedia('(orientation: landscape)')
+    const coarsePointerMedia = window.matchMedia('(pointer: coarse)')
+
+    const evaluateLandscape = () => {
+      const isLandscape = orientationMedia.matches || window.innerWidth > window.innerHeight
+      const isTouchDevice =
+        coarsePointerMedia.matches ||
+        (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0)
+      onLandscapeModeChange(isLandscape && isTouchDevice && broadcastAvailable)
+    }
+
+    evaluateLandscape()
+
+    const handleChange = () => {
+      evaluateLandscape()
+    }
+
+    if (typeof orientationMedia.addEventListener === 'function') {
+      orientationMedia.addEventListener('change', handleChange)
+    } else if (typeof orientationMedia.addListener === 'function') {
+      orientationMedia.addListener(handleChange)
+    }
+
+    if (typeof coarsePointerMedia.addEventListener === 'function') {
+      coarsePointerMedia.addEventListener('change', handleChange)
+    } else if (typeof coarsePointerMedia.addListener === 'function') {
+      coarsePointerMedia.addListener(handleChange)
+    }
+
+    window.addEventListener('resize', handleChange)
+    window.addEventListener('orientationchange', handleChange)
+
+    return () => {
+      onLandscapeModeChange(false)
+      if (typeof orientationMedia.removeEventListener === 'function') {
+        orientationMedia.removeEventListener('change', handleChange)
+      } else if (typeof orientationMedia.removeListener === 'function') {
+        orientationMedia.removeListener(handleChange)
+      }
+
+      if (typeof coarsePointerMedia.removeEventListener === 'function') {
+        coarsePointerMedia.removeEventListener('change', handleChange)
+      } else if (typeof coarsePointerMedia.removeListener === 'function') {
+        coarsePointerMedia.removeListener(handleChange)
+      }
+
+      window.removeEventListener('resize', handleChange)
+      window.removeEventListener('orientationchange', handleChange)
+    }
+  }, [broadcastAvailable, onLandscapeModeChange])
 
   React.useEffect(() => {
     if (typeof document === 'undefined') {
@@ -844,6 +929,12 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
       return next
     })
   }, [])
+
+  React.useEffect(() => {
+    if (landscapeActive) {
+      setIsExpanded(false)
+    }
+  }, [landscapeActive])
 
   const handleTextChange = React.useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = event.target.value
@@ -944,7 +1035,7 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
 
   const broadcastUrl = broadcast.url?.trim() ?? ''
   const embedUrl = broadcastUrl ? buildVkEmbedUrl(broadcastUrl) : null
-  const fullscreenControl = fullscreenSupported ? (
+  const fullscreenControl = fullscreenSupported && !landscapeActive ? (
     <div className="broadcast-controls">
       <button
         type="button"
@@ -957,8 +1048,10 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
     </div>
   ) : null
 
+  const broadcastViewClassName = `broadcast-view${landscapeActive ? ' landscape-active' : ''}`
+
   return (
-    <div className="broadcast-view">
+    <div className={broadcastViewClassName}>
       {embedUrl ? (
         <div className="broadcast-video" ref={videoContainerRef}>
           <iframe
@@ -976,89 +1069,91 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
         </div>
       )}
 
-      <section className={`comments-section ${isExpanded ? 'expanded' : 'collapsed'}`}>
-        <button
-          type="button"
-          className="comments-toggle"
-          onClick={handleToggle}
-          aria-expanded={isExpanded}
-          aria-controls={commentsBodyId}
-        >
-          <div className="comments-toggle-text">
-            <span className="comments-title">Комментарии</span>
-            {loadingComments && <span className="comments-status">Обновляем…</span>}
-          </div>
-          <div className="comments-toggle-meta">
-            {!loadingComments && comments && comments.length > 0 && (
-              <span className="comments-count">{comments.length}</span>
-            )}
-            <span className="comments-toggle-icon" aria-hidden="true" />
-          </div>
-        </button>
+      {!landscapeActive && (
+        <section className={`comments-section ${isExpanded ? 'expanded' : 'collapsed'}`}>
+          <button
+            type="button"
+            className="comments-toggle"
+            onClick={handleToggle}
+            aria-expanded={isExpanded}
+            aria-controls={commentsBodyId}
+          >
+            <div className="comments-toggle-text">
+              <span className="comments-title">Комментарии</span>
+              {loadingComments && <span className="comments-status">Обновляем…</span>}
+            </div>
+            <div className="comments-toggle-meta">
+              {!loadingComments && comments && comments.length > 0 && (
+                <span className="comments-count">{comments.length}</span>
+              )}
+              <span className="comments-toggle-icon" aria-hidden="true" />
+            </div>
+          </button>
 
-        {isExpanded && (
-          <div className="comments-body" id={commentsBodyId}>
-            {errorMessage ? (
-              <div className="comment-error-row">
-                <span className="comment-error">{errorMessage}</span>
-                <button
-                  type="button"
-                  className="comment-retry"
-                  onClick={onRetry}
-                  disabled={loadingComments}
-                >
-                  Повторить
-                </button>
-              </div>
-            ) : (
-              commentsContent
-            )}
-
-            <form className="comment-form" onSubmit={handleSubmit}>
-              {author ? null : (
-                <div className="comment-auth-hint">
-                  <p>Чтобы писать в чат, авторизуйтесь через Telegram.</p>
-                  {onOpenProfile && (
-                    <button
-                      type="button"
-                      className="comment-auth-button"
-                      onClick={onOpenProfile}
-                    >
-                      Открыть профиль
-                    </button>
-                  )}
+          {isExpanded && (
+            <div className="comments-body" id={commentsBodyId}>
+              {errorMessage ? (
+                <div className="comment-error-row">
+                  <span className="comment-error">{errorMessage}</span>
+                  <button
+                    type="button"
+                    className="comment-retry"
+                    onClick={onRetry}
+                    disabled={loadingComments}
+                  >
+                    Повторить
+                  </button>
                 </div>
+              ) : (
+                commentsContent
               )}
 
-              <label className="comment-field">
-                <span className="comment-label">Сообщение</span>
-                <textarea
-                  value={commentText}
-                  onChange={handleTextChange}
-                  maxLength={COMMENT_MAX_LENGTH}
-                  placeholder="Поддержите команду (до 100 символов)."
-                  className="comment-textarea"
-                  rows={3}
-                  disabled={!author}
-                />
-              </label>
+              <form className="comment-form" onSubmit={handleSubmit}>
+                {author ? null : (
+                  <div className="comment-auth-hint">
+                    <p>Чтобы писать в чат, авторизуйтесь через Telegram.</p>
+                    {onOpenProfile && (
+                      <button
+                        type="button"
+                        className="comment-auth-button"
+                        onClick={onOpenProfile}
+                      >
+                        Открыть профиль
+                      </button>
+                    )}
+                  </div>
+                )}
 
-              <p className="comment-hint">
-                Сообщения до 100 символов, отправлять можно раз в 3 минуты.
-              </p>
+                <label className="comment-field">
+                  <span className="comment-label">Сообщение</span>
+                  <textarea
+                    value={commentText}
+                    onChange={handleTextChange}
+                    maxLength={COMMENT_MAX_LENGTH}
+                    placeholder="Поддержите команду (до 100 символов)."
+                    className="comment-textarea"
+                    rows={3}
+                    disabled={!author}
+                  />
+                </label>
 
-              <div className="comment-controls">
-                <span className="comment-counter">{remaining}</span>
-                <button type="submit" className="comment-submit" disabled={submitDisabled}>
-                  {submittingComment ? 'Отправляем…' : 'Отправить'}
-                </button>
-              </div>
+                <p className="comment-hint">
+                  Сообщения до 100 символов, отправлять можно раз в 3 минуты.
+                </p>
 
-              {authError && <div className="comment-auth-error">{authError}</div>}
-            </form>
-          </div>
-        )}
-      </section>
+                <div className="comment-controls">
+                  <span className="comment-counter">{remaining}</span>
+                  <button type="submit" className="comment-submit" disabled={submitDisabled}>
+                    {submittingComment ? 'Отправляем…' : 'Отправить'}
+                  </button>
+                </div>
+
+                {authError && <div className="comment-auth-error">{authError}</div>}
+              </form>
+            </div>
+          )}
+        </section>
+      )}
     </div>
   )
 }

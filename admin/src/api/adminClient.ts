@@ -10,7 +10,7 @@ import type {
   SeriesFormat,
   Person,
 } from '../types'
-import type { NewsItem } from '@shared/types'
+import type { AdBanner, AdBannerImage, NewsItem } from '@shared/types'
 
 const API_BASE = import.meta.env.VITE_ADMIN_API_BASE || 'http://localhost:3000'
 
@@ -30,6 +30,28 @@ const ERROR_DICTIONARY: Record<string, string> = {
   news_title_too_long: 'Заголовок не должен превышать 100 символов.',
   news_content_required: 'Введите текст новости.',
   news_update_payload_empty: 'Изменений не обнаружено — сохранение не требуется.',
+  ad_title_required: 'Введите название рекламы.',
+  ad_title_too_long: 'Название рекламы не должно превышать 80 символов.',
+  ad_subtitle_too_long: 'Подзаголовок не должен превышать 160 символов.',
+  ad_target_url_invalid: 'Введите корректную ссылку (http или https).',
+  ad_target_url_too_long: 'Ссылка слишком длинная — максимум 2000 символов.',
+  ad_display_order_invalid: 'Порядок показа должен быть числом от 0 до 9999.',
+  ad_image_required: 'Добавьте изображение баннера.',
+  ad_image_mime_required: 'Не удалось определить тип изображения.',
+  ad_image_mime_unsupported: 'Изображение должно быть в формате PNG, JPEG или WebP.',
+  ad_image_base64_required: 'Не удалось прочитать содержимое изображения.',
+  ad_image_invalid: 'Файл изображения повреждён или имеет неверный формат.',
+  ad_image_too_large: 'Изображение слишком большое — максимум 1 МБ.',
+  ad_image_dimensions_invalid: 'Размеры изображения некорректны или превышают 4096 пикселей.',
+  ad_image_size_invalid: 'Некорректный размер файла изображения.',
+  ad_image_size_mismatch: 'Размер файла не совпадает с содержимым изображения.',
+  ad_schedule_invalid: 'Некорректные значения дат показа.',
+  ad_schedule_range_invalid: 'Дата окончания не может быть раньше даты начала.',
+  ad_starts_at_invalid: 'Некорректная дата начала показа.',
+  ad_ends_at_invalid: 'Некорректная дата окончания показа.',
+  ad_update_payload_empty: 'Изменений не обнаружено — сохранение не требуется.',
+  ad_id_invalid: 'Некорректный идентификатор рекламы.',
+  ad_not_found: 'Рекламный баннер не найден.',
   login_and_password_required: 'Введите логин и пароль.',
   invalid_credentials: 'Неверный логин или пароль.',
   admin_auth_unavailable: 'Сервис авторизации временно недоступен.',
@@ -382,6 +404,41 @@ export const adminPatch = async <T>(
 
 export const adminDelete = async <T>(token: string | undefined, path: string): Promise<T> =>
   adminRequest<T>(token, path, { method: 'DELETE' })
+
+export interface AdminAdCreatePayload {
+  title: string
+  subtitle?: string | null
+  targetUrl?: string | null
+  displayOrder?: number
+  isActive?: boolean
+  startsAt?: string | null
+  endsAt?: string | null
+  image: AdBannerImage
+}
+
+export type AdminAdUpdatePayload = Partial<Omit<AdminAdCreatePayload, 'image'>> & {
+  image?: AdBannerImage
+}
+
+export const adminFetchAds = async (
+  token: string | undefined
+): Promise<AdBanner[]> => adminGet<AdBanner[]>(token, '/api/admin/news/ads')
+
+export const adminCreateAd = async (
+  token: string | undefined,
+  payload: AdminAdCreatePayload
+): Promise<AdBanner> => adminPost<AdBanner>(token, '/api/admin/news/ads', payload)
+
+export const adminUpdateAd = async (
+  token: string | undefined,
+  adId: string,
+  payload: AdminAdUpdatePayload
+): Promise<AdBanner> => adminPatch<AdBanner>(token, `/api/admin/news/ads/${adId}`, payload)
+
+export const adminDeleteAd = async (
+  token: string | undefined,
+  adId: string
+): Promise<AdBanner> => adminDelete<AdBanner>(token, `/api/admin/news/ads/${adId}`)
 
 export interface UpdateClubPlayersPayload {
   players: Array<{ personId: number; defaultShirtNumber?: number | null }>

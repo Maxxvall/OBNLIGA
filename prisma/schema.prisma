@@ -554,6 +554,27 @@ model News {
   @@map("news")
 }
 
+model AdBanner {
+  id           BigInt   @id @default(autoincrement()) @map("ad_banner_id")
+  title        String   @db.VarChar(80)
+  subtitle     String?  @db.VarChar(160)
+  targetUrl    String?  @map("target_url")
+  imageData    Bytes    @map("image_data")
+  imageMime    String   @map("image_mime")
+  imageWidth   Int      @map("image_width")
+  imageHeight  Int      @map("image_height")
+  imageSize    Int      @map("image_size")
+  displayOrder Int      @default(0) @map("display_order")
+  isActive     Boolean  @default(true) @map("is_active")
+  startsAt     DateTime? @map("starts_at")
+  endsAt       DateTime? @map("ends_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([isActive, displayOrder, updatedAt], map: "ad_banner_active_order")
+  @@map("ad_banner")
+}
+
 model Disqualification {
   id        BigInt   @id @default(autoincrement()) @map("disqualification_id")
   personId  Int      @map("person_id")

@@ -33,6 +33,28 @@ export interface NewsItem {
   createdAt: string
 }
 
+export interface AdBannerImage {
+  mimeType: string
+  base64: string
+  width: number
+  height: number
+  size: number
+}
+
+export interface AdBanner {
+  id: string
+  title: string
+  subtitle?: string | null
+  targetUrl?: string | null
+  image: AdBannerImage
+  displayOrder: number
+  isActive: boolean
+  startsAt?: string | null
+  endsAt?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface LeagueSeasonSummary {
   id: number
   name: string

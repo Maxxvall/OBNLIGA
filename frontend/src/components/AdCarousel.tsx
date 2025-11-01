@@ -408,6 +408,16 @@ export function AdCarousel() {
   )
 
   const activeAd = displayAds[activeIndex] ?? null
+  const helperText = useMemo(() => {
+    if (displayAds.length === 0) {
+      return 'Рекламный блок.'
+    }
+    if (displayAds.length > 1) {
+      return 'Автопрокрутка каждые 7 секунд'
+    }
+    const single = displayAds[0]
+    return single.safeTarget ? 'Тапните для перехода по ссылке' : null
+  }, [displayAds])
 
   if (loading && displayAds.length === 0) {
     return (
@@ -430,14 +440,15 @@ export function AdCarousel() {
   }
 
   if (!activeAd) {
-    return null
+    return (
+      <section className="ads-carousel" aria-live="polite" aria-label="Партнёрские баннеры">
+        <p className="ads-meta">{helperText}</p>
+        <div className="ads-card">
+          <div className="ads-placeholder">Баннеров пока нет — как только они появятся, мы покажем их здесь.</div>
+        </div>
+      </section>
+    )
   }
-
-  const helperText = displayAds.length > 1
-    ? 'Автопрокрутка каждые 7 секунд'
-    : activeAd.safeTarget
-      ? 'Тапните для перехода по ссылке'
-      : null
   const slideLabel = activeAd.subtitle ? `${activeAd.title}. ${activeAd.subtitle}` : activeAd.title
 
   return (

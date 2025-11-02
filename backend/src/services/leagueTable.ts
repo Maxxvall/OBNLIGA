@@ -135,6 +135,7 @@ export const buildLeagueTable = async (
         seasonId: season.id,
         status: MatchStatus.FINISHED,
         OR: [{ roundId: null }, { round: { roundType: RoundType.REGULAR } }],
+        isFriendly: false,
       },
       select: {
         homeTeamId: true,

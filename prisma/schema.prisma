@@ -54,7 +54,6 @@ model Person {
   careerStats     PlayerClubCareerStats[]
   disqualifications Disqualification[]
   refereedMatches Match[] @relation("match_referee")
-  refereedFriendlyMatches FriendlyMatch[] @relation("friendly_match_referee")
   clubAffiliations ClubPlayer[]
   linkedAppUsers AppUser[] @relation("AppUserLeaguePlayer")
 
@@ -166,7 +165,6 @@ model Stadium {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   matches Match[]
-  friendlyMatches FriendlyMatch[]
 
   @@map("stadium")
 }
@@ -226,7 +224,7 @@ enum SeriesStatus {
 
 model Match {
   id          BigInt   @id @default(autoincrement()) @map("match_id")
-  seasonId    Int      @map("season_id")
+  seasonId    Int?     @map("season_id")
   seriesId    BigInt?  @map("series_id")
   seriesMatchNumber Int? @map("series_match_number")
   matchDateTime DateTime @map("match_date_time")
@@ -244,11 +242,13 @@ model Match {
   penaltyHomeScore  Int      @default(0) @map("penalty_home_score")
   penaltyAwayScore  Int      @default(0) @map("penalty_away_score")
   broadcastUrl     String?  @map("broadcast_url")
+  eventName        String?  @map("event_name")
+  isFriendly       Boolean  @default(false) @map("is_friendly")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  season   Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  season   Season? @relation(fields: [seasonId], references: [id], onDelete: Cascade)
   series   MatchSeries? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
   homeClub Club   @relation("match_home", fields: [homeTeamId], references: [id], onDelete: Restrict)
   awayClub Club   @relation("match_away", fields: [awayTeamId], references: [id], onDelete: Restrict)
@@ -298,24 +298,6 @@ model SeasonGroupSlot {
 
   @@unique([groupId, position], name: "unique_slot_per_group")
   @@map("season_group_slot")
-}
-
-model FriendlyMatch {
-  id           BigInt   @id @default(autoincrement()) @map("friendly_match_id")
-  matchDateTime DateTime @map("match_date_time")
-  homeTeamName  String   @map("home_team_name")
-  awayTeamName  String   @map("away_team_name")
-  eventName     String?  @map("event_name")
-  stadiumId     Int?     @map("stadium_id")
-  refereeId     Int?     @map("referee_id")
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  stadium Stadium? @relation(fields: [stadiumId], references: [id], onDelete: SetNull)
-  referee Person?  @relation("friendly_match_referee", fields: [refereeId], references: [id], onDelete: SetNull)
-
-  @@map("friendly_match")
 }
 
 enum MatchStatus {

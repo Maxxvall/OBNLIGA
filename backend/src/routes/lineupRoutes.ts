@@ -295,8 +295,14 @@ const registerLineupRouteGroup = (
         return reply.status(400).send({ ok: false, error: 'club_not_in_match' })
       }
 
+      if (match.seasonId == null) {
+        return reply.status(409).send({ ok: false, error: 'season_required' })
+      }
+
+      const seasonId = match.seasonId
+
       const roster = await prisma.seasonRoster.findMany({
-        where: { seasonId: match.seasonId, clubId },
+        where: { seasonId, clubId },
         include: {
           person: true,
         },
@@ -420,9 +426,15 @@ const registerLineupRouteGroup = (
         return reply.status(400).send({ ok: false, error: 'club_not_in_match' })
       }
 
+      if (match.seasonId == null) {
+        return reply.status(409).send({ ok: false, error: 'season_required' })
+      }
+
+      const seasonId = match.seasonId
+
       const clubRoster = await prisma.seasonRoster.findMany({
         where: {
-          seasonId: match.seasonId,
+          seasonId,
           clubId,
         },
         select: {
@@ -538,7 +550,7 @@ const registerLineupRouteGroup = (
             await tx.seasonRoster.update({
               where: {
                 seasonId_clubId_personId: {
-                  seasonId: match.seasonId,
+                  seasonId,
                   clubId,
                   personId,
                 },
@@ -551,7 +563,7 @@ const registerLineupRouteGroup = (
             await tx.seasonRoster.update({
               where: {
                 seasonId_clubId_personId: {
-                  seasonId: match.seasonId,
+                  seasonId,
                   clubId,
                   personId,
                 },
@@ -592,10 +604,10 @@ const registerLineupRouteGroup = (
         }
 
         for (const personId of toAdd) {
-          await adjustMatchesCounters(tx, match.seasonId, clubId, personId, 1)
+          await adjustMatchesCounters(tx, seasonId, clubId, personId, 1)
         }
         for (const personId of toRemove) {
-          await adjustMatchesCounters(tx, match.seasonId, clubId, personId, -1)
+          await adjustMatchesCounters(tx, seasonId, clubId, personId, -1)
         }
 
         if (hasRosterChanges) {

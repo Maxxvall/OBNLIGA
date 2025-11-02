@@ -207,13 +207,27 @@ export interface AssistantMatchSummary {
 export interface FriendlyMatch {
   id: string
   matchDateTime: string
-  homeTeamName: string
-  awayTeamName: string
+  status: MatchSummary['status']
+  seasonId?: number | null
+  season?: { id: number; name: string } | null
+  homeTeamId: number
+  awayTeamId: number
+  homeClubId?: number
+  awayClubId?: number
+  homeScore: number
+  awayScore: number
+  hasPenaltyShootout: boolean
+  penaltyHomeScore: number
+  penaltyAwayScore: number
+  homeClub: Club
+  awayClub: Club
   eventName?: string | null
   stadiumId?: number | null
   refereeId?: number | null
   stadium?: Stadium | null
   referee?: Person | null
+  broadcastUrl?: string | null
+  isFriendly: true
 }
 
 export interface MatchLineupEntry {

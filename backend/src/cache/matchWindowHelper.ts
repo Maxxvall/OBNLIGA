@@ -53,6 +53,7 @@ const computeMatchWindow = async (): Promise<MatchWindowState> => {
       matchDateTime: { gte: from, lte: to },
       status: { in: [MatchStatus.SCHEDULED, MatchStatus.LIVE, MatchStatus.FINISHED] },
       isArchived: false,
+      isFriendly: false,
     },
     select: {
       id: true,
@@ -103,7 +104,9 @@ const computeMatchWindow = async (): Promise<MatchWindowState> => {
 
   const nextMatch = matches.find(match => match.matchDateTime.getTime() >= nowTs)
 
-  const seasonIds = Array.from(new Set(matches.map(match => match.seasonId)))
+  const seasonIds = Array.from(
+    new Set(matches.map(match => match.seasonId).filter((value): value is number => value != null))
+  )
 
   return {
     phase,

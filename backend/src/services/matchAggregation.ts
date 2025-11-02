@@ -101,6 +101,14 @@ export async function handleMatchFinalization(
     return
   }
 
+  if (match.seasonId == null || !match.season) {
+    logger.info(
+      { matchId: matchId.toString() },
+      'match has no season, skip aggregation'
+    )
+    return
+  }
+
   const seasonId = match.seasonId
   const competitionFormat = resolveSeasonSeriesFormat(match.season)
   const isBracketFormat =
@@ -114,7 +122,9 @@ export async function handleMatchFinalization(
     await rebuildPlayerCareerStats(seasonId, tx)
     await processDisqualifications(match, tx)
     await updatePredictions(match, tx)
-    await updateSeriesState(match, tx, logger)
+    if (match.seriesId) {
+      await updateSeriesState(match as SeriesMatch, tx, logger)
+    }
     },
     { timeout: 20000 }
   )
@@ -218,6 +228,7 @@ async function rebuildClubSeasonStats(
     where: {
       seasonId,
       status: MatchStatus.FINISHED,
+      isFriendly: false,
       ...(includePlayoffRounds
         ? {}
         : {
@@ -309,7 +320,7 @@ function newClubSeasonStats(seasonId: number, clubId: number): ClubSeasonStats {
 async function rebuildPlayerSeasonStats(seasonId: number, tx: PrismaTx) {
   const events = await tx.matchEvent.findMany({
     where: {
-      match: { seasonId, status: MatchStatus.FINISHED },
+      match: { seasonId, status: MatchStatus.FINISHED, isFriendly: false },
     },
     select: {
       matchId: true,
@@ -392,7 +403,7 @@ async function rebuildPlayerSeasonStats(seasonId: number, tx: PrismaTx) {
   const lineupAggregates = await tx.matchLineup.groupBy({
     by: ['personId', 'clubId'],
     where: {
-      match: { seasonId, status: MatchStatus.FINISHED },
+      match: { seasonId, status: MatchStatus.FINISHED, isFriendly: false },
     },
     _count: { matchId: true },
   })
@@ -531,6 +542,10 @@ export async function rebuildCareerStatsForClubs(clubIds: number[], tx: PrismaTx
 type MatchWithEvents = Match & { events: Pick<MatchEvent, 'playerId' | 'teamId' | 'eventType'>[] }
 
 async function processDisqualifications(match: MatchWithEvents, tx: PrismaTx) {
+  if (!match.seasonId || match.isFriendly) {
+    return
+  }
+
   const { homeTeamId, awayTeamId } = match
   const involvedClubs = [homeTeamId, awayTeamId]
 

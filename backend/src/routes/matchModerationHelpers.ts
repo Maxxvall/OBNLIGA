@@ -356,13 +356,17 @@ export const loadMatchEventsWithRoster = async (matchId: bigint) => {
     }
   }
 
-  const rosterNumbers = await prisma.seasonRoster.findMany({
-    where: {
-      seasonId: match.seasonId,
-      personId: { in: Array.from(personIds) },
-    },
-    select: { personId: true, shirtNumber: true },
-  })
+  let rosterNumbers: { personId: number; shirtNumber: number }[] = []
+
+  if (match.seasonId != null && personIds.size) {
+    rosterNumbers = await prisma.seasonRoster.findMany({
+      where: {
+        seasonId: match.seasonId,
+        personId: { in: Array.from(personIds) },
+      },
+      select: { personId: true, shirtNumber: true },
+    })
+  }
 
   const shirtMap = new Map<number, number>()
   rosterNumbers.forEach(entry => {
@@ -558,13 +562,17 @@ export const loadMatchLineupWithNumbers = async (matchId: bigint) => {
     return []
   }
 
-  const rosterNumbers = await prisma.seasonRoster.findMany({
-    where: {
-      seasonId: match.seasonId,
-      personId: { in: lineup.map(entry => entry.personId) },
-    },
-    select: { personId: true, shirtNumber: true },
-  })
+  let rosterNumbers: { personId: number; shirtNumber: number }[] = []
+
+  if (match.seasonId != null && lineup.length) {
+    rosterNumbers = await prisma.seasonRoster.findMany({
+      where: {
+        seasonId: match.seasonId,
+        personId: { in: lineup.map(entry => entry.personId) },
+      },
+      select: { personId: true, shirtNumber: true },
+    })
+  }
 
   const shirtMap = new Map<number, number>()
   rosterNumbers.forEach(entry => {

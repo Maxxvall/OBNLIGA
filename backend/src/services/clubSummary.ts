@@ -211,6 +211,7 @@ export const buildClubSummary = async (clubId: number): Promise<ClubSummarySnaps
       where: {
         status: MatchStatus.FINISHED,
         OR: [{ homeTeamId: clubId }, { awayTeamId: clubId }],
+        isFriendly: false,
       },
       orderBy: [{ matchDateTime: 'desc' }],
       include: {
@@ -223,14 +224,14 @@ export const buildClubSummary = async (clubId: number): Promise<ClubSummarySnaps
       where: {
         teamId: clubId,
         eventType: MatchEventType.YELLOW_CARD,
-        match: { status: MatchStatus.FINISHED },
+        match: { status: MatchStatus.FINISHED, isFriendly: false },
       },
     }),
     prisma.matchEvent.count({
       where: {
         teamId: clubId,
         eventType: MatchEventType.RED_CARD,
-        match: { status: MatchStatus.FINISHED },
+        match: { status: MatchStatus.FINISHED, isFriendly: false },
       },
     }),
     prisma.playerClubCareerStats.findMany({
@@ -253,6 +254,38 @@ export const buildClubSummary = async (clubId: number): Promise<ClubSummarySnaps
     seasonIds.add(participant.seasonId)
   }
 
+  const officialMatches: MatchRow[] = matches
+    .filter(match => match.seasonId !== null && match.season !== null)
+    .map(match => ({
+      id: match.id,
+      seasonId: match.seasonId as number,
+      matchDateTime: match.matchDateTime,
+      homeTeamId: match.homeTeamId,
+      awayTeamId: match.awayTeamId,
+      homeScore: match.homeScore,
+      awayScore: match.awayScore,
+      hasPenaltyShootout: match.hasPenaltyShootout,
+      penaltyHomeScore: match.hasPenaltyShootout ? match.penaltyHomeScore : null,
+      penaltyAwayScore: match.hasPenaltyShootout ? match.penaltyAwayScore : null,
+      homeClub: {
+        id: match.homeClub.id,
+        name: match.homeClub.name,
+        shortName: match.homeClub.shortName ?? null,
+        logoUrl: match.homeClub.logoUrl ?? null,
+      },
+      awayClub: {
+        id: match.awayClub.id,
+        name: match.awayClub.name,
+        shortName: match.awayClub.shortName ?? null,
+        logoUrl: match.awayClub.logoUrl ?? null,
+      },
+      season: {
+        id: match.season!.id,
+        name: match.season!.name,
+        competition: match.season!.competition,
+      },
+    }))
+
   let wins = 0
   let draws = 0
   let losses = 0
@@ -260,7 +293,7 @@ export const buildClubSummary = async (clubId: number): Promise<ClubSummarySnaps
   let goalsAgainst = 0
   let cleanSheets = 0
 
-  for (const match of matches) {
+  for (const match of officialMatches) {
     seasonIds.add(match.seasonId)
     const isHome = match.homeTeamId === clubId
     const ownScore = isHome ? match.homeScore : match.awayScore
@@ -281,7 +314,7 @@ export const buildClubSummary = async (clubId: number): Promise<ClubSummarySnaps
   }
 
   const tournaments = seasonIds.size
-  const matchesPlayed = matches.length
+  const matchesPlayed = officialMatches.length
 
   const squad = squadData.map((player) => ({
     playerId: player.personId,
@@ -312,7 +345,7 @@ export const buildClubSummary = async (clubId: number): Promise<ClubSummarySnaps
       redCards,
       cleanSheets,
     },
-    form: matches.slice(0, CLUB_FORM_LIMIT).map(match => buildFormEntry(match, clubId)),
+    form: officialMatches.slice(0, CLUB_FORM_LIMIT).map(match => buildFormEntry(match, clubId)),
     squad,
     achievements: [],
     generatedAt: new Date().toISOString(),

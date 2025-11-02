@@ -40,8 +40,9 @@ type SeriesFormState = {
 
 type MatchFormState = {
   matchDateTime: string
-  homeTeamName: string
-  awayTeamName: string
+  homeClubId: number | ''
+  awayClubId: number | ''
+  seasonId: number | ''
   stadiumId: number | ''
   refereeId: number | ''
   eventName: string
@@ -97,6 +98,11 @@ type MatchUpdateFormState = {
   broadcastUrl: string
 }
 
+type AdminMatch = MatchSummary | FriendlyMatch
+
+const isFriendlyMatch = (match: AdminMatch): match is FriendlyMatch =>
+  'isFriendly' in match && match.isFriendly === true
+
 const playoffBestOfOptions = [3, 5, 7]
 
 const defaultSeriesForm: SeriesFormState = {
@@ -107,8 +113,9 @@ const defaultSeriesForm: SeriesFormState = {
 
 const defaultMatchForm: MatchFormState = {
   matchDateTime: '',
-  homeTeamName: '',
-  awayTeamName: '',
+  homeClubId: '',
+  awayClubId: '',
+  seasonId: '',
   stadiumId: '',
   refereeId: '',
   eventName: '',
@@ -190,7 +197,7 @@ const resizeGroupSlots = (
   return next
 }
 
-const buildMatchUpdateForm = (match: MatchSummary): MatchUpdateFormState => ({
+const buildMatchUpdateForm = (match: AdminMatch): MatchUpdateFormState => ({
   homeScore: typeof match.homeScore === 'number' ? match.homeScore : '',
   awayScore: typeof match.awayScore === 'number' ? match.awayScore : '',
   status: match.status,
@@ -992,15 +999,23 @@ export const MatchesTab = () => {
   const handleMatchSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const matchDate = matchForm.matchDateTime
-    const homeName = matchForm.homeTeamName.trim()
-    const awayName = matchForm.awayTeamName.trim()
-
-    if (!matchDate || !homeName || !awayName) {
-      handleFeedback('Укажите дату и названия команд', 'error')
+    if (!matchDate) {
+      handleFeedback('Укажите дату и время матча', 'error')
       return
     }
-    if (homeName.toLowerCase() === awayName.toLowerCase()) {
-      handleFeedback('Названия команд должны отличаться', 'error')
+
+    const homeClubId =
+      typeof matchForm.homeClubId === 'number' ? matchForm.homeClubId : Number.NaN
+    const awayClubId =
+      typeof matchForm.awayClubId === 'number' ? matchForm.awayClubId : Number.NaN
+
+    if (!Number.isFinite(homeClubId) || !Number.isFinite(awayClubId)) {
+      handleFeedback('Выберите команды для товарищеского матча', 'error')
+      return
+    }
+
+    if (homeClubId === awayClubId) {
+      handleFeedback('Команды должны отличаться', 'error')
       return
     }
     const matchDateIso = toMoscowISOString(matchDate)
@@ -1011,8 +1026,10 @@ export const MatchesTab = () => {
     await runWithMessages(async () => {
       await adminPost(token, '/api/admin/friendly-matches', {
         matchDateTime: matchDateIso,
-        homeTeamName: homeName,
-        awayTeamName: awayName,
+        homeClubId,
+        awayClubId,
+        seasonId:
+          typeof matchForm.seasonId === 'number' ? Number(matchForm.seasonId) : undefined,
         stadiumId: matchForm.stadiumId || undefined,
         refereeId: matchForm.refereeId || undefined,
         eventName: matchForm.eventName.trim() || undefined,
@@ -1029,7 +1046,7 @@ export const MatchesTab = () => {
     }, 'Товарищеский матч удалён')
   }
 
-  const handleMatchSelect = (match: MatchSummary) => {
+  const handleMatchSelect = (match: AdminMatch) => {
     setSelectedMatchId(match.id)
     setMatchModalOpen(true)
     setMatchStats({})
@@ -1050,9 +1067,16 @@ export const MatchesTab = () => {
     setMatchStatsVersion(undefined)
   }
 
-  const handleMatchUpdate = async (match: MatchSummary, form: MatchUpdateFormState) => {
-    const seasonId = ensureSeasonSelected()
-    if (!seasonId) return
+  const handleMatchUpdate = async (match: AdminMatch, form: MatchUpdateFormState) => {
+    const friendly = isFriendlyMatch(match)
+    let targetSeasonId: number | null = null
+    if (friendly) {
+      targetSeasonId = match.seasonId ?? null
+    } else {
+      const ensured = ensureSeasonSelected()
+      if (!ensured) return
+      targetSeasonId = ensured
+    }
     const allowScoreUpdate = form.status === 'LIVE' || form.status === 'FINISHED'
     const homeScorePayload =
       allowScoreUpdate && form.homeScore !== '' ? Math.max(0, Number(form.homeScore)) : undefined
@@ -1080,8 +1104,12 @@ export const MatchesTab = () => {
         penaltyAwayScore: Math.max(0, Math.trunc(form.penaltyAwayScore)),
         broadcastUrl: form.broadcastUrl.trim(),
       })
-      await fetchSeries(seasonId, { force: true })
-      await fetchMatches(seasonId, { force: true })
+      if (friendly) {
+        await fetchFriendlyMatches()
+      } else if (targetSeasonId) {
+        await fetchSeries(targetSeasonId, { force: true })
+        await fetchMatches(targetSeasonId, { force: true })
+      }
       await loadMatchDetails(match.id)
     }, 'Матч обновлён')
   }
@@ -1361,10 +1389,14 @@ export const MatchesTab = () => {
     }
     return Array.from(map.entries()).map(([key, value]) => ({ key, ...value }))
   }, [matchesSorted])
-  const selectedMatch = useMemo(() => {
+  const selectedMatch = useMemo<AdminMatch | null>(() => {
     if (!selectedMatchId) return null
-    return seasonMatches.find(match => match.id === selectedMatchId) ?? null
-  }, [selectedMatchId, seasonMatches])
+    return (
+      seasonMatches.find(match => match.id === selectedMatchId) ??
+      friendlyMatchesSorted.find(match => match.id === selectedMatchId) ??
+      null
+    )
+  }, [friendlyMatchesSorted, seasonMatches, selectedMatchId])
 
   const selectedMatchTeams = useMemo(() => {
     if (!selectedMatch) return []
@@ -2379,28 +2411,63 @@ export const MatchesTab = () => {
                 />
               </label>
               <label>
-                Хозяева
-                <input
-                  type="text"
-                  value={matchForm.homeTeamName}
+                Сезон (необязательно)
+                <select
+                  value={matchForm.seasonId}
                   onChange={event =>
-                    setMatchForm(form => ({ ...form, homeTeamName: event.target.value }))
+                    setMatchForm(form => ({
+                      ...form,
+                      seasonId: event.target.value ? Number(event.target.value) : '',
+                    }))
                   }
-                  placeholder="Например: ФК Обнинск"
+                >
+                  <option value="">—</option>
+                  {data.seasons.map(season => (
+                    <option key={season.id} value={season.id}>
+                      {season.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Хозяева
+                <select
+                  value={matchForm.homeClubId}
+                  onChange={event =>
+                    setMatchForm(form => ({
+                      ...form,
+                      homeClubId: event.target.value ? Number(event.target.value) : '',
+                    }))
+                  }
                   required
-                />
+                >
+                  <option value="">Выберите клуб…</option>
+                  {data.clubs.map(club => (
+                    <option key={club.id} value={club.id}>
+                      {club.name}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label>
                 Гости
-                <input
-                  type="text"
-                  value={matchForm.awayTeamName}
+                <select
+                  value={matchForm.awayClubId}
                   onChange={event =>
-                    setMatchForm(form => ({ ...form, awayTeamName: event.target.value }))
+                    setMatchForm(form => ({
+                      ...form,
+                      awayClubId: event.target.value ? Number(event.target.value) : '',
+                    }))
                   }
-                  placeholder="Например: ФК Звезда"
                   required
-                />
+                >
+                  <option value="">Выберите клуб…</option>
+                  {data.clubs.map(club => (
+                    <option key={club.id} value={club.id}>
+                      {club.name}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label>
                 Стадион
@@ -2616,10 +2683,23 @@ export const MatchesTab = () => {
                         hour: '2-digit',
                         minute: '2-digit',
                       })
+                      const homeClubId = match.homeClubId ?? match.homeTeamId
+                      const awayClubId = match.awayClubId ?? match.awayTeamId
+                      const homeClub = match.homeClub ??
+                        data.clubs.find(club => club.id === homeClubId) ?? null
+                      const awayClub = match.awayClub ??
+                        data.clubs.find(club => club.id === awayClubId) ?? null
+                      const homeLabel = homeClub?.shortName?.trim() || homeClub?.name || '—'
+                      const awayLabel = awayClub?.shortName?.trim() || awayClub?.name || '—'
                       const stadiumName =
                         match.stadium?.name ??
                         (match.stadiumId
                           ? data.stadiums.find(stadium => stadium.id === match.stadiumId)?.name
+                          : undefined)
+                      const seasonName =
+                        match.season?.name ??
+                        (match.seasonId
+                          ? data.seasons.find(season => season.id === match.seasonId)?.name
                           : undefined)
                       const refereePerson =
                         match.referee ??
@@ -2635,7 +2715,7 @@ export const MatchesTab = () => {
                           <td>
                             <div className="match-cell">
                               <span>
-                                {match.homeTeamName} vs {match.awayTeamName}
+                                {homeLabel} vs {awayLabel}
                               </span>
                               {match.eventName ? (
                                 <span className="muted">{match.eventName}</span>
@@ -2643,16 +2723,20 @@ export const MatchesTab = () => {
                             </div>
                           </td>
                           <td>
-                            {stadiumName || refereeName ? (
+                            {stadiumName || refereeName || seasonName ? (
                               <div className="muted">
                                 {stadiumName ? <div>Стадион: {stadiumName}</div> : null}
                                 {refereeName ? <div>Судья: {refereeName}</div> : null}
+                                {seasonName ? <div>Сезон: {seasonName}</div> : null}
                               </div>
                             ) : (
                               <span className="muted">—</span>
                             )}
                           </td>
                           <td className="table-actions">
+                            <button type="button" onClick={() => handleMatchSelect(match)}>
+                              Детали
+                            </button>
                             <button
                               type="button"
                               className="danger"

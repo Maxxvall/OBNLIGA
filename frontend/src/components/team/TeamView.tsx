@@ -640,7 +640,6 @@ const TeamMatchesList: React.FC<TeamMatchesListProps> = ({ mode, data, loading, 
                       <span className="team-name">{match.a.n}</span>
                     </div>
                   </div>
-                  <div className="team-match-season-label">{item.seasonName}</div>
                 </div>
               )
             })}

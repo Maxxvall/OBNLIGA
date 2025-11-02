@@ -593,6 +593,7 @@ async function loadSeasonClubStats(seasonId: number) {
     where: {
       seasonId,
       status: MatchStatus.FINISHED,
+      isFriendly: false,
       OR: [{ roundId: null }, { round: { roundType: RoundType.REGULAR } }],
     },
     select: {
@@ -828,6 +829,7 @@ async function loadClubCareerTotals(competitionId?: number) {
     where: {
       seasonId: { in: seasonIds },
       status: MatchStatus.FINISHED,
+      isFriendly: false,
     },
     select: {
       seasonId: true,
@@ -849,6 +851,7 @@ async function loadClubCareerTotals(competitionId?: number) {
       match: {
         seasonId: { in: seasonIds },
         status: MatchStatus.FINISHED,
+        isFriendly: false,
       },
       eventType: MatchEventType.YELLOW_CARD,
     },
@@ -861,6 +864,7 @@ async function loadClubCareerTotals(competitionId?: number) {
       match: {
         seasonId: { in: seasonIds },
         status: MatchStatus.FINISHED,
+        isFriendly: false,
       },
       eventType: MatchEventType.RED_CARD,
     },
@@ -1878,6 +1882,7 @@ export default async function (server: FastifyInstance) {
         const hasFinishedMatches = await prisma.match.count({
           where: {
             status: MatchStatus.FINISHED,
+            isFriendly: false,
             OR: [{ homeTeamId: clubId }, { awayTeamId: clubId }],
           },
         })
@@ -2863,7 +2868,7 @@ export default async function (server: FastifyInstance) {
           city?: string | null
         }
         const matchesPlayed = await prisma.match.findFirst({
-          where: { seasonId, status: MatchStatus.FINISHED },
+          where: { seasonId, status: MatchStatus.FINISHED, isFriendly: false },
         })
         if (matchesPlayed && (body.startDate || body.endDate)) {
           return reply.status(409).send({ ok: false, error: 'season_dates_locked' })
@@ -3110,7 +3115,7 @@ export default async function (server: FastifyInstance) {
           competitionId?: string
         }
 
-        const where: Prisma.MatchWhereInput = {}
+        const where: Prisma.MatchWhereInput = { isFriendly: false }
         if (seasonId) {
           where.seasonId = Number(seasonId)
         }
@@ -3119,7 +3124,7 @@ export default async function (server: FastifyInstance) {
         }
 
         const matches = await prisma.match.findMany({
-          where: Object.keys(where).length ? where : undefined,
+          where,
           orderBy: [{ matchDateTime: 'desc' }],
           include: {
             season: { select: { name: true, competitionId: true } },
@@ -3241,24 +3246,34 @@ export default async function (server: FastifyInstance) {
         const publishTopic =
           typeof admin.publishTopic === 'function' ? admin.publishTopic.bind(admin) : undefined
 
-        try {
-          await refreshLeagueMatchAggregates(match.seasonId, { publishTopic })
-        } catch (err) {
-          admin.log.warn(
-            { err, seasonId: match.seasonId },
-            'failed to refresh league aggregates after match create'
-          )
+        if (match.seasonId != null) {
+          try {
+            await refreshLeagueMatchAggregates(match.seasonId, { publishTopic })
+          } catch (err) {
+            admin.log.warn(
+              { err, seasonId: match.seasonId },
+              'failed to refresh league aggregates after match create'
+            )
+          }
         }
 
         return sendSerialized(reply, match)
       })
 
       admin.get('/friendly-matches', async (_request, reply) => {
-        const friendlyMatches = await prisma.friendlyMatch.findMany({
+        const friendlyMatches = await prisma.match.findMany({
+          where: { isFriendly: true },
           orderBy: [{ matchDateTime: 'desc' }],
           include: {
+            homeClub: {
+              select: { id: true, name: true, shortName: true, logoUrl: true },
+            },
+            awayClub: {
+              select: { id: true, name: true, shortName: true, logoUrl: true },
+            },
             stadium: true,
             referee: true,
+            season: { select: { id: true, name: true } },
           },
         })
         return sendSerialized(reply, friendlyMatches)
@@ -3267,37 +3282,58 @@ export default async function (server: FastifyInstance) {
       admin.post('/friendly-matches', async (request, reply) => {
         const body = request.body as {
           matchDateTime?: string
-          homeTeamName?: string
-          awayTeamName?: string
+          homeClubId?: number
+          awayClubId?: number
+          seasonId?: number | null
           stadiumId?: number
           refereeId?: number
           eventName?: string
         }
 
         const matchDate = body?.matchDateTime ? new Date(body.matchDateTime) : null
-        const homeName = body?.homeTeamName?.trim()
-        const awayName = body?.awayTeamName?.trim()
-
-        if (!homeName || !awayName || !matchDate || Number.isNaN(matchDate.getTime())) {
+        if (!matchDate || Number.isNaN(matchDate.getTime())) {
           return reply.status(400).send({ ok: false, error: 'friendly_match_fields_required' })
         }
 
-        if (homeName.toLowerCase() === awayName.toLowerCase()) {
+        if (typeof body?.homeClubId !== 'number' || typeof body?.awayClubId !== 'number') {
+          return reply.status(400).send({ ok: false, error: 'friendly_match_fields_required' })
+        }
+
+        const homeClubId = parseNumericId(body.homeClubId, 'homeClubId')
+        const awayClubId = parseNumericId(body.awayClubId, 'awayClubId')
+
+        if (homeClubId === awayClubId) {
           return reply.status(400).send({ ok: false, error: 'friendly_match_same_teams' })
         }
 
+        const seasonId =
+          typeof body?.seasonId === 'number' ? parseNumericId(body.seasonId, 'seasonId') : null
         const stadiumId = body?.stadiumId ? parseNumericId(body.stadiumId, 'stadiumId') : null
         const refereeId = body?.refereeId ? parseNumericId(body.refereeId, 'refereeId') : null
         const eventName = body?.eventName?.trim()
 
-        const friendlyMatch = await prisma.friendlyMatch.create({
+        const friendlyMatch = await prisma.match.create({
           data: {
+            seasonId,
             matchDateTime: matchDate,
-            homeTeamName: homeName,
-            awayTeamName: awayName,
+            homeTeamId: homeClubId,
+            awayTeamId: awayClubId,
             stadiumId,
             refereeId,
+            status: MatchStatus.SCHEDULED,
             eventName: eventName && eventName.length ? eventName : null,
+            isFriendly: true,
+          },
+          include: {
+            homeClub: {
+              select: { id: true, name: true, shortName: true, logoUrl: true },
+            },
+            awayClub: {
+              select: { id: true, name: true, shortName: true, logoUrl: true },
+            },
+            stadium: true,
+            referee: true,
+            season: { select: { id: true, name: true } },
           },
         })
 
@@ -3306,11 +3342,14 @@ export default async function (server: FastifyInstance) {
 
       admin.delete('/friendly-matches/:matchId', async (request, reply) => {
         const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
-        const existing = await prisma.friendlyMatch.findUnique({ where: { id: matchId } })
-        if (!existing) {
+        const existing = await prisma.match.findUnique({
+          where: { id: matchId },
+          select: { id: true, isFriendly: true },
+        })
+        if (!existing || !existing.isFriendly) {
           return reply.status(404).send({ ok: false, error: 'friendly_match_not_found' })
         }
-        await prisma.friendlyMatch.delete({ where: { id: matchId } })
+        await prisma.match.delete({ where: { id: matchId } })
         return reply.send({ ok: true })
       })
 
@@ -3473,7 +3512,10 @@ export default async function (server: FastifyInstance) {
             ? request.server.publishTopic.bind(request.server)
             : undefined
 
-        if (nextStatus !== MatchStatus.FINISHED || existing.status === MatchStatus.FINISHED) {
+        if (
+          existing.seasonId != null &&
+          (nextStatus !== MatchStatus.FINISHED || existing.status === MatchStatus.FINISHED)
+        ) {
           try {
             await refreshLeagueMatchAggregates(existing.seasonId, { publishTopic })
           } catch (err) {
@@ -3505,13 +3547,15 @@ export default async function (server: FastifyInstance) {
             ? request.server.publishTopic.bind(request.server)
             : undefined
 
-        try {
-          await refreshLeagueMatchAggregates(match.seasonId, { publishTopic })
-        } catch (err) {
-          request.server.log.warn(
-            { err, matchId: matchId.toString(), seasonId: match.seasonId },
-            'failed to refresh league aggregates after match delete'
-          )
+        if (match.seasonId != null) {
+          try {
+            await refreshLeagueMatchAggregates(match.seasonId, { publishTopic })
+          } catch (err) {
+            request.server.log.warn(
+              { err, matchId: matchId.toString(), seasonId: match.seasonId },
+              'failed to refresh league aggregates after match delete'
+            )
+          }
         }
 
         return reply.send({ ok: true })
@@ -3726,13 +3770,16 @@ export default async function (server: FastifyInstance) {
           }
         }
 
-        const rosterNumbers = await prisma.seasonRoster.findMany({
-          where: {
-            seasonId: match.seasonId,
-            personId: { in: Array.from(personIds) },
-          },
-          select: { personId: true, shirtNumber: true },
-        })
+        const rosterNumbers =
+          match.seasonId != null && personIds.size
+            ? await prisma.seasonRoster.findMany({
+                where: {
+                  seasonId: match.seasonId,
+                  personId: { in: Array.from(personIds) },
+                },
+                select: { personId: true, shirtNumber: true },
+              })
+            : []
 
         const shirtMap = new Map<number, number>()
         rosterNumbers.forEach(entry => {

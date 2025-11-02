@@ -334,12 +334,19 @@ export const MatchDetailsPage: React.FC = () => {
   } = matchDetails
   const matchId = matchDetails.matchId
 
+  const refreshComments = React.useCallback(
+    (options?: { force?: boolean }) => {
+      if (!matchId) {
+        return
+      }
+      void fetchMatchComments(matchId, options)
+    },
+    [fetchMatchComments, matchId]
+  )
+
   const handleRetryComments = React.useCallback(() => {
-    if (!matchId) {
-      return
-    }
-    void fetchMatchComments(matchId, { force: true })
-  }, [fetchMatchComments, matchId])
+    refreshComments({ force: true })
+  }, [refreshComments])
 
   const handleSubmitComment = React.useCallback(
     async (payload: CommentSubmitPayload) => {
@@ -360,9 +367,18 @@ export const MatchDetailsPage: React.FC = () => {
   })
   const scoreTimersRef = React.useRef<{ home?: number; away?: number }>({})
   const [landscapeBroadcastMode, setLandscapeBroadcastMode] = React.useState(false)
+  const [broadcastClosingSoon, setBroadcastClosingSoon] = React.useState(false)
+  const broadcastCloseTimerRef = React.useRef<number | null>(null)
+  const prevStatusRef = React.useRef<MatchStatus | undefined>(undefined)
+  const [commentsExpanded, setCommentsExpanded] = React.useState(false)
+  const commentsPollTimerRef = React.useRef<number | null>(null)
 
   const handleLandscapeModeChange = React.useCallback((value: boolean) => {
     setLandscapeBroadcastMode(prev => (prev === value ? prev : value))
+  }, [])
+
+  const handleCommentsExpandedChange = React.useCallback((value: boolean) => {
+    setCommentsExpanded(value)
   }, [])
 
   React.useEffect(() => {
@@ -383,9 +399,8 @@ export const MatchDetailsPage: React.FC = () => {
   const status: MatchStatus | undefined = header?.st ?? snapshot?.status
   const matchDateIso = header?.dt ?? snapshot?.matchDateTime
   const dateLabel = formatMatchDateLabel(matchDateIso)
-  const broadcastAvailable = Boolean(
-    broadcast?.st === 'available' && broadcast.url && broadcast.url.trim().length > 0
-  )
+  const hasBroadcastSource = Boolean(broadcast?.url && broadcast.url.trim().length > 0)
+  const broadcastAvailable = Boolean(broadcast?.st === 'available' && hasBroadcastSource)
 
   const showNumericScore = status === 'LIVE' || status === 'FINISHED'
   const homeScoreValue = showNumericScore
@@ -458,6 +473,62 @@ export const MatchDetailsPage: React.FC = () => {
   }, [matchDetails.open, homeScoreValue, awayScoreValue])
 
   React.useEffect(() => {
+    const prevStatus = prevStatusRef.current
+    const isLiveNow = status === 'LIVE'
+    const isFinishedNow = status === 'FINISHED'
+
+    const clearClosingTimer = () => {
+      if (broadcastCloseTimerRef.current !== null) {
+        window.clearTimeout(broadcastCloseTimerRef.current)
+        broadcastCloseTimerRef.current = null
+      }
+    }
+
+    if (isLiveNow) {
+      clearClosingTimer()
+      if (broadcastClosingSoon) {
+        setBroadcastClosingSoon(false)
+      }
+    }
+
+    if (prevStatus === 'LIVE' && isFinishedNow && broadcastAvailable) {
+      if (activeTab === 'broadcast') {
+        setBroadcastClosingSoon(true)
+        clearClosingTimer()
+        broadcastCloseTimerRef.current = window.setTimeout(() => {
+          setBroadcastClosingSoon(false)
+          setMatchDetailsTab('events')
+        }, 10_000)
+      } else {
+        clearClosingTimer()
+        if (broadcastClosingSoon) {
+          setBroadcastClosingSoon(false)
+        }
+      }
+    }
+
+    if (!broadcastAvailable || (!isLiveNow && !isFinishedNow) || activeTab !== 'broadcast') {
+      if (broadcastClosingSoon) {
+        setBroadcastClosingSoon(false)
+      }
+      if (activeTab !== 'broadcast') {
+        clearClosingTimer()
+      }
+    }
+
+    prevStatusRef.current = status
+  }, [status, broadcastAvailable, activeTab, broadcastClosingSoon, setMatchDetailsTab])
+
+  React.useEffect(() => {
+    return () => {
+      if (broadcastCloseTimerRef.current !== null) {
+        window.clearTimeout(broadcastCloseTimerRef.current)
+        broadcastCloseTimerRef.current = null
+      }
+    }
+  }, [])
+
+  React.useEffect(() => {
     if (activeTab !== 'broadcast') {
       setLandscapeBroadcastMode(false)
     }
@@ -468,6 +539,89 @@ export const MatchDetailsPage: React.FC = () => {
       setLandscapeBroadcastMode(false)
     }
   }, [matchDetails.open])
+
+  React.useEffect(() => {
+    if (activeTab !== 'broadcast') {
+      setCommentsExpanded(false)
+    }
+  }, [activeTab])
+
+  const broadcastTabEnabled = broadcastAvailable && status === 'LIVE'
+
+  const clearCommentsPolling = React.useCallback(() => {
+    if (commentsPollTimerRef.current !== null) {
+      window.clearTimeout(commentsPollTimerRef.current)
+      commentsPollTimerRef.current = null
+    }
+  }, [])
+
+  React.useEffect(() => {
+    if (activeTab !== 'broadcast') {
+      return
+    }
+    if (!broadcastAvailable) {
+      setMatchDetailsTab('events')
+      return
+    }
+    if (status === 'FINISHED' && !broadcastClosingSoon) {
+      setMatchDetailsTab('events')
+      return
+    }
+    if (status && status !== 'LIVE' && status !== 'FINISHED') {
+      setMatchDetailsTab('events')
+    }
+  }, [activeTab, broadcastAvailable, broadcastClosingSoon, setMatchDetailsTab, status])
+
+  React.useEffect(() => {
+    if (!matchDetails.open || activeTab !== 'broadcast') {
+      clearCommentsPolling()
+      return
+    }
+    if (!broadcastTabEnabled) {
+      clearCommentsPolling()
+      return
+    }
+
+    const interval = commentsExpanded && !landscapeBroadcastMode ? 10_000 : 30_000
+
+    const scheduleNext = () => {
+      clearCommentsPolling()
+      commentsPollTimerRef.current = window.setTimeout(() => {
+        if (typeof document !== 'undefined' && document.hidden) {
+          scheduleNext()
+          return
+        }
+        if (!loadingComments) {
+          refreshComments()
+        }
+        scheduleNext()
+      }, interval)
+    }
+
+    if (!loadingComments) {
+      refreshComments()
+    }
+    scheduleNext()
+
+    return () => {
+      clearCommentsPolling()
+    }
+  }, [
+    activeTab,
+    broadcastTabEnabled,
+    clearCommentsPolling,
+    commentsExpanded,
+    landscapeBroadcastMode,
+    loadingComments,
+    matchDetails.open,
+    refreshComments,
+  ])
+
+  React.useEffect(() => {
+    return () => {
+      clearCommentsPolling()
+    }
+  }, [clearCommentsPolling])
 
   const pageClassName = `match-details-page${landscapeBroadcastMode ? ' landscape-video-active' : ''}`
 
@@ -579,10 +733,10 @@ export const MatchDetailsPage: React.FC = () => {
           <button
             className={`tab ${activeTab === 'broadcast' ? 'active' : ''}`}
             onClick={() => setMatchDetailsTab('broadcast')}
-            disabled={!broadcastAvailable}
-            aria-disabled={!broadcastAvailable}
+            disabled={!broadcastTabEnabled}
+            aria-disabled={!broadcastTabEnabled}
           >
-            Трансляция
+            Эфир
           </button>
         </div>
 
@@ -608,6 +762,8 @@ export const MatchDetailsPage: React.FC = () => {
               onOpenProfile={() => setTab('profile')}
               onLandscapeModeChange={handleLandscapeModeChange}
               landscapeMode={landscapeBroadcastMode}
+              closingSoon={broadcastClosingSoon}
+              onCommentsExpandedChange={handleCommentsExpandedChange}
             />
           )}
         </div>
@@ -758,6 +914,8 @@ type BroadcastViewProps = {
   onOpenProfile?: () => void
   onLandscapeModeChange?: (value: boolean) => void
   landscapeMode?: boolean
+  closingSoon?: boolean
+  onCommentsExpandedChange?: (expanded: boolean) => void
 }
 
 const BroadcastView: React.FC<BroadcastViewProps> = ({
@@ -773,6 +931,8 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
   onOpenProfile,
   onLandscapeModeChange,
   landscapeMode = false,
+  closingSoon = false,
+  onCommentsExpandedChange,
 }) => {
   const [commentText, setCommentText] = React.useState('')
   const [authError, setAuthError] = React.useState<string | null>(null)
@@ -780,8 +940,6 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
   const [isExpanded, setIsExpanded] = React.useState(false)
   const commentsBodyId = React.useId()
   const videoContainerRef = React.useRef<HTMLDivElement | null>(null)
-  const [fullscreenSupported, setFullscreenSupported] = React.useState(false)
-  const [isFullscreen, setIsFullscreen] = React.useState(false)
   const [isTelegramMobile, setIsTelegramMobile] = React.useState(false)
   const broadcastAvailable = React.useMemo(
     () =>
@@ -791,6 +949,16 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
   const landscapeActive = Boolean(landscapeMode)
   const pseudoFullscreenActive = landscapeActive && isTelegramMobile
   const rawBroadcastUrl = broadcast?.url ?? null
+
+  React.useEffect(() => {
+    onCommentsExpandedChange?.(isExpanded)
+  }, [isExpanded, onCommentsExpandedChange])
+
+  React.useEffect(() => {
+    return () => {
+      onCommentsExpandedChange?.(false)
+    }
+  }, [onCommentsExpandedChange])
 
   React.useEffect(() => {
     if (typeof window === 'undefined') {
@@ -919,39 +1087,6 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
     }
   }, [broadcastAvailable, onLandscapeModeChange])
 
-  React.useEffect(() => {
-    if (typeof document === 'undefined') {
-      return
-    }
-
-    const doc = document as FullscreenCapableDocument
-    const supportAvailable = Boolean(
-      doc.fullscreenEnabled ||
-        doc.webkitFullscreenEnabled ||
-        document.body?.requestFullscreen
-    )
-    setFullscreenSupported(supportAvailable)
-
-    const handleFullscreenChange = () => {
-      const current = doc.fullscreenElement ?? doc.webkitFullscreenElement
-      setIsFullscreen(Boolean(current))
-    }
-
-    document.addEventListener('fullscreenchange', handleFullscreenChange)
-    document.addEventListener(
-      'webkitfullscreenchange' as unknown as keyof DocumentEventMap,
-      handleFullscreenChange
-    )
-
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange)
-      document.removeEventListener(
-        'webkitfullscreenchange' as unknown as keyof DocumentEventMap,
-        handleFullscreenChange
-      )
-    }
-  }, [])
-
   const handleToggleFullscreen = React.useCallback(() => {
     if (typeof document === 'undefined') {
       return
@@ -1013,9 +1148,7 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
       const now = Date.now()
       if (now - lastTap < 300) {
         event.preventDefault()
-        if (!isFullscreen) {
-          handleToggleFullscreen()
-        }
+        handleToggleFullscreen()
       }
       lastTap = now
     }
@@ -1026,7 +1159,7 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
     return () => {
       iframe.removeEventListener('touchend', handleTouchEnd, options)
     }
-  }, [rawBroadcastUrl, handleToggleFullscreen, isFullscreen])
+  }, [rawBroadcastUrl, handleToggleFullscreen])
 
   const handleTextChange = React.useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = event.target.value
@@ -1127,16 +1260,19 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
 
   const broadcastUrl = rawBroadcastUrl?.trim() ?? ''
   const embedUrl = broadcastUrl ? buildVkEmbedUrl(broadcastUrl) : null
-  const fullscreenControl = fullscreenSupported && !pseudoFullscreenActive ? (
-    <div className="broadcast-controls">
-      <button
-        type="button"
-        className="broadcast-fullscreen-button"
-        onClick={handleToggleFullscreen}
-        aria-pressed={isFullscreen}
-      >
-        {isFullscreen ? 'Свернуть' : 'На весь экран'}
-      </button>
+  const closingNotice = closingSoon ? (
+    <div className="broadcast-closing-notice" role="status">
+      <p>Трансляция завершена. Вкладка сменится через 10 секунд.</p>
+      {broadcastUrl && (
+        <a
+          href={broadcastUrl}
+          className="broadcast-closing-link"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Открыть запись во VK
+        </a>
+      )}
     </div>
   ) : null
 
@@ -1181,9 +1317,8 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
             value={commentText}
             onChange={handleTextChange}
             maxLength={COMMENT_MAX_LENGTH}
-            placeholder="Поддержите команду (до 100 символов)."
             className="comment-textarea"
-            rows={3}
+            rows={2}
             disabled={!author}
           />
         </label>
@@ -1238,7 +1373,6 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
         allowFullScreen
         frameBorder={0}
       />
-      {fullscreenControl}
     </div>
   ) : (
     <div className="broadcast-fallback">
@@ -1247,11 +1381,17 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
   )
 
   if (landscapeActive) {
-    return <div className={broadcastViewClassName}>{videoElement}</div>
+    return (
+      <div className={broadcastViewClassName}>
+        {closingNotice}
+        {videoElement}
+      </div>
+    )
   }
 
   return (
     <div className={broadcastViewClassName}>
+      {closingNotice}
       {videoElement}
       {commentsSection}
     </div>

@@ -41,7 +41,7 @@
 | `/api/league/stats?seasonId={id}` | 300 000 мс | `statsVersions[seasonId]` | Содержит лидерборды; поллинг включается только на подвкладке «Статистика» |
 | `/api/clubs/{id}/summary` | 45 000 мс | `teamSummaryVersions[clubId]` | Интервал активен, пока открыт Team View конкретного клуба |
 | `/api/clubs/{id}/matches` | 90 000 мс | `teamMatchesVersions[clubId]` | Возвращает все сыгранные и будущие матчи клуба по сезонам |
-| `/api/public/matches/{id}/comments` | — (по запросу) | `matchDetails.commentsEtag` | Комментарии загружаются при входе на вкладку «Трансляция», серверный TTL — 4 ч |
+| `/api/public/matches/{id}/comments` | 10 000 мс (чат открыт) / 30 000 мс (чат свернут или режим landscape) при статусе LIVE | `matchDetails.commentsEtag` | Комментарии опрашиваются только на вкладке «Трансляция» во время LIVE; при `304` продлевается текущий интервал, вне LIVE polling отключается |
 | `/api/news` | 60 000 мс между запросами, локальный cache 30 мин | `localStorage` + `etagRef` внутри компонента | Компонент запоминает snapshot и `etag`, чтобы мгновенно показать карусель |
 | `/api/auth/me` | 90 000 мс между запросами, локальный cache 5 мин | `localStorage` | Профиль читает `ETag` из `/api/auth/telegram-init`, продлевает TTL при `304`; payload содержит `leaguePlayerStats` и массив `leaguePlayerCareer` по клубам |
 
@@ -96,6 +96,8 @@
 - `matchDetails.comments` хранит массив `MatchComment` для вкладки «Трансляция». Значение берётся из Redis-кеша `/api/public/matches/:id/comments` и переиспользуется через `matchDetailsCache`.
 - `matchDetails.commentsEtag` — последняя версия ресурса; `fetchMatchComments` всегда отправляет `If-None-Match` и на `304` лишь продлевает lifetime записи в LRU.
 - `matchDetails.loadingComments` управляет skeleton-отрисовкой списка; `matchDetails.submittingComment` блокирует форму отправки до ответа сервера.
+- Вкладка «Трансляция» активируется только при доступной ссылке и статусе матча `LIVE`. При переходе статуса в `FINISHED` пользователю показывается уведомление и через 10 секунд вкладка автоматически переключается на «События».
+- Обновление комментариев выполняется адаптивным polling: 10 секунд при раскрытом чате, 30 секунд при свернутом или принудительном landscape-режиме (включая pseudo fullscreen). Таймеры работают лишь пока матч в статусе `LIVE` и вкладка активна.
 - `matchDetailsCache[matchId]` дополнен полями `comments` и `commentsEtag`, чтобы комментарии подключались мгновенно при повторном открытии окна.
 - `fetchMatchComments(matchId, { force? })` запускается при первом переходе на вкладку «Трансляция» или по кнопке «Повторить», синхронизирует store и кэш при `304/200`.
 - `submitMatchComment(matchId, payload)` делает POST, добавляет новый `MatchComment` в store и кеш `matchDetailsCache` при успехе; версию берёт из `ETag`/`X-Resource-Version` ответа.

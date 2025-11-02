@@ -3,6 +3,8 @@ import prisma from '../db'
 import {
   defaultCache,
   resolveCacheOptions,
+  PUBLIC_FRIENDLY_RESULTS_KEY,
+  PUBLIC_FRIENDLY_SCHEDULE_KEY,
   PUBLIC_LEAGUE_RESULTS_KEY,
   PUBLIC_LEAGUE_SCHEDULE_KEY,
   PUBLIC_LEAGUE_STATS_KEY,
@@ -15,7 +17,13 @@ import {
   buildLeagueTable,
   fetchLeagueSeasons,
 } from '../services/leagueTable'
-import { type LeagueRoundCollection, buildLeagueResults, buildLeagueSchedule } from '../services/leagueSchedule'
+import {
+  type LeagueRoundCollection,
+  buildFriendlyResults,
+  buildFriendlySchedule,
+  buildLeagueResults,
+  buildLeagueSchedule,
+} from '../services/leagueSchedule'
 import { buildLeagueStats } from '../services/leagueStats'
 import { buildWeakEtag, matchesIfNoneMatch } from '../utils/httpCaching'
 
@@ -187,6 +195,54 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
 
     reply.header('ETag', etag)
     reply.header('X-Resource-Version', String(version))
+    return reply.send({ ok: true, data: value, meta: { version } })
+  })
+
+  fastify.get('/api/league/friendlies/schedule', async (request, reply) => {
+    const cacheKey = PUBLIC_FRIENDLY_SCHEDULE_KEY
+    const cacheOptions = await resolveCacheOptions('friendliesSchedule')
+    const { value, version } = await defaultCache.getWithMeta<LeagueRoundCollection>(
+      cacheKey,
+      () => buildFriendlySchedule(),
+      cacheOptions
+    )
+    const etag = buildWeakEtag(cacheKey, version)
+
+    if (matchesIfNoneMatch(request.headers, etag)) {
+      return reply
+        .status(304)
+        .header('ETag', etag)
+        .header('X-Resource-Version', String(version))
+        .send()
+    }
+
+    reply.header('ETag', etag)
+    reply.header('X-Resource-Version', String(version))
+    reply.header('Cache-Control', 'no-cache')
+    return reply.send({ ok: true, data: value, meta: { version } })
+  })
+
+  fastify.get('/api/league/friendlies/results', async (request, reply) => {
+    const cacheKey = PUBLIC_FRIENDLY_RESULTS_KEY
+    const cacheOptions = await resolveCacheOptions('friendliesResults')
+    const { value, version } = await defaultCache.getWithMeta<LeagueRoundCollection>(
+      cacheKey,
+      () => buildFriendlyResults(),
+      cacheOptions
+    )
+    const etag = buildWeakEtag(cacheKey, version)
+
+    if (matchesIfNoneMatch(request.headers, etag)) {
+      return reply
+        .status(304)
+        .header('ETag', etag)
+        .header('X-Resource-Version', String(version))
+        .send()
+    }
+
+    reply.header('ETag', etag)
+    reply.header('X-Resource-Version', String(version))
+    reply.header('Cache-Control', 'no-cache')
     return reply.send({ ok: true, data: value, meta: { version } })
   })
 

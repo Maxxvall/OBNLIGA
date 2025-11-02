@@ -1,4 +1,8 @@
 // Общие типы между backend и frontend (черновые)
+export const FRIENDLY_SEASON_ID = -1
+export const FRIENDLY_COMPETITION_ID = -101
+export const FRIENDLY_SEASON_NAME = 'Товарищеские матчи'
+
 export interface Match {
   id: string
   home: string

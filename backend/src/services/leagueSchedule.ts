@@ -3,11 +3,18 @@ import prisma from '../db'
 import {
   defaultCache,
   resolveCacheOptions,
+  PUBLIC_FRIENDLY_RESULTS_KEY,
+  PUBLIC_FRIENDLY_SCHEDULE_KEY,
   PUBLIC_LEAGUE_RESULTS_KEY,
   PUBLIC_LEAGUE_SCHEDULE_KEY,
 } from '../cache'
 import type { SeasonWithCompetition, LeagueSeasonSummary } from './leagueTable'
 import { ensureSeasonSummary } from './leagueTable'
+
+// Keep in sync with shared/types.ts friendly constants
+const FRIENDLY_SEASON_ID = -1
+const FRIENDLY_COMPETITION_ID = -101
+const FRIENDLY_SEASON_NAME = 'Товарищеские матчи'
 
 type ClubSummary = {
   id: number
@@ -684,6 +691,258 @@ export const buildLeagueResults = async (
     rounds: grouped,
     generatedAt: new Date().toISOString(),
   }
+}
+
+type FriendlyMatchRecord = {
+  id: bigint
+  matchDateTime: Date
+  status: MatchStatus
+  homeScore: number
+  awayScore: number
+  hasPenaltyShootout: boolean
+  penaltyHomeScore: number
+  penaltyAwayScore: number
+  homeClub: ClubSummary
+  awayClub: ClubSummary
+  stadium: MatchLocation | null
+}
+
+type FriendlyMatchView = {
+  view: LeagueMatchView
+  timestamp: number
+  status: MatchStatus
+}
+
+const FRIENDLY_ROUND_LIMIT = 4
+
+const friendlyDateFormatter = new Intl.DateTimeFormat('ru-RU', {
+  day: '2-digit',
+  month: 'long',
+  year: 'numeric',
+})
+
+const mapFriendlyMatch = (match: FriendlyMatchRecord): FriendlyMatchView => {
+  const timestamp = match.matchDateTime.getTime()
+  const view: LeagueMatchView = {
+    id: match.id.toString(),
+    matchDateTime: match.matchDateTime.toISOString(),
+    status: match.status,
+    homeClub: match.homeClub,
+    awayClub: match.awayClub,
+    homeScore: match.homeScore,
+    awayScore: match.awayScore,
+    hasPenaltyShootout: match.hasPenaltyShootout,
+    penaltyHomeScore: match.hasPenaltyShootout ? match.penaltyHomeScore : null,
+    penaltyAwayScore: match.hasPenaltyShootout ? match.penaltyAwayScore : null,
+    location: match.stadium,
+  }
+
+  return {
+    view,
+    timestamp,
+    status: match.status,
+  }
+}
+
+const groupFriendlyViews = (
+  matches: FriendlyMatchView[],
+  direction: 'asc' | 'desc',
+  limit: number
+): LeagueRoundMatches[] => {
+  if (!matches.length) {
+    return []
+  }
+
+  const buckets = new Map<
+    string,
+    { label: string; orderTimestamp: number; matches: LeagueMatchView[] }
+  >()
+
+  for (const entry of matches) {
+    const date = new Date(entry.timestamp)
+    const key = date.toISOString().slice(0, 10)
+    const label = friendlyDateFormatter.format(date)
+    const existing = buckets.get(key)
+    if (existing) {
+      if (direction === 'asc') {
+        existing.orderTimestamp = Math.min(existing.orderTimestamp, entry.timestamp)
+      } else {
+        existing.orderTimestamp = Math.max(existing.orderTimestamp, entry.timestamp)
+      }
+      existing.matches.push(entry.view)
+    } else {
+      buckets.set(key, {
+        label,
+        orderTimestamp: entry.timestamp,
+        matches: [entry.view],
+      })
+    }
+  }
+
+  const sortedGroups = Array.from(buckets.values()).sort((left, right) => {
+    if (left.orderTimestamp === right.orderTimestamp) {
+      return left.label.localeCompare(right.label, 'ru')
+    }
+    return direction === 'asc'
+      ? left.orderTimestamp - right.orderTimestamp
+      : right.orderTimestamp - left.orderTimestamp
+  })
+
+  const limited = sortedGroups.slice(0, limit)
+
+  return limited.map(group => ({
+    roundId: null,
+    roundNumber: null,
+    roundLabel: group.label,
+    roundType: null,
+    matches:
+      direction === 'asc'
+        ? [...group.matches].sort((a, b) => a.matchDateTime.localeCompare(b.matchDateTime))
+        : [...group.matches].sort((a, b) => b.matchDateTime.localeCompare(a.matchDateTime)),
+  }))
+}
+
+const buildFriendlySeasonSummary = (matches: FriendlyMatchView[]): LeagueSeasonSummary => {
+  if (!matches.length) {
+    const nowIso = new Date().toISOString()
+    return {
+      id: FRIENDLY_SEASON_ID,
+      name: FRIENDLY_SEASON_NAME,
+      startDate: nowIso,
+      endDate: nowIso,
+      isActive: false,
+      city: null,
+      competition: {
+        id: FRIENDLY_COMPETITION_ID,
+        name: FRIENDLY_SEASON_NAME,
+        type: 'LEAGUE',
+      },
+    }
+  }
+
+  const sorted = [...matches].sort((left, right) => left.timestamp - right.timestamp)
+  const startDate = new Date(sorted[0].timestamp).toISOString()
+  const endDate = new Date(sorted[sorted.length - 1].timestamp).toISOString()
+  const isActive = matches.some(entry =>
+    entry.status === MatchStatus.SCHEDULED ||
+    entry.status === MatchStatus.LIVE ||
+    entry.status === MatchStatus.POSTPONED
+  )
+
+  return {
+    id: FRIENDLY_SEASON_ID,
+    name: FRIENDLY_SEASON_NAME,
+    startDate,
+    endDate,
+    isActive,
+    city: null,
+    competition: {
+      id: FRIENDLY_COMPETITION_ID,
+      name: FRIENDLY_SEASON_NAME,
+      type: 'LEAGUE',
+    },
+  }
+}
+
+const buildFriendlyCollection = async (
+  mode: 'schedule' | 'results',
+  limitRounds = FRIENDLY_ROUND_LIMIT
+): Promise<LeagueRoundCollection> => {
+  const isScheduleMode = mode === 'schedule'
+  const statusFilter = isScheduleMode
+    ? {
+        in: [MatchStatus.SCHEDULED, MatchStatus.LIVE, MatchStatus.POSTPONED] as MatchStatus[],
+      }
+    : MatchStatus.FINISHED
+
+  const records = await prisma.match.findMany({
+    where: {
+      isFriendly: true,
+      status: statusFilter,
+    },
+    orderBy: [{ matchDateTime: isScheduleMode ? 'asc' : 'desc' }],
+    include: {
+      homeClub: { select: clubSelect },
+      awayClub: { select: clubSelect },
+      stadium: { select: stadiumSelect },
+    },
+  })
+
+  const friendlyRecords: FriendlyMatchRecord[] = records.map(record => ({
+    id: record.id,
+    matchDateTime: record.matchDateTime,
+    status: record.status,
+    homeScore: record.homeScore,
+    awayScore: record.awayScore,
+    hasPenaltyShootout: record.hasPenaltyShootout,
+    penaltyHomeScore: record.penaltyHomeScore,
+    penaltyAwayScore: record.penaltyAwayScore,
+    homeClub: record.homeClub,
+    awayClub: record.awayClub,
+    stadium: record.stadium
+      ? {
+          stadiumId: record.stadium.id,
+          stadiumName: record.stadium.name,
+          city: record.stadium.city,
+        }
+      : null,
+  }))
+
+  const views = friendlyRecords.map(mapFriendlyMatch)
+  const rounds = groupFriendlyViews(views, isScheduleMode ? 'asc' : 'desc', limitRounds)
+  const season = buildFriendlySeasonSummary(views)
+
+  return {
+    season,
+    rounds,
+    generatedAt: new Date().toISOString(),
+  }
+}
+
+export const buildFriendlySchedule = async (
+  limitRounds = FRIENDLY_ROUND_LIMIT
+): Promise<LeagueRoundCollection> => buildFriendlyCollection('schedule', limitRounds)
+
+export const buildFriendlyResults = async (
+  limitRounds = FRIENDLY_ROUND_LIMIT
+): Promise<LeagueRoundCollection> => buildFriendlyCollection('results', limitRounds)
+
+export const refreshFriendlyAggregates = async (
+  options?: { publishTopic?: PublishFn }
+): Promise<{ schedule: LeagueRoundCollection; results: LeagueRoundCollection }> => {
+  const [schedule, results] = await Promise.all([
+    buildFriendlySchedule(),
+    buildFriendlyResults(),
+  ])
+
+  const [scheduleOptions, resultsOptions] = await Promise.all([
+    resolveCacheOptions('friendliesSchedule'),
+    resolveCacheOptions('friendliesResults'),
+  ])
+
+  await Promise.all([
+    defaultCache.set(PUBLIC_FRIENDLY_SCHEDULE_KEY, schedule, scheduleOptions),
+    defaultCache.set(PUBLIC_FRIENDLY_RESULTS_KEY, results, resultsOptions),
+  ])
+
+  if (options?.publishTopic) {
+    await Promise.all([
+      options
+        .publishTopic(PUBLIC_FRIENDLY_SCHEDULE_KEY, {
+          type: 'friendlies.schedule',
+          payload: schedule,
+        })
+        .catch(() => undefined),
+      options
+        .publishTopic(PUBLIC_FRIENDLY_RESULTS_KEY, {
+          type: 'friendlies.results',
+          payload: results,
+        })
+        .catch(() => undefined),
+    ])
+  }
+
+  return { schedule, results }
 }
 
 export const refreshLeagueMatchAggregates = async (

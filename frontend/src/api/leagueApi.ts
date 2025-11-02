@@ -27,6 +27,12 @@ export const leagueApi = {
     const query = seasonId ? `?seasonId=${encodeURIComponent(seasonId)}` : ''
     return httpRequest<LeagueRoundCollection>(`/api/league/results${query}`, options)
   },
+  fetchFriendlySchedule(options?: RequestOptions) {
+    return httpRequest<LeagueRoundCollection>('/api/league/friendlies/schedule', options)
+  },
+  fetchFriendlyResults(options?: RequestOptions) {
+    return httpRequest<LeagueRoundCollection>('/api/league/friendlies/results', options)
+  },
   fetchStats(seasonId?: number, options?: RequestOptions) {
     const query = seasonId ? `?seasonId=${encodeURIComponent(seasonId)}` : ''
     return httpRequest<LeagueStatsResponse>(`/api/league/stats${query}`, options)

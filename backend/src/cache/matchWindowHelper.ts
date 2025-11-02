@@ -130,7 +130,13 @@ export const isMatchWindowActive = async (): Promise<boolean> => {
   return window.phase === 'prewarm' || window.phase === 'live' || window.phase === 'post'
 }
 
-export type AdaptiveCacheResource = 'leagueTable' | 'leagueSchedule' | 'leagueResults' | 'leagueStats'
+export type AdaptiveCacheResource =
+  | 'leagueTable'
+  | 'leagueSchedule'
+  | 'leagueResults'
+  | 'leagueStats'
+  | 'friendliesSchedule'
+  | 'friendliesResults'
 
 const adaptivePolicies: Record<AdaptiveCacheResource, { outside: CacheFetchOptions; matchWindow: CacheFetchOptions }> = {
   leagueTable: {
@@ -148,6 +154,14 @@ const adaptivePolicies: Record<AdaptiveCacheResource, { outside: CacheFetchOptio
   leagueStats: {
     outside: { ttlSeconds: 3_600, staleWhileRevalidateSeconds: 900, lockTimeoutSeconds: 10 },
     matchWindow: { ttlSeconds: 45, staleWhileRevalidateSeconds: 150, lockTimeoutSeconds: 8 },
+  },
+  friendliesSchedule: {
+    outside: { ttlSeconds: 604_800, staleWhileRevalidateSeconds: 43_200, lockTimeoutSeconds: 10 },
+    matchWindow: { ttlSeconds: 20, staleWhileRevalidateSeconds: 90, lockTimeoutSeconds: 6 },
+  },
+  friendliesResults: {
+    outside: { ttlSeconds: 900, staleWhileRevalidateSeconds: 300, lockTimeoutSeconds: 8 },
+    matchWindow: { ttlSeconds: 15, staleWhileRevalidateSeconds: 75, lockTimeoutSeconds: 6 },
   },
 }
 

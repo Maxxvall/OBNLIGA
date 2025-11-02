@@ -352,6 +352,42 @@ body {
   gap: 14px;
 }
 
+.friendlies-entry {
+  background: rgba(9, 16, 30, 0.74);
+  border: 1px solid rgba(0, 240, 255, 0.18);
+  border-radius: 18px;
+  box-shadow: 0 14px 30px rgba(3, 8, 18, 0.62);
+  padding: 16px 18px;
+}
+
+.friendlies-entry .season-item {
+  background: rgba(0, 240, 255, 0.06);
+  border-color: rgba(0, 240, 255, 0.16);
+}
+
+.friendlies-entry .season-item:hover,
+.friendlies-entry .season-item:focus-visible {
+  background: rgba(0, 240, 255, 0.12);
+  border-color: rgba(0, 240, 255, 0.3);
+}
+
+.friendlies-entry .season-item.selected {
+  border-color: rgba(0, 240, 255, 0.45);
+  background: rgba(0, 240, 255, 0.12);
+}
+
+.friendlies-entry .friendlies-label {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.friendlies-entry .friendlies-chip {
+  display: inline-flex;
+}
+
 .competition-group {
   background: rgba(9, 16, 30, 0.74);
   border: 1px solid rgba(0, 240, 255, 0.18);

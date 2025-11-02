@@ -1114,7 +1114,7 @@ export const MatchesTab = () => {
     }, 'Матч обновлён')
   }
 
-  const adjustMatchScore = (match: MatchSummary, key: 'homeScore' | 'awayScore', delta: -1 | 1) => {
+  const adjustMatchScore = (match: AdminMatch, key: 'homeScore' | 'awayScore', delta: -1 | 1) => {
     setMatchUpdateForms(forms => {
       const current = forms[match.id] ?? buildMatchUpdateForm(match)
       const fallback = key === 'homeScore' ? match.homeScore : match.awayScore
@@ -1146,7 +1146,7 @@ export const MatchesTab = () => {
   }
 
   const setMatchScore = (
-    match: MatchSummary,
+    match: AdminMatch,
     key: 'homeScore' | 'awayScore',
     value: number | ''
   ) => {
@@ -1179,7 +1179,7 @@ export const MatchesTab = () => {
   }
 
   const adjustPenaltyScore = (
-    match: MatchSummary,
+    match: AdminMatch,
     key: 'penaltyHomeScore' | 'penaltyAwayScore',
     delta: -1 | 1
   ) => {
@@ -1198,7 +1198,7 @@ export const MatchesTab = () => {
     })
   }
 
-  const togglePenaltyShootout = (match: MatchSummary, enabled: boolean) => {
+  const togglePenaltyShootout = (match: AdminMatch, enabled: boolean) => {
     setMatchUpdateForms(forms => {
       const current = forms[match.id] ?? buildMatchUpdateForm(match)
       const normalizedHome =
@@ -1231,7 +1231,7 @@ export const MatchesTab = () => {
     })
   }
 
-  const setMatchStatus = (match: MatchSummary, status: MatchSummary['status']) => {
+  const setMatchStatus = (match: AdminMatch, status: MatchSummary['status']) => {
     setMatchUpdateForms(forms => {
       const current = forms[match.id] ?? buildMatchUpdateForm(match)
       const nextForm: MatchUpdateFormState = { ...current, status }
@@ -1246,7 +1246,7 @@ export const MatchesTab = () => {
     })
   }
 
-  const setMatchDateTime = (match: MatchSummary, value: string) => {
+  const setMatchDateTime = (match: AdminMatch, value: string) => {
     setMatchUpdateForms(forms => {
       const current = forms[match.id] ?? buildMatchUpdateForm(match)
       return {
@@ -1259,7 +1259,7 @@ export const MatchesTab = () => {
     })
   }
 
-  const setMatchStadium = (match: MatchSummary, value: number | '') => {
+  const setMatchStadium = (match: AdminMatch, value: number | '') => {
     setMatchUpdateForms(forms => {
       const current = forms[match.id] ?? buildMatchUpdateForm(match)
       return {
@@ -1272,7 +1272,7 @@ export const MatchesTab = () => {
     })
   }
 
-  const setMatchBroadcastUrl = (match: MatchSummary, value: string) => {
+  const setMatchBroadcastUrl = (match: AdminMatch, value: string) => {
     setMatchUpdateForms(forms => {
       const current = forms[match.id] ?? buildMatchUpdateForm(match)
       return {
@@ -1628,8 +1628,11 @@ export const MatchesTab = () => {
     selectedMatchForm?.penaltyAwayScore ?? selectedMatch?.penaltyAwayScore ?? 0
   const competitionType = selectedSeason?.competition?.type
   const competitionSeriesFormat = selectedSeason?.competition?.seriesFormat
+  const selectedMatchIsFriendly = selectedMatch ? isFriendlyMatch(selectedMatch) : false
+  const selectedSeriesMatch =
+    selectedMatch && !selectedMatchIsFriendly ? (selectedMatch as MatchSummary) : null
   const isPenaltyEligible =
-    Boolean(selectedMatch?.seriesId) &&
+    Boolean(selectedSeriesMatch?.seriesId) &&
     competitionType === 'LEAGUE' &&
     (competitionSeriesFormat === 'BEST_OF_N' || competitionSeriesFormat === 'DOUBLE_ROUND_PLAYOFF')
   const isRegulationDraw = homeScoreForControls === awayScoreForControls

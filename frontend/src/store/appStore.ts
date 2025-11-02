@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { FRIENDLY_SEASON_ID } from '@shared/types'
 import type {
   LeagueRoundCollection,
   LeagueRoundMatches,
@@ -119,6 +120,7 @@ const CLUB_SUMMARY_TTL_MS = 45_000
 const CLUB_MATCHES_TTL_MS = 86_400_000
 const DOUBLE_TAP_THRESHOLD_MS = 280
 const MATCH_DETAILS_CACHE_LIMIT = 8
+const FRIENDLY_REFRESH_INTERVAL_MS = 60_000
 
 const LEAGUE_POLL_INTERVAL_MS = 10_000
 const TEAM_POLL_INTERVAL_MS = 20_000
@@ -767,6 +769,12 @@ const startLeaguePolling = (get: () => AppState) => {
       return
     }
 
+    const now = Date.now()
+    const friendliesScheduleFetchedAt = state.scheduleFetchedAt[FRIENDLY_SEASON_ID] ?? 0
+    if (now - friendliesScheduleFetchedAt > FRIENDLY_REFRESH_INTERVAL_MS) {
+      void state.fetchLeagueSchedule({ seasonId: FRIENDLY_SEASON_ID })
+    }
+
     const seasonId = resolveSeasonId(state)
     if (!seasonId) {
       return
@@ -926,6 +934,8 @@ const orderSeasons = (items: LeagueSeasonSummary[]) =>
 
 const resolveSeasonId = (state: AppState, override?: number) =>
   override ?? state.selectedSeasonId ?? state.activeSeasonId
+
+const isFriendlySeasonId = (seasonId?: number | null): boolean => seasonId === FRIENDLY_SEASON_ID
 
 const isClubSummaryStatistics = (
   value: unknown
@@ -1188,6 +1198,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   closeLeagueMenu: () => set({ leagueMenuOpen: false }),
   setSelectedSeason: seasonId => {
+    if (isFriendlySeasonId(seasonId)) {
+      set({ selectedSeasonId: FRIENDLY_SEASON_ID })
+      return
+    }
     const seasons = get().seasons
     if (!seasons.some(season => season.id === seasonId)) {
       return
@@ -1233,9 +1247,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     const ordered = orderSeasons(response.data)
     const active = ordered.find(season => season.isActive)
     const previousSelected = state.selectedSeasonId
-    const nextSelected = previousSelected && ordered.some(season => season.id === previousSelected)
-      ? previousSelected
-      : active?.id ?? ordered[0]?.id
+    const keepFriendliesSelected = isFriendlySeasonId(previousSelected)
+    const nextSelected = keepFriendliesSelected
+      ? FRIENDLY_SEASON_ID
+      : previousSelected && ordered.some(season => season.id === previousSelected)
+        ? previousSelected
+        : active?.id ?? ordered[0]?.id
     set(prev => ({
       seasons: ordered,
       seasonsVersion: response.version,
@@ -1244,8 +1261,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       selectedSeasonId: nextSelected,
       loading: { ...prev.loading, seasons: false },
     }))
-    if (nextSelected) {
+    if (nextSelected && !isFriendlySeasonId(nextSelected)) {
       void get().fetchLeagueTable({ seasonId: nextSelected })
+    } else if (isFriendlySeasonId(nextSelected)) {
+      void get().fetchLeagueSchedule({ seasonId: FRIENDLY_SEASON_ID })
+      void get().fetchLeagueResults({ seasonId: FRIENDLY_SEASON_ID })
     }
     return { ok: true }
   },
@@ -1254,6 +1274,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     const seasonId = resolveSeasonId(state, options?.seasonId)
     if (!seasonId) {
       return { ok: false }
+    }
+    if (isFriendlySeasonId(seasonId)) {
+      return { ok: true }
     }
     if (state.loading.table && !options?.force) {
       return { ok: true }
@@ -1318,6 +1341,64 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!seasonId) {
       return { ok: false }
     }
+    if (isFriendlySeasonId(seasonId)) {
+      if (state.loading.schedule && !options?.force) {
+        return { ok: true }
+      }
+      const now = Date.now()
+      const lastFetched = state.scheduleFetchedAt[FRIENDLY_SEASON_ID] ?? 0
+      if (!options?.force && lastFetched && now - lastFetched < SCHEDULE_TTL_MS) {
+        return { ok: true }
+      }
+      set(prev => ({
+        loading: { ...prev.loading, schedule: true },
+        errors: { ...prev.errors, schedule: undefined },
+      }))
+      const requestVersion = options?.force ? undefined : state.scheduleVersions[FRIENDLY_SEASON_ID]
+      const response = await leagueApi.fetchFriendlySchedule({
+        version: requestVersion,
+      })
+      if (!response.ok) {
+        set(prev => ({
+          loading: { ...prev.loading, schedule: false },
+          errors: { ...prev.errors, schedule: response.error },
+        }))
+        return { ok: false }
+      }
+      if (!('data' in response)) {
+        if (!state.schedules[FRIENDLY_SEASON_ID]) {
+          set(prev => ({
+            loading: { ...prev.loading, schedule: false },
+            errors: { ...prev.errors, schedule: 'empty_cache' },
+          }))
+          return { ok: false }
+        }
+        set(prev => ({
+          scheduleFetchedAt: { ...prev.scheduleFetchedAt, [FRIENDLY_SEASON_ID]: now },
+          loading: { ...prev.loading, schedule: false },
+        }))
+        return { ok: true }
+      }
+      const nextVersion = response.version ?? state.scheduleVersions[FRIENDLY_SEASON_ID]
+      set(prev => {
+        const nextSchedules = { ...prev.schedules, [FRIENDLY_SEASON_ID]: response.data }
+        const nextScheduleVersions = {
+          ...prev.scheduleVersions,
+          [FRIENDLY_SEASON_ID]: nextVersion,
+        }
+
+        writeToStorage('schedules', nextSchedules)
+        writeToStorage('scheduleVersions', nextScheduleVersions)
+
+        return {
+          schedules: nextSchedules,
+          scheduleVersions: nextScheduleVersions,
+          scheduleFetchedAt: { ...prev.scheduleFetchedAt, [FRIENDLY_SEASON_ID]: now },
+          loading: { ...prev.loading, schedule: false },
+        }
+      })
+      return { ok: true }
+    }
     if (state.loading.schedule && !options?.force) {
       return { ok: true }
     }
@@ -1380,6 +1461,64 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!seasonId) {
       return { ok: false }
     }
+    if (isFriendlySeasonId(seasonId)) {
+      if (state.loading.results && !options?.force) {
+        return { ok: true }
+      }
+      const now = Date.now()
+      const lastFetched = state.resultsFetchedAt[FRIENDLY_SEASON_ID] ?? 0
+      if (!options?.force && lastFetched && now - lastFetched < RESULTS_TTL_MS) {
+        return { ok: true }
+      }
+      set(prev => ({
+        loading: { ...prev.loading, results: true },
+        errors: { ...prev.errors, results: undefined },
+      }))
+      const requestVersion = options?.force ? undefined : state.resultsVersions[FRIENDLY_SEASON_ID]
+      const response = await leagueApi.fetchFriendlyResults({
+        version: requestVersion,
+      })
+      if (!response.ok) {
+        set(prev => ({
+          loading: { ...prev.loading, results: false },
+          errors: { ...prev.errors, results: response.error },
+        }))
+        return { ok: false }
+      }
+      if (!('data' in response)) {
+        if (!state.results[FRIENDLY_SEASON_ID]) {
+          set(prev => ({
+            loading: { ...prev.loading, results: false },
+            errors: { ...prev.errors, results: 'empty_cache' },
+          }))
+          return { ok: false }
+        }
+        set(prev => ({
+          resultsFetchedAt: { ...prev.resultsFetchedAt, [FRIENDLY_SEASON_ID]: now },
+          loading: { ...prev.loading, results: false },
+        }))
+        return { ok: true }
+      }
+      const nextVersion = response.version ?? state.resultsVersions[FRIENDLY_SEASON_ID]
+      set(prev => {
+        const nextResultsMap = { ...prev.results, [FRIENDLY_SEASON_ID]: response.data }
+        const nextResultsVersions = {
+          ...prev.resultsVersions,
+          [FRIENDLY_SEASON_ID]: nextVersion,
+        }
+
+        writeToStorage('results', nextResultsMap)
+        writeToStorage('resultsVersions', nextResultsVersions)
+
+        return {
+          results: nextResultsMap,
+          resultsVersions: nextResultsVersions,
+          resultsFetchedAt: { ...prev.resultsFetchedAt, [FRIENDLY_SEASON_ID]: now },
+          loading: { ...prev.loading, results: false },
+        }
+      })
+      return { ok: true }
+    }
     if (state.loading.results && !options?.force) {
       return { ok: true }
     }
@@ -1441,6 +1580,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     const seasonId = resolveSeasonId(state, options?.seasonId)
     if (!seasonId) {
       return { ok: false }
+    }
+    if (isFriendlySeasonId(seasonId)) {
+      return { ok: true }
     }
     if (state.loading.stats && !options?.force) {
       return { ok: true }

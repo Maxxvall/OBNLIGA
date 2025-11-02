@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { FRIENDLY_SEASON_ID, FRIENDLY_SEASON_NAME } from '@shared/types'
 import { LeagueTableView } from '../components/league/LeagueTableView'
 import { LeagueRoundsView } from '../components/league/LeagueRoundsView'
 import { LeagueStatsView } from '../components/league/LeagueStatsView'
@@ -108,11 +109,33 @@ const LeaguePage: React.FC = () => {
     () => new Set()
   )
   const lastAutoExpandedSeasonId = useRef<number | undefined>(undefined)
-
-  const selectedSeason = useMemo(
-    () => seasons.find(season => season.id === selectedSeasonId),
-    [seasons, selectedSeasonId]
+  const friendlySchedule = schedules[FRIENDLY_SEASON_ID]
+  const friendlyResults = results[FRIENDLY_SEASON_ID]
+  const hasFriendliesSchedule = Boolean(
+    friendlySchedule?.rounds?.some(round => round.matches.length > 0)
   )
+  const friendliesSeasonSummary = hasFriendliesSchedule
+    ? friendlySchedule?.season ?? friendlyResults?.season ?? null
+    : null
+  const shouldShowFriendliesEntry = Boolean(friendliesSeasonSummary)
+  const friendliesRangeText = friendliesSeasonSummary
+    ? formatSeasonRange(friendliesSeasonSummary)
+    : '—'
+  const friendliesSubtitle = friendliesSeasonSummary
+    ? friendliesSeasonSummary.isActive
+      ? 'Матчи идут'
+      : 'Последние результаты'
+    : loadingSchedule
+      ? 'Загружаем…'
+      : 'Нет запланированных матчей'
+  const isFriendlySelected = selectedSeasonId === FRIENDLY_SEASON_ID
+
+  const selectedSeason = useMemo(() => {
+    if (isFriendlySelected) {
+      return shouldShowFriendliesEntry ? friendliesSeasonSummary : null
+    }
+    return seasons.find(season => season.id === selectedSeasonId) ?? null
+  }, [friendliesSeasonSummary, isFriendlySelected, seasons, selectedSeasonId, shouldShowFriendliesEntry])
 
   const cityGroups = useMemo<CityGroup[]>(() => {
     if (seasons.length === 0) {
@@ -329,6 +352,31 @@ const LeaguePage: React.FC = () => {
   }, [cityGroups, selectedSeason])
 
   useEffect(() => {
+    if (isFriendlySelected && (leagueSubTab === 'table' || leagueSubTab === 'stats')) {
+      setLeagueSubTab('schedule')
+    }
+  }, [isFriendlySelected, leagueSubTab, setLeagueSubTab])
+
+  useEffect(() => {
+    if (!isFriendlySelected || shouldShowFriendliesEntry) {
+      return
+    }
+    const fallbackSeason =
+      (activeSeasonId && seasons.find(season => season.id === activeSeasonId))
+        ?? seasons.find(season => season.id !== FRIENDLY_SEASON_ID)
+        ?? null
+    if (fallbackSeason) {
+      setSelectedSeason(fallbackSeason.id)
+    }
+  }, [
+    activeSeasonId,
+    isFriendlySelected,
+    seasons,
+    setSelectedSeason,
+    shouldShowFriendliesEntry,
+  ])
+
+  useEffect(() => {
     ensureLeaguePolling()
     void fetchSeasons()
 
@@ -338,10 +386,10 @@ const LeaguePage: React.FC = () => {
   }, [ensureLeaguePolling, stopLeaguePolling, fetchSeasons])
 
   useEffect(() => {
-    if (selectedSeasonId) {
+    if (selectedSeasonId && !isFriendlySelected) {
       void fetchTable({ seasonId: selectedSeasonId })
     }
-  }, [selectedSeasonId, fetchTable])
+  }, [selectedSeasonId, isFriendlySelected, fetchTable])
 
   useEffect(() => {
     if (!selectedSeasonId) {
@@ -354,9 +402,12 @@ const LeaguePage: React.FC = () => {
       void fetchResults({ seasonId: selectedSeasonId })
     }
     if (leagueSubTab === 'stats') {
+      if (isFriendlySelected) {
+        return
+      }
       void fetchStats({ seasonId: selectedSeasonId })
     }
-  }, [leagueSubTab, selectedSeasonId, fetchSchedule, fetchResults, fetchStats])
+  }, [leagueSubTab, selectedSeasonId, fetchSchedule, fetchResults, fetchStats, isFriendlySelected])
 
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
@@ -370,6 +421,12 @@ const LeaguePage: React.FC = () => {
 
   const handleSeasonClick = (seasonId: number) => {
     setSelectedSeason(seasonId)
+    closeLeagueMenu()
+  }
+
+  const handleFriendliesClick = () => {
+    setSelectedSeason(FRIENDLY_SEASON_ID)
+    setLeagueSubTab('schedule')
     closeLeagueMenu()
   }
 
@@ -403,7 +460,7 @@ const LeaguePage: React.FC = () => {
   }
 
   const handleForceReload = () => {
-    if (selectedSeasonId) {
+    if (selectedSeasonId && !isFriendlySelected) {
       void fetchTable({ seasonId: selectedSeasonId, force: true })
     }
   }
@@ -421,7 +478,7 @@ const LeaguePage: React.FC = () => {
   }
 
   const handleStatsReload = () => {
-    if (selectedSeasonId) {
+    if (selectedSeasonId && !isFriendlySelected) {
       void fetchStats({ seasonId: selectedSeasonId, force: true })
     }
   }
@@ -440,6 +497,25 @@ const LeaguePage: React.FC = () => {
           {loadingSeasons && <span className="muted">Загружаем…</span>}
         </header>
         <div className="league-season-groups">
+          {shouldShowFriendliesEntry && (
+            <div className="friendlies-entry">
+              <button
+                type="button"
+                className={`season-item friendlies${isFriendlySelected ? ' selected' : ''}${friendliesSeasonSummary?.isActive ? ' active' : ''}`}
+                onClick={handleFriendliesClick}
+                aria-current={isFriendlySelected}
+              >
+                <div className="friendlies-label">
+                  <span className="season-name">{FRIENDLY_SEASON_NAME}</span>
+                  {friendliesSeasonSummary?.isActive && (
+                    <span className="season-chip friendlies-chip">Активно</span>
+                  )}
+                </div>
+                <span className="season-range muted">{friendliesRangeText}</span>
+                <span className="season-range muted">{friendliesSubtitle}</span>
+              </button>
+            </div>
+          )}
           {cityGroups.map(cityGroup => {
             const cityExpanded = expandedCities.has(cityGroup.cityKey)
             const cityDomId = domIdFor('city', cityGroup.cityKey)
@@ -536,19 +612,28 @@ const LeaguePage: React.FC = () => {
       >
         <div className="league-toolbar">
           <nav className="league-subtabs" aria-label="Подвкладки лиги">
-            {SUBTAB_ORDER.map(key => (
-              <button
-                key={key}
-                type="button"
-                className={`subtab-button${leagueSubTab === key ? ' active' : ''}`}
-                onClick={() => handleSubTabClick(key)}
-              >
-                {subTabLabels[key]}
-              </button>
-            ))}
+            {SUBTAB_ORDER.map(key => {
+              const disabled = isFriendlySelected && (key === 'table' || key === 'stats')
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className={`subtab-button${leagueSubTab === key ? ' active' : ''}`}
+                  disabled={disabled}
+                  onClick={() => {
+                    if (disabled) {
+                      return
+                    }
+                    handleSubTabClick(key)
+                  }}
+                >
+                  {subTabLabels[key]}
+                </button>
+              )
+            })}
           </nav>
         </div>
-        {!selectedSeason && (
+        {!selectedSeason && !isFriendlySelected && (
           <div className="inline-feedback info" role="status">
             Выберите сезон, чтобы посмотреть таблицу.
           </div>

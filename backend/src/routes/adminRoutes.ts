@@ -16,7 +16,7 @@ import {
 } from '@prisma/client'
 import { handleMatchFinalization, rebuildCareerStatsForClubs } from '../services/matchAggregation'
 import { buildLeagueTable } from '../services/leagueTable'
-import { refreshLeagueMatchAggregates } from '../services/leagueSchedule'
+import { refreshFriendlyAggregates, refreshLeagueMatchAggregates } from '../services/leagueSchedule'
 import { matchBroadcastCacheKey } from '../services/matchDetailsPublic'
 import { createSeasonPlayoffs, runSeasonAutomation } from '../services/seasonAutomation'
 import { serializePrisma } from '../utils/serialization'
@@ -3337,6 +3337,15 @@ export default async function (server: FastifyInstance) {
           },
         })
 
+        const publishTopic =
+          typeof admin.publishTopic === 'function' ? admin.publishTopic.bind(admin) : undefined
+
+        try {
+          await refreshFriendlyAggregates({ publishTopic })
+        } catch (err) {
+          admin.log.warn({ err }, 'failed to refresh friendlies after create')
+        }
+
         return sendSerialized(reply, friendlyMatch)
       })
 
@@ -3350,6 +3359,16 @@ export default async function (server: FastifyInstance) {
           return reply.status(404).send({ ok: false, error: 'friendly_match_not_found' })
         }
         await prisma.match.delete({ where: { id: matchId } })
+
+        const publishTopic =
+          typeof admin.publishTopic === 'function' ? admin.publishTopic.bind(admin) : undefined
+
+        try {
+          await refreshFriendlyAggregates({ publishTopic })
+        } catch (err) {
+          admin.log.warn({ err, matchId: matchId.toString() }, 'failed to refresh friendlies after delete')
+        }
+
         return reply.send({ ok: true })
       })
 
@@ -3526,6 +3545,17 @@ export default async function (server: FastifyInstance) {
           }
         }
 
+        if (existing.isFriendly) {
+          try {
+            await refreshFriendlyAggregates({ publishTopic })
+          } catch (err) {
+            request.server.log.warn(
+              { err, matchId: matchId.toString() },
+              'failed to refresh friendlies after match update'
+            )
+          }
+        }
+
         if (body.status === MatchStatus.FINISHED && existing.status !== MatchStatus.FINISHED) {
           await handleMatchFinalization(matchId, request.server.log, { publishTopic })
         }
@@ -3554,6 +3584,17 @@ export default async function (server: FastifyInstance) {
             request.server.log.warn(
               { err, matchId: matchId.toString(), seasonId: match.seasonId },
               'failed to refresh league aggregates after match delete'
+            )
+          }
+        }
+
+        if (match.isFriendly) {
+          try {
+            await refreshFriendlyAggregates({ publishTopic })
+          } catch (err) {
+            request.server.log.warn(
+              { err, matchId: matchId.toString() },
+              'failed to refresh friendlies after match delete'
             )
           }
         }

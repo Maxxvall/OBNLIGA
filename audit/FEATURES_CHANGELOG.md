@@ -34,6 +34,37 @@
 
 ---
 
+## Модуль: Прогнозы и рейтинги (Predictions & Ratings)
+
+### Запуск новой модели прогнозов
+**Дата:** Ноябрь 2025  
+**Связанные изменения:** predictions-v2, schema-20251102
+
+**Что реализовано:**
+- Новая схема Prisma: `PredictionTemplate`, `PredictionEntry`, `PredictionStreak`, `AchievementLevel`, `UserAchievementProgress`, `UserRating`, `RatingSnapshot`, `AdminPointAdjustment`, `AdminActionLog`.
+- Бэкенд-эндпоинты: `GET /api/predictions/active` (фильтр ближайшие 6 дней, статус `SCHEDULED`) и `GET /api/predictions/my` с проверкой сессии и объединением старой модели.
+- Кэширование: ключи `predictions:active:6d`, `predictions:user:{user_id}`, ETag/304, TTL 5 минут, SWR 2 минуты.
+- Клиентская вкладка `PredictionsPage` с подвкладками "Активные" и "Мои", локальный кеш + ETag, интеграция в главную навигацию.
+- Документация: обновлены `docs/BD.md`, `docs/cache.md`, чек-лист аудита.
+
+**Оптимизации:**
+- Ограничение выборки до 6 суток вперёд, исключение статусов `CANCELLED/FINISHED` для экономии трафика.
+- Унификация токенов/сессий через `resolveSessionSubject` (переиспользование в `userRoutes`).
+- Нормализация legacy-прогнозов в новый формат без даунтайма.
+
+**Файлы:**
+- `prisma/schema.prisma`
+- `backend/src/routes/predictionRoutes.ts`
+- `backend/src/utils/session.ts`
+- `backend/src/server.ts`
+- `shared/types.ts`
+- `frontend/src/api/predictionsApi.ts`
+- `frontend/src/pages/PredictionsPage.tsx`
+- `frontend/src/styles/predictions.css`
+- `docs/BD.md`, `docs/cache.md`
+
+---
+
 ## Модуль: Новости и публикации (News & Content)
 
 ### Админское управление новостями

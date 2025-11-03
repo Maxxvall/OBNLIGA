@@ -9,62 +9,62 @@ generator client {
 }
 
 model Club {
-  id        Int      @id @default(autoincrement()) @map("club_id")
+  id        Int     @id @default(autoincrement()) @map("club_id")
   name      String
-  shortName String   @map("short_name")
-  logoUrl   String?  @map("logo_url")
+  shortName String  @map("short_name")
+  logoUrl   String? @map("logo_url")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  seasons        SeasonParticipant[]
-  rosters        SeasonRoster[]
-  homeSeries     MatchSeries[]      @relation("home_club")
-  awaySeries     MatchSeries[]      @relation("away_club")
-  wonSeries      MatchSeries[]      @relation("winner_club")
-  matchesHome    Match[]            @relation("match_home")
-  matchesAway    Match[]            @relation("match_away")
-  clubPlayers    ClubPlayer[]
-  playerStats    PlayerSeasonStats[]
-  clubSeasonStats ClubSeasonStats[]
-  careerStats    PlayerClubCareerStats[]
+  seasons           SeasonParticipant[]
+  rosters           SeasonRoster[]
+  homeSeries        MatchSeries[]           @relation("home_club")
+  awaySeries        MatchSeries[]           @relation("away_club")
+  wonSeries         MatchSeries[]           @relation("winner_club")
+  matchesHome       Match[]                 @relation("match_home")
+  matchesAway       Match[]                 @relation("match_away")
+  clubPlayers       ClubPlayer[]
+  playerStats       PlayerSeasonStats[]
+  clubSeasonStats   ClubSeasonStats[]
+  careerStats       PlayerClubCareerStats[]
   disqualifications Disqualification[]
-  lineups        MatchLineup[]
-  eventTeams     MatchEvent[]
-  matchStatistics MatchStatistic[]
-  groupSlots     SeasonGroupSlot[]
+  lineups           MatchLineup[]
+  eventTeams        MatchEvent[]
+  matchStatistics   MatchStatistic[]
+  groupSlots        SeasonGroupSlot[]
 
   @@map("club")
 }
 
 model Person {
-  id        Int      @id @default(autoincrement()) @map("person_id")
-  firstName String   @map("first_name")
-  lastName  String   @map("last_name")
-  isPlayer  Boolean  @map("is_player") @default(true)
+  id        Int     @id @default(autoincrement()) @map("person_id")
+  firstName String  @map("first_name")
+  lastName  String  @map("last_name")
+  isPlayer  Boolean @default(true) @map("is_player")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  rosters         SeasonRoster[]
-  lineups         MatchLineup[]
-  events          MatchEvent[]      @relation("event_player")
-  relatedEvents   MatchEvent[]      @relation("event_related")
-  seasonStats     PlayerSeasonStats[]
-  careerStats     PlayerClubCareerStats[]
+  rosters           SeasonRoster[]
+  lineups           MatchLineup[]
+  events            MatchEvent[]            @relation("event_player")
+  relatedEvents     MatchEvent[]            @relation("event_related")
+  seasonStats       PlayerSeasonStats[]
+  careerStats       PlayerClubCareerStats[]
   disqualifications Disqualification[]
-  refereedMatches Match[] @relation("match_referee")
-  clubAffiliations ClubPlayer[]
-  linkedAppUsers AppUser[] @relation("AppUserLeaguePlayer")
+  refereedMatches   Match[]                 @relation("match_referee")
+  clubAffiliations  ClubPlayer[]
+  linkedAppUsers    AppUser[]               @relation("AppUserLeaguePlayer")
 
   @@map("person")
 }
 
 model Competition {
-  id           Int      @id @default(autoincrement()) @map("competition_id")
+  id           Int             @id @default(autoincrement()) @map("competition_id")
   name         String
   type         CompetitionType
-  seriesFormat SeriesFormat @map("series_format")
+  seriesFormat SeriesFormat    @map("series_format")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -89,19 +89,19 @@ enum SeriesFormat {
 }
 
 model Season {
-  id           Int       @id @default(autoincrement()) @map("season_id")
-  competitionId Int      @map("competition_id")
-  name         String
-  startDate    DateTime  @map("start_date")
-  endDate      DateTime  @map("end_date")
-  city         String?   @map("city")
-  seriesFormat SeriesFormat? @map("series_format")
-  isActive     Boolean   @default(false) @map("is_active")
+  id            Int           @id @default(autoincrement()) @map("season_id")
+  competitionId Int           @map("competition_id")
+  name          String
+  startDate     DateTime      @map("start_date")
+  endDate       DateTime      @map("end_date")
+  city          String?       @map("city")
+  seriesFormat  SeriesFormat? @map("series_format")
+  isActive      Boolean       @default(false) @map("is_active")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  competition Competition @relation(fields: [competitionId], references: [id], onDelete: Restrict)
+  competition  Competition         @relation(fields: [competitionId], references: [id], onDelete: Restrict)
   participants SeasonParticipant[]
   rosters      SeasonRoster[]
   series       MatchSeries[]
@@ -126,10 +126,10 @@ model SeasonParticipant {
 }
 
 model SeasonRoster {
-  seasonId Int @map("season_id")
-  clubId   Int @map("club_id")
-  personId Int @map("person_id")
-  shirtNumber Int @map("shirt_number")
+  seasonId         Int      @map("season_id")
+  clubId           Int      @map("club_id")
+  personId         Int      @map("person_id")
+  shirtNumber      Int      @map("shirt_number")
   registrationDate DateTime @map("registration_date")
 
   season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
@@ -142,8 +142,8 @@ model SeasonRoster {
 }
 
 model ClubPlayer {
-  clubId   Int @map("club_id")
-  personId Int @map("person_id")
+  clubId             Int  @map("club_id")
+  personId           Int  @map("person_id")
   defaultShirtNumber Int? @map("default_shirt_number")
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -170,17 +170,17 @@ model Stadium {
 }
 
 model SeasonRound {
-  id         Int       @id @default(autoincrement()) @map("round_id")
-  seasonId   Int       @map("season_id")
-  roundType  RoundType @map("round_type")
-  roundNumber Int?     @map("round_number")
-  label      String    @map("label")
-  groupId    Int?      @map("group_id")
+  id          Int       @id @default(autoincrement()) @map("round_id")
+  seasonId    Int       @map("season_id")
+  roundType   RoundType @map("round_type")
+  roundNumber Int?      @map("round_number")
+  label       String    @map("label")
+  groupId     Int?      @map("group_id")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  season  Season       @relation(fields: [seasonId], references: [id], onDelete: Cascade)
   matches Match[]
   group   SeasonGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
 
@@ -194,25 +194,25 @@ enum RoundType {
 }
 
 model MatchSeries {
-  id        BigInt    @id @default(autoincrement()) @map("series_id")
-  seasonId  Int       @map("season_id")
-  stageName String    @map("stage_name")
-  homeClubId Int      @map("home_club_id")
-  awayClubId Int      @map("away_club_id")
+  id           BigInt       @id @default(autoincrement()) @map("series_id")
+  seasonId     Int          @map("season_id")
+  stageName    String       @map("stage_name")
+  homeClubId   Int          @map("home_club_id")
+  awayClubId   Int          @map("away_club_id")
   seriesStatus SeriesStatus @map("series_status")
-  winnerClubId Int? @map("winner_club_id")
-  homeSeed Int? @map("home_seed")
-  awaySeed Int? @map("away_seed")
-  bracketSlot Int? @map("bracket_slot")
+  winnerClubId Int?         @map("winner_club_id")
+  homeSeed     Int?         @map("home_seed")
+  awaySeed     Int?         @map("away_seed")
+  bracketSlot  Int?         @map("bracket_slot")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
-  homeClub Club @relation("home_club", fields: [homeClubId], references: [id], onDelete: Restrict)
-  awayClub Club @relation("away_club", fields: [awayClubId], references: [id], onDelete: Restrict)
-  winnerClub Club? @relation("winner_club", fields: [winnerClubId], references: [id], onDelete: SetNull)
-  matches Match[]
+  season     Season  @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  homeClub   Club    @relation("home_club", fields: [homeClubId], references: [id], onDelete: Restrict)
+  awayClub   Club    @relation("away_club", fields: [awayClubId], references: [id], onDelete: Restrict)
+  winnerClub Club?   @relation("winner_club", fields: [winnerClubId], references: [id], onDelete: SetNull)
+  matches    Match[]
 
   @@map("match_series")
 }
@@ -223,43 +223,44 @@ enum SeriesStatus {
 }
 
 model Match {
-  id          BigInt   @id @default(autoincrement()) @map("match_id")
-  seasonId    Int?     @map("season_id")
-  seriesId    BigInt?  @map("series_id")
-  seriesMatchNumber Int? @map("series_match_number")
-  matchDateTime DateTime @map("match_date_time")
-  homeTeamId  Int      @map("home_team_id")
-  awayTeamId  Int      @map("away_team_id")
-  homeScore   Int      @default(0) @map("home_score")
-  awayScore   Int      @default(0) @map("away_score")
-  status      MatchStatus
-  stadiumId   Int?     @map("stadium_id")
-  refereeId   Int?     @map("referee_id")
-  roundId     Int?     @map("round_id")
-  groupId     Int?     @map("group_id")
-  isArchived  Boolean  @default(false) @map("is_archived")
-  hasPenaltyShootout Boolean @default(false) @map("has_penalty_shootout")
-  penaltyHomeScore  Int      @default(0) @map("penalty_home_score")
-  penaltyAwayScore  Int      @default(0) @map("penalty_away_score")
-  broadcastUrl     String?  @map("broadcast_url")
-  eventName        String?  @map("event_name")
-  isFriendly       Boolean  @default(false) @map("is_friendly")
+  id                 BigInt      @id @default(autoincrement()) @map("match_id")
+  seasonId           Int?        @map("season_id")
+  seriesId           BigInt?     @map("series_id")
+  seriesMatchNumber  Int?        @map("series_match_number")
+  matchDateTime      DateTime    @map("match_date_time")
+  homeTeamId         Int         @map("home_team_id")
+  awayTeamId         Int         @map("away_team_id")
+  homeScore          Int         @default(0) @map("home_score")
+  awayScore          Int         @default(0) @map("away_score")
+  status             MatchStatus
+  stadiumId          Int?        @map("stadium_id")
+  refereeId          Int?        @map("referee_id")
+  roundId            Int?        @map("round_id")
+  groupId            Int?        @map("group_id")
+  isArchived         Boolean     @default(false) @map("is_archived")
+  hasPenaltyShootout Boolean     @default(false) @map("has_penalty_shootout")
+  penaltyHomeScore   Int         @default(0) @map("penalty_home_score")
+  penaltyAwayScore   Int         @default(0) @map("penalty_away_score")
+  broadcastUrl       String?     @map("broadcast_url")
+  eventName          String?     @map("event_name")
+  isFriendly         Boolean     @default(false) @map("is_friendly")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  season   Season? @relation(fields: [seasonId], references: [id], onDelete: Cascade)
-  series   MatchSeries? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
-  homeClub Club   @relation("match_home", fields: [homeTeamId], references: [id], onDelete: Restrict)
-  awayClub Club   @relation("match_away", fields: [awayTeamId], references: [id], onDelete: Restrict)
-  stadium  Stadium? @relation(fields: [stadiumId], references: [id], onDelete: SetNull)
-  referee  Person?  @relation("match_referee", fields: [refereeId], references: [id], onDelete: SetNull)
-  lineups  MatchLineup[]
-  events   MatchEvent[]
-  predictions Prediction[]
-  round    SeasonRound? @relation(fields: [roundId], references: [id], onDelete: SetNull)
-  group    SeasonGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  statistics MatchStatistic[]
+  season              Season?              @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  series              MatchSeries?         @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  homeClub            Club                 @relation("match_home", fields: [homeTeamId], references: [id], onDelete: Restrict)
+  awayClub            Club                 @relation("match_away", fields: [awayTeamId], references: [id], onDelete: Restrict)
+  stadium             Stadium?             @relation(fields: [stadiumId], references: [id], onDelete: SetNull)
+  referee             Person?              @relation("match_referee", fields: [refereeId], references: [id], onDelete: SetNull)
+  lineups             MatchLineup[]
+  events              MatchEvent[]
+  predictions         Prediction[]
+  predictionTemplates PredictionTemplate[]
+  round               SeasonRound?         @relation(fields: [roundId], references: [id], onDelete: SetNull)
+  group               SeasonGroup?         @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  statistics          MatchStatistic[]
 
   @@unique([seriesId, seriesMatchNumber], map: "unique_series_match_number")
   @@map("match")
@@ -275,9 +276,9 @@ model SeasonGroup {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
-  slots  SeasonGroupSlot[]
-  rounds SeasonRound[]
+  season  Season            @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  slots   SeasonGroupSlot[]
+  rounds  SeasonRound[]
   matches Match[]
 
   @@unique([seasonId, groupIndex], name: "unique_group_index_per_season")
@@ -308,10 +309,10 @@ enum MatchStatus {
 }
 
 model MatchLineup {
-  matchId BigInt @map("match_id")
-  personId Int  @map("person_id")
-  clubId  Int   @map("club_id")
-  role    LineupRole
+  matchId  BigInt     @map("match_id")
+  personId Int        @map("person_id")
+  clubId   Int        @map("club_id")
+  role     LineupRole
   position String?
 
   match  Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
@@ -328,35 +329,35 @@ enum LineupRole {
 }
 
 model MatchEvent {
-  id        BigInt   @id @default(autoincrement()) @map("event_id")
-  matchId   BigInt   @map("match_id")
-  teamId    Int      @map("team_id")
-  minute    Int
-  eventType MatchEventType @map("event_type")
-  playerId  Int      @map("player_id")
-  relatedPlayerId Int? @map("related_player_id")
+  id              BigInt         @id @default(autoincrement()) @map("event_id")
+  matchId         BigInt         @map("match_id")
+  teamId          Int            @map("team_id")
+  minute          Int
+  eventType       MatchEventType @map("event_type")
+  playerId        Int            @map("player_id")
+  relatedPlayerId Int?           @map("related_player_id")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  match   Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
-  team    Club   @relation(fields: [teamId], references: [id], onDelete: Restrict)
-  player  Person @relation("event_player", fields: [playerId], references: [id], onDelete: Restrict)
+  match         Match   @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  team          Club    @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  player        Person  @relation("event_player", fields: [playerId], references: [id], onDelete: Restrict)
   relatedPerson Person? @relation("event_related", fields: [relatedPlayerId], references: [id], onDelete: SetNull)
 
   @@map("match_event")
 }
 
 model MatchStatistic {
-  matchId BigInt @map("match_id")
-  clubId  Int    @map("club_id")
-  totalShots Int @default(0) @map("total_shots")
-  shotsOnTarget Int @default(0) @map("shots_on_target")
-  corners Int @default(0)
-  yellowCards Int @default(0) @map("yellow_cards")
-  redCards Int @default(0) @map("red_cards")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  matchId       BigInt   @map("match_id")
+  clubId        Int      @map("club_id")
+  totalShots    Int      @default(0) @map("total_shots")
+  shotsOnTarget Int      @default(0) @map("shots_on_target")
+  corners       Int      @default(0)
+  yellowCards   Int      @default(0) @map("yellow_cards")
+  redCards      Int      @default(0) @map("red_cards")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
   match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
   club  Club  @relation(fields: [clubId], references: [id], onDelete: Cascade)
@@ -378,14 +379,14 @@ enum MatchEventType {
 }
 
 model PlayerSeasonStats {
-  seasonId Int @map("season_id")
-  personId Int @map("person_id")
-  clubId   Int @map("club_id")
-  goals    Int @default(0)
-  penaltyGoals Int @default(0) @map("penalty_goals")
-  assists  Int @default(0)
-  yellowCards Int @default(0) @map("yellow_cards")
-  redCards    Int @default(0) @map("red_cards")
+  seasonId      Int @map("season_id")
+  personId      Int @map("person_id")
+  clubId        Int @map("club_id")
+  goals         Int @default(0)
+  penaltyGoals  Int @default(0) @map("penalty_goals")
+  assists       Int @default(0)
+  yellowCards   Int @default(0) @map("yellow_cards")
+  redCards      Int @default(0) @map("red_cards")
   matchesPlayed Int @default(0) @map("matches_played")
 
   updatedAt DateTime @default(now()) @map("updated_at")
@@ -399,8 +400,8 @@ model PlayerSeasonStats {
 }
 
 model PlayerClubCareerStats {
-  personId Int    @map("person_id")
-  clubId   Int    @map("club_id")
+  personId     Int @map("person_id")
+  clubId       Int @map("club_id")
   totalGoals   Int @default(0) @map("total_goals")
   penaltyGoals Int @default(0) @map("penalty_goals")
   totalMatches Int @default(0) @map("total_matches")
@@ -416,12 +417,12 @@ model PlayerClubCareerStats {
 }
 
 model ClubSeasonStats {
-  seasonId Int @map("season_id")
-  clubId   Int @map("club_id")
-  points   Int @default(0)
-  wins     Int @default(0)
-  losses   Int @default(0)
-  goalsFor Int @default(0) @map("goals_for")
+  seasonId     Int @map("season_id")
+  clubId       Int @map("club_id")
+  points       Int @default(0)
+  wins         Int @default(0)
+  losses       Int @default(0)
+  goalsFor     Int @default(0) @map("goals_for")
   goalsAgainst Int @default(0) @map("goals_against")
 
   updatedAt DateTime @default(now()) @map("updated_at")
@@ -434,26 +435,33 @@ model ClubSeasonStats {
 }
 
 model AppUser {
-  id             Int      @id @default(autoincrement()) @map("user_id")
-  telegramId     BigInt   @unique @map("telegram_id")
-  username       String?  @map("username")
-  firstName      String?  @map("first_name")
-  photoUrl       String?  @map("photo_url")
-  registrationDate DateTime @map("registration_date") @default(now())
-  lastLoginDate  DateTime? @map("last_login_date")
-  currentStreak  Int      @map("current_streak") @default(0)
-  totalPredictions Int    @map("total_predictions") @default(0)
-  leaguePlayerStatus   LeaguePlayerStatus @map("league_player_status") @default(NONE)
-  leaguePlayerRequestedAt DateTime? @map("league_player_requested_at")
-  leaguePlayerVerifiedAt DateTime? @map("league_player_verified_at")
-  leaguePlayerId Int? @map("league_player_id")
+  id                      Int                @id @default(autoincrement()) @map("user_id")
+  telegramId              BigInt             @unique @map("telegram_id")
+  username                String?            @map("username")
+  firstName               String?            @map("first_name")
+  photoUrl                String?            @map("photo_url")
+  registrationDate        DateTime           @default(now()) @map("registration_date")
+  lastLoginDate           DateTime?          @map("last_login_date")
+  currentStreak           Int                @default(0) @map("current_streak")
+  totalPredictions        Int                @default(0) @map("total_predictions")
+  leaguePlayerStatus      LeaguePlayerStatus @default(NONE) @map("league_player_status")
+  leaguePlayerRequestedAt DateTime?          @map("league_player_requested_at")
+  leaguePlayerVerifiedAt  DateTime?          @map("league_player_verified_at")
+  leaguePlayerId          Int?               @map("league_player_id")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  predictions Prediction[]
-  achievements UserAchievement[]
-  leaguePlayer Person? @relation("AppUserLeaguePlayer", fields: [leaguePlayerId], references: [id])
+  predictions         Prediction[]
+  predictionEntries   PredictionEntry[]
+  achievements        UserAchievement[]
+  achievementProgress UserAchievementProgress[]
+  predictionStreak    PredictionStreak?
+  userRating          UserRating?
+  ratingSnapshots     RatingSnapshot[]
+  pointAdjustments    AdminPointAdjustment[]
+  actionLogs          AdminActionLog[]
+  leaguePlayer        Person?                   @relation("AppUserLeaguePlayer", fields: [leaguePlayerId], references: [id])
 
   @@map("app_user")
 }
@@ -465,16 +473,16 @@ enum LeaguePlayerStatus {
 }
 
 model Prediction {
-  id           BigInt @id @default(autoincrement()) @map("prediction_id")
-  userId       Int    @map("user_id")
-  matchId      BigInt @map("match_id")
-  predictionDate DateTime @map("prediction_date")
-  result1x2    PredictionResult? @map("result_1x2")
-  totalGoalsOver Float? @map("total_goals_over")
-  penaltyYes   Boolean? @map("penalty_yes")
-  redCardYes   Boolean? @map("red_card_yes")
-  isCorrect    Boolean? @map("is_correct")
-  pointsAwarded Int     @default(0) @map("points_awarded")
+  id             BigInt            @id @default(autoincrement()) @map("prediction_id")
+  userId         Int               @map("user_id")
+  matchId        BigInt            @map("match_id")
+  predictionDate DateTime          @map("prediction_date")
+  result1x2      PredictionResult? @map("result_1x2")
+  totalGoalsOver Float?            @map("total_goals_over")
+  penaltyYes     Boolean?          @map("penalty_yes")
+  redCardYes     Boolean?          @map("red_card_yes")
+  isCorrect      Boolean?          @map("is_correct")
+  pointsAwarded  Int               @default(0) @map("points_awarded")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -492,17 +500,199 @@ enum PredictionResult {
   TWO
 }
 
+enum PredictionMarketType {
+  MATCH_OUTCOME
+  TOTAL_GOALS
+  CUSTOM_BOOLEAN
+}
+
+enum PredictionEntryStatus {
+  PENDING
+  WON
+  LOST
+  VOID
+  CANCELLED
+  EXPIRED
+}
+
+model PredictionTemplate {
+  id                   BigInt               @id @default(autoincrement()) @map("prediction_template_id")
+  matchId              BigInt               @map("match_id")
+  marketType           PredictionMarketType @map("market_type")
+  options              Json                 @map("options")
+  basePoints           Int                  @default(0) @map("base_points")
+  difficultyMultiplier Decimal              @default(1.0) @map("difficulty_multiplier")
+  isManual             Boolean              @default(false) @map("is_manual")
+  createdBy            String?              @map("created_by")
+  createdAt            DateTime             @default(now()) @map("created_at")
+  updatedAt            DateTime             @updatedAt @map("updated_at")
+
+  match   Match             @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  entries PredictionEntry[]
+
+  @@index([matchId, marketType], map: "prediction_template_match_market_idx")
+  @@map("prediction_template")
+}
+
+model PredictionEntry {
+  id             BigInt                @id @default(autoincrement()) @map("prediction_entry_id")
+  templateId     BigInt                @map("template_id")
+  userId         Int                   @map("user_id")
+  selection      String                @map("selection")
+  submittedAt    DateTime              @default(now()) @map("submitted_at")
+  scoreAwarded   Int?                  @map("score_awarded")
+  status         PredictionEntryStatus @default(PENDING)
+  resolutionMeta Json?                 @map("resolution_meta")
+  resolvedAt     DateTime?             @map("resolved_at")
+
+  template PredictionTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  user     AppUser            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, templateId], map: "prediction_entry_user_template_idx")
+  @@index([templateId, status], map: "prediction_entry_template_status_idx")
+  @@map("prediction_entry")
+}
+
+model PredictionStreak {
+  userId           Int       @id @map("user_id")
+  currentStreak    Int       @default(0) @map("current_streak")
+  maxStreak        Int       @default(0) @map("max_streak")
+  lastPredictionAt DateTime? @map("last_prediction_at")
+  lastResolvedAt   DateTime? @map("last_resolved_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("prediction_streak")
+}
+
+model AchievementLevel {
+  id            Int      @id @default(autoincrement()) @map("achievement_level_id")
+  achievementId Int      @map("achievement_id")
+  level         Int      @map("level")
+  threshold     Int      @map("threshold")
+  iconUrl       String?  @map("icon_url")
+  title         String   @map("title")
+  description   String?  @map("description")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  achievement AchievementType @relation("AchievementTypeLevels", fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@unique([achievementId, level], name: "achievement_level_unique")
+  @@map("achievement_level")
+}
+
+model UserAchievementProgress {
+  id             BigInt    @id @default(autoincrement()) @map("achievement_progress_id")
+  userId         Int       @map("user_id")
+  achievementId  Int       @map("achievement_id")
+  currentLevel   Int       @default(0) @map("current_level")
+  progressCount  Int       @default(0) @map("progress_count")
+  lastUnlockedAt DateTime? @map("last_unlocked_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  user        AppUser         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement AchievementType @relation("AchievementTypeProgress", fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementId], name: "achievement_progress_unique")
+  @@map("achievement_progress")
+}
+
+enum RatingScope {
+  CURRENT
+  YEARLY
+}
+
+enum RatingLevel {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+  DIAMOND
+  MYTHIC
+}
+
+model UserRating {
+  userId             Int         @id @map("user_id")
+  totalPoints        Int         @default(0) @map("total_points")
+  seasonalPoints     Int         @default(0) @map("seasonal_points")
+  yearlyPoints       Int         @default(0) @map("yearly_points")
+  mythicRank         Int?        @map("mythic_rank")
+  currentLevel       RatingLevel @default(BRONZE) @map("current_level")
+  lastRecalculatedAt DateTime?   @map("last_recalculated_at")
+  createdAt          DateTime    @default(now()) @map("created_at")
+  updatedAt          DateTime    @updatedAt @map("updated_at")
+
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_rating")
+}
+
+model RatingSnapshot {
+  id         BigInt      @id @default(autoincrement()) @map("rating_snapshot_id")
+  userId     Int         @map("user_id")
+  scope      RatingScope @map("scope")
+  rank       Int         @map("rank")
+  points     Int         @map("points")
+  capturedAt DateTime    @map("captured_at")
+  payload    Json?       @map("payload")
+
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([scope, capturedAt], map: "rating_snapshot_scope_captured_idx")
+  @@map("rating_snapshot")
+}
+
+model AdminPointAdjustment {
+  id              BigInt       @id @default(autoincrement()) @map("point_adjustment_id")
+  userId          Int          @map("user_id")
+  adminIdentifier String       @map("admin_identifier")
+  delta           Int          @map("delta")
+  scope           RatingScope? @map("scope")
+  reason          String?      @map("reason")
+  matchId         BigInt?      @map("match_id")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt], map: "point_adjustment_user_created_idx")
+  @@map("admin_point_adjustment")
+}
+
+model AdminActionLog {
+  id              BigInt    @id @default(autoincrement()) @map("admin_action_log_id")
+  userId          Int?      @map("user_id")
+  adminIdentifier String    @map("admin_identifier")
+  actionType      String    @map("action_type")
+  targetType      String?   @map("target_type")
+  targetId        String?   @map("target_id")
+  metadata        Json?     @map("metadata")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  expiresAt       DateTime? @map("expires_at")
+
+  user AppUser? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt], map: "admin_action_log_created_idx")
+  @@map("admin_action_log")
+}
+
 model AchievementType {
-  id          Int    @id @default(autoincrement()) @map("achievement_type_id")
-  name        String
-  description String?
-  requiredValue Int @map("required_value")
-  metric      AchievementMetric
+  id            Int               @id @default(autoincrement()) @map("achievement_type_id")
+  name          String
+  description   String?
+  requiredValue Int               @map("required_value")
+  metric        AchievementMetric
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  users UserAchievement[]
+  users    UserAchievement[]         @relation("AchievementTypeAchievements")
+  levels   AchievementLevel[]        @relation("AchievementTypeLevels")
+  progress UserAchievementProgress[] @relation("AchievementTypeProgress")
 
   @@map("achievement_type")
 }
@@ -514,12 +704,12 @@ enum AchievementMetric {
 }
 
 model UserAchievement {
-  userId           Int @map("user_id")
-  achievementTypeId Int @map("achievement_type_id")
-  achievedDate DateTime @map("achieved_date")
+  userId            Int      @map("user_id")
+  achievementTypeId Int      @map("achievement_type_id")
+  achievedDate      DateTime @map("achieved_date")
 
-  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
-  achievementType AchievementType @relation(fields: [achievementTypeId], references: [id], onDelete: Cascade)
+  user            AppUser         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievementType AchievementType @relation("AchievementTypeAchievements", fields: [achievementTypeId], references: [id], onDelete: Cascade)
 
   @@id([userId, achievementTypeId])
   @@map("user_achievement")
@@ -538,35 +728,35 @@ model News {
 }
 
 model AdBanner {
-  id           BigInt   @id @default(autoincrement()) @map("ad_banner_id")
-  title        String   @db.VarChar(80)
-  subtitle     String?  @db.VarChar(160)
-  targetUrl    String?  @map("target_url")
-  imageData    Bytes    @map("image_data")
-  imageMime    String   @map("image_mime")
-  imageWidth   Int      @map("image_width")
-  imageHeight  Int      @map("image_height")
-  imageSize    Int      @map("image_size")
-  displayOrder Int      @default(0) @map("display_order")
-  isActive     Boolean  @default(true) @map("is_active")
+  id           BigInt    @id @default(autoincrement()) @map("ad_banner_id")
+  title        String    @db.VarChar(80)
+  subtitle     String?   @db.VarChar(160)
+  targetUrl    String?   @map("target_url")
+  imageData    Bytes     @map("image_data")
+  imageMime    String    @map("image_mime")
+  imageWidth   Int       @map("image_width")
+  imageHeight  Int       @map("image_height")
+  imageSize    Int       @map("image_size")
+  displayOrder Int       @default(0) @map("display_order")
+  isActive     Boolean   @default(true) @map("is_active")
   startsAt     DateTime? @map("starts_at")
   endsAt       DateTime? @map("ends_at")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   @@index([isActive, displayOrder, updatedAt], map: "ad_banner_active_order")
   @@map("ad_banner")
 }
 
 model Disqualification {
-  id        BigInt   @id @default(autoincrement()) @map("disqualification_id")
-  personId  Int      @map("person_id")
-  clubId    Int?     @map("club_id")
-  reason    DisqualificationReason
-  sanctionDate DateTime @map("sanction_date")
-  banDurationMatches Int @map("ban_duration_matches")
-  matchesMissed Int @map("matches_missed") @default(0)
-  isActive  Boolean  @map("is_active") @default(true)
+  id                 BigInt                 @id @default(autoincrement()) @map("disqualification_id")
+  personId           Int                    @map("person_id")
+  clubId             Int?                   @map("club_id")
+  reason             DisqualificationReason
+  sanctionDate       DateTime               @map("sanction_date")
+  banDurationMatches Int                    @map("ban_duration_matches")
+  matchesMissed      Int                    @default(0) @map("matches_missed")
+  isActive           Boolean                @default(true) @map("is_active")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

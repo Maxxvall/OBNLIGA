@@ -1,0 +1,172 @@
+.predictions-page {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.predictions-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.predictions-tabs button {
+  padding: 12px;
+  border-radius: 12px;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.predictions-tabs button.active,
+.predictions-tabs button:focus {
+  background: rgba(0, 180, 255, 0.25);
+  outline: none;
+}
+
+.predictions-tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.prediction-match-list,
+.prediction-entry-list,
+.prediction-template-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.prediction-match,
+.prediction-entry {
+  background: rgba(18, 24, 38, 0.72);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 12px 25px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.prediction-match-header,
+.prediction-entry-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.prediction-club {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #e4ecff;
+}
+
+.prediction-club img {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.prediction-vs {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.prediction-match-meta,
+.prediction-entry-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.prediction-market-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  display: block;
+  color: rgba(255, 255, 255, 0.48);
+}
+
+.prediction-template-item {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.prediction-note {
+  color: rgba(255, 255, 255, 0.74);
+  text-align: center;
+}
+
+.prediction-error {
+  color: #ff6b6b;
+  text-align: center;
+}
+
+.prediction-status {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.prediction-entry.pending .prediction-status,
+.status-pending {
+  background: rgba(255, 196, 0, 0.25);
+  color: #ffd700;
+}
+
+.prediction-entry-won .prediction-status,
+.status-won {
+  background: rgba(40, 167, 69, 0.25);
+  color: #6bffb3;
+}
+
+.prediction-entry-lost .prediction-status,
+.status-lost {
+  background: rgba(220, 53, 69, 0.25);
+  color: #ff7a90;
+}
+
+.status-void,
+.status-cancelled,
+.status-expired {
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.75);
+}
+
+@media (min-width: 768px) {
+  .predictions-page {
+    padding: 24px 32px;
+  }
+
+  .prediction-match,
+  .prediction-entry {
+    padding: 20px;
+  }
+}

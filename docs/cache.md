@@ -95,9 +95,10 @@ MATCH_WINDOW_POST_GRACE_MINUTES=30
 
 ### Predictions
 
-* `predictions:list` — **30–60s**, SWR **15–30s**.
-* `predictions:user:{user_id}` — **15–60s**.
-* Голосования — Redis queue → batch write каждые **5–10s** → bump version → publish.
+* `predictions:active:6d` — **300s** (SWR **120s**), ETag обновляется при изменении окна матчей или bump шаблонов; ключ зависит от диапазона (по умолчанию 6 суток).
+* `predictions:user:{user_id}` — **300s** (SWR **120s**), приватный ключ с защитой по пользовательскому ID и сессии.
+* `predictions:legacy` — временный namespace для миграции старых записей (`Prediction`). TTL **5 min**, только для фоновых задач.
+* Голосования / подтверждения прогнозов — Redis queue → batch write каждые **5–10s** → bump version → publish.
 
 ### Leaderboards
 

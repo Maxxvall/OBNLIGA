@@ -17,6 +17,76 @@ export interface User {
   balance?: number
 }
 
+export type PredictionMarketType = 'MATCH_OUTCOME' | 'TOTAL_GOALS' | 'CUSTOM_BOOLEAN'
+
+export type PredictionEntryStatus =
+  | 'PENDING'
+  | 'WON'
+  | 'LOST'
+  | 'VOID'
+  | 'CANCELLED'
+  | 'EXPIRED'
+
+export interface PredictionTemplateView {
+  id: string
+  marketType: PredictionMarketType
+  options: unknown
+  basePoints: number
+  difficultyMultiplier: number | null
+  isManual: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ActivePredictionMatch {
+  matchId: string
+  matchDateTime: string
+  status: MatchStatus
+  homeClub: {
+    id: number
+    name: string
+    shortName: string | null
+    logoUrl: string | null
+  }
+  awayClub: {
+    id: number
+    name: string
+    shortName: string | null
+    logoUrl: string | null
+  }
+  templates: PredictionTemplateView[]
+}
+
+export type UserPredictionMarketType =
+  | PredictionMarketType
+  | 'LEGACY_1X2'
+  | 'LEGACY_TOTAL'
+  | 'LEGACY_EVENT'
+
+export interface UserPredictionEntry {
+  id: string
+  templateId?: string
+  matchId: string
+  selection: string
+  submittedAt: string
+  status: PredictionEntryStatus
+  scoreAwarded?: number | null
+  resolvedAt?: string | null
+  marketType: UserPredictionMarketType
+  matchDateTime: string
+  homeClub: {
+    id: number
+    name: string
+    shortName: string | null
+    logoUrl: string | null
+  }
+  awayClub: {
+    id: number
+    name: string
+    shortName: string | null
+    logoUrl: string | null
+  }
+}
 // Prisma/DB-backed user (Telegram)
 export interface DbUser {
   id: number

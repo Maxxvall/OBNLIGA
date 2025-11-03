@@ -87,11 +87,13 @@ import adsRoutes from './routes/adsRoutes'
 import leagueRoutes from './routes/leagueRoutes'
 import clubRoutes from './routes/clubRoutes'
 import matchPublicRoutes from './routes/matchPublicRoutes'
+import predictionRoutes from './routes/predictionRoutes'
 server.register(newsRoutes)
 server.register(adsRoutes)
 server.register(leagueRoutes)
 server.register(clubRoutes)
 server.register(matchPublicRoutes)
+server.register(predictionRoutes)
 
 // register fastify websocket & cookie plugins and realtime
 // websocket & cookie plugins and realtime will be registered in start() to avoid top-level await

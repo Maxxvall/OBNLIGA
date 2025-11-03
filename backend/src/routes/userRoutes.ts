@@ -2,7 +2,7 @@ import { FastifyInstance, FastifyRequest } from 'fastify'
 import prisma from '../db'
 import { serializePrisma, isSerializedAppUserPayload } from '../utils/serialization'
 import { defaultCache } from '../cache'
-import jwt from 'jsonwebtoken'
+import { extractSessionToken, resolveSessionSubject } from '../utils/session'
 
 type UserUpsertBody = {
   userId?: string | number | bigint
@@ -12,29 +12,6 @@ type UserUpsertBody = {
 
 type UserParams = {
   userId?: string
-}
-
-type RequestWithSessionCookie = FastifyRequest & {
-  cookies?: Record<string, string>
-}
-
-const JWT_SECRET = process.env.JWT_SECRET || process.env.TELEGRAM_BOT_TOKEN || 'dev-secret'
-
-function extractSessionToken(request: FastifyRequest): string | null {
-  const authHeader = request.headers.authorization
-  if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
-    const tokenCandidate = authHeader.slice(7).trim()
-    if (tokenCandidate) {
-      return tokenCandidate
-    }
-  }
-
-  const cookieToken = (request as RequestWithSessionCookie).cookies?.session
-  if (typeof cookieToken === 'string' && cookieToken.trim()) {
-    return cookieToken.trim()
-  }
-
-  return null
 }
 
 export default async function (server: FastifyInstance) {
@@ -131,21 +108,9 @@ export default async function (server: FastifyInstance) {
       return reply.status(401).send({ ok: false, error: 'no_token' })
     }
 
-    let subject: string | undefined
-    try {
-      const decoded = jwt.verify(token, JWT_SECRET)
-      subject =
-        typeof decoded === 'string'
-          ? decoded
-          : typeof decoded === 'object' && typeof decoded?.sub === 'string'
-          ? decoded.sub
-          : undefined
-    } catch (err) {
-      request.log.warn({ err }, 'league player request: token verification failed')
-      return reply.status(401).send({ ok: false, error: 'invalid_token' })
-    }
-
+    const subject = resolveSessionSubject(token)
     if (!subject) {
+      request.log.warn('league player request: token verification failed')
       return reply.status(401).send({ ok: false, error: 'invalid_token' })
     }
 

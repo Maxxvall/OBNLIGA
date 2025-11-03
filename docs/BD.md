@@ -154,24 +154,75 @@ REST-эндпоинты `/api/auth/telegram-init` и `/api/auth/me` возвра
 
 | Таблица | Поле | Тип данных | Описание | Отношения |
 | :---- | :---- | :---- | :---- | :---- |
-| **Пользователь\_Приложения (App\_User)** | user\_id | INT (PK) | Уникальный ID пользователя в приложении. | \- |
-|  | telegram\_id | BIGINT (UNIQUE) | **ID пользователя Telegram** (Ключ для связи). | \- |
+| **Пользователь_Приложения (App_User)** | user_id | INT (PK) | Уникальный ID пользователя в приложении. | \- |
+|  | telegram_id | BIGINT (UNIQUE) | **ID пользователя Telegram** (ключ для аутентификации). | \- |
 |  | username | VARCHAR(100) | Username Telegram (может быть NULL). | \- |
-|  | first\_name | VARCHAR(100) | Имя из Telegram. | \- |
-|  | registration\\\_date | DATETIME | Дата регистрации в приложении. | \- |
-|  | **last\\\_login\\\_date** | **DATE** | **Дата последнего входа (для расчета серии).** | \- |
-|  | **current\\\_streak** | **INT** | **Текущая последовательная серия входов.** | \- |
-|  | **total\\\_predictions** | **INT** | **Общее количество прогнозов (для достижений).** | \- |
-| **Прогноз (Prediction)** | prediction\_id | BIGINT (PK) | Уникальный ID прогноза. | \- |
-|  | user\_id | INT (FK) | Пользователь, сделавший прогноз. | \-\> App\_User |
-|  | match\_id | BIGINT (PK, FK) | Матч, на который сделан прогноз. | \-\> Match |
-|  | prediction\\\_date | DATETIME | Дата и время прогноза. | \- |
-|  | result\\\_1x2 | ENUM | Прогноз на исход ('1', 'X', '2'). | \- |
-|  | total\\\_goals\\\_over | DECIMAL(3, 1\) | Прогноз на Тотал Больше (напр. 2.5) / NULL если меньше. | \- |
-|  | penalty\\\_yes | BOOLEAN | Прогноз: будет пенальти (ДА) / NULL если НЕТ. | \- |
-|  | red\\\_card\\\_yes | BOOLEAN | Прогноз: будет удаление (ДА) / NULL если НЕТ. | \- |
-|  | is\\\_correct | BOOLEAN | Флаг: был ли прогноз верным. **(Обновляется после матча)** | \- |
-|  | points\\\_awarded | INT | Начислено очков за этот прогноз. | \- |
+|  | first_name | VARCHAR(100) | Имя из Telegram. | \- |
+|  | registration_date | DATETIME | Дата регистрации в приложении. | \- |
+|  | last_login_date | DATE | Дата последнего входа (для streak'ов). | \- |
+|  | current_streak | INT | Текущая серия входов. | \- |
+|  | total_predictions | INT | Первый поколение подсчёта прогнозов (для бэккомпат). | \- |
+|  | created_at / updated_at | DATETIME | Таймстемпы. | \- |
+|  | **Связи** |  | predictionEntries, predictionStreak, userRating, ratingSnapshots, achievementProgress, pointAdjustments, actionLogs | |
+
+| **Шаблон Прогноза (Prediction_Template)** | prediction_template_id | BIGINT (PK) | Конфигурация рынка для матча. | \- |
+|  | match_id | BIGINT (FK) | Матч, к которому относится шаблон. | \-\> Match |
+|  | market_type | ENUM | Тип рынка: 'MATCH_OUTCOME', 'TOTAL_GOALS', 'CUSTOM_BOOLEAN'. | \- |
+|  | options | JSON | Конфигурация вариантов (без публичных коэффициентов). | \- |
+|  | base_points | INT | Базовое количество очков. | \- |
+|  | difficulty_multiplier | DECIMAL | Скрытый мультипликатор сложности. | \- |
+|  | is_manual | BOOLEAN | Флаг ручной настройки. | \- |
+|  | created_by | VARCHAR | Идентификатор админа. | \- |
+
+| **Заявка на Прогноз (Prediction_Entry)** | prediction_entry_id | BIGINT (PK) | Конкретный выбор пользователя по шаблону. | \- |
+|  | template_id | BIGINT (FK) | Ссылка на шаблон. | \-\> Prediction_Template |
+|  | user_id | INT (FK) | Пользователь, сделавший ставку. | \-\> App_User |
+|  | selection | VARCHAR | Выбранный вариант (1/X/2, over/under и т.д.). | \- |
+|  | status | ENUM | 'PENDING', 'WON', 'LOST', 'VOID', 'CANCELLED', 'EXPIRED'. | \- |
+|  | score_awarded | INT | Начисленные очки после расчёта. | \- |
+|  | resolution_meta | JSON | Диагностическое описание для аудита. | \- |
+
+| **Серия Прогнозов (Prediction_Streak)** | user_id | INT (PK, FK) | Пользователь. | \-\> App_User |
+|  | current_streak | INT | Текущая серия правильных прогнозов. | \- |
+|  | max_streak | INT | Максимальный рекорд. | \- |
+|  | last_prediction_at | DATETIME | Время последнего прогноза. | \- |
+|  | last_resolved_at | DATETIME | Время последнего расчёта. | \- |
+
+| **Рейтинг Пользователя (User_Rating)** | user_id | INT (PK, FK) | Пользователь. | \-\> App_User |
+|  | total_points | INT | Общий счёт за всё время. | \- |
+|  | seasonal_points | INT | Очки текущего квартального рейтинга. | \- |
+|  | yearly_points | INT | Очки годового рейтинга. | \- |
+|  | current_level | ENUM | Уровень (BRONZE → MYTHIC). | \- |
+|  | mythic_rank | INT | Позиция в мифическом тире (при попадании в TOP). | \- |
+
+| **Снимок Рейтинга (Rating_Snapshot)** | rating_snapshot_id | BIGINT (PK) | Исторический снимок рейтинга. | \- |
+|  | user_id | INT (FK) | Пользователь. | \-\> App_User |
+|  | scope | ENUM | 'CURRENT' (квартал) / 'YEARLY'. | \- |
+|  | rank | INT | Позиция в рейтинге. | \- |
+|  | points | INT | Очки на момент снимка. | \- |
+|  | captured_at | DATETIME | Время формирования снимка. | \- |
+
+| **Админ-правки Очков (Admin_Point_Adjustment)** | point_adjustment_id | BIGINT (PK) | Операция корректировки очков. | \- |
+|  | user_id | INT (FK) | Пользователь. | \-\> App_User |
+|  | admin_identifier | VARCHAR | Идентификатор администратора. | \- |
+|  | delta | INT | Добавленные/вычтенные очки. | \- |
+|  | scope | ENUM | Какой рейтинг скорректирован. | \- |
+|  | reason | TEXT | Обоснование для аудита. | \- |
+
+| **Админ-лог (Admin_Action_Log)** | admin_action_log_id | BIGINT (PK) | Запись журнала. | \- |
+|  | user_id | INT (FK, NULL) | Затронутый пользователь (если применимо). | \-\> App_User |
+|  | action_type | VARCHAR | Тип операции (adjust_points, override_template и т.д.). | \- |
+|  | target_type / target_id | VARCHAR | Сущность, над которой выполнено действие. | \- |
+|  | metadata | JSON | Подробности для восстановления. | \- |
+|  | expires_at | DATETIME | Время, после которого откат невозможен (72 часа). | \- |
+
+| **Прогноз (Prediction)** | prediction_id | BIGINT (PK) | *Наследие первой версии*. Сохраняется для миграций и аналитики. | \- |
+|  | user_id | INT (FK) | Пользователь, сделавший прогноз. | \-\> App_User |
+|  | match_id | BIGINT (FK) | Матч. | \-\> Match |
+|  | prediction_date | DATETIME | Дата и время прогноза. | \- |
+|  | result_1x2 / total_goals_over / penalty_yes / red_card_yes |  | Поля старой модели (1X2, тотал, события). | \- |
+|  | is_correct | BOOLEAN | Флаг корректности (legacy). | \- |
+|  | points_awarded | INT | Очки за legacy-прогноз. | \- |
 
 ### **7\. Достижения (Achievements)**
 

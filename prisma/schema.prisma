@@ -548,7 +548,7 @@ model PredictionEntry {
   template PredictionTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
   user     AppUser            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId, templateId], map: "prediction_entry_user_template_idx")
+  @@unique([userId, templateId], map: "prediction_entry_user_template_unique")
   @@index([templateId, status], map: "prediction_entry_template_status_idx")
   @@map("prediction_entry")
 }

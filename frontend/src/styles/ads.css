@@ -10,7 +10,6 @@
   top: 0;
   z-index: 12;
   padding-top: env(safe-area-inset-top, 0);
-  background: linear-gradient(180deg, rgba(11, 15, 26, 0.96) 0%, rgba(11, 15, 26, 0.6) 45%, rgba(11, 15, 26, 0) 100%);
 }
 
 .ads-meta {

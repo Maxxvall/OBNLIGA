@@ -27,6 +27,12 @@ export type PredictionEntryStatus =
   | 'CANCELLED'
   | 'EXPIRED'
 
+export interface PredictionChoiceOption {
+  value: string
+  label: string
+  description?: string | null
+}
+
 export interface PredictionTemplateView {
   id: string
   marketType: PredictionMarketType

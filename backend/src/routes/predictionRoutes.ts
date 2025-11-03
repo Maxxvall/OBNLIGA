@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify'
-import { MatchStatus, PredictionEntryStatus, PredictionMarketType } from '@prisma/client'
+import { MatchStatus, PredictionEntryStatus, PredictionMarketType, Prisma } from '@prisma/client'
 import prisma from '../db'
 import { defaultCache } from '../cache'
 import { buildWeakEtag, matchesIfNoneMatch } from '../utils/httpCaching'
@@ -11,6 +11,7 @@ const UPCOMING_CACHE_TTL_SECONDS = 300
 const UPCOMING_STALE_SECONDS = 120
 const USER_CACHE_TTL_SECONDS = 300
 const USER_STALE_SECONDS = 120
+const MAX_SELECTION_LENGTH = 64
 
 const toNumber = (value: unknown): number | null => {
   if (value == null) {
@@ -97,6 +98,173 @@ type UserPredictionEntryView = {
 
 const ACTIVE_CACHE_KEY = (days: number) => `predictions:list:${days}`
 const USER_CACHE_KEY = (userId: number) => `predictions:user:${userId}`
+
+type EntryWithTemplate = Prisma.PredictionEntryGetPayload<{
+  include: {
+    template: {
+      include: {
+        match: {
+          include: {
+            homeClub: true
+            awayClub: true
+          }
+        }
+      }
+    }
+  }
+}>
+
+type LegacyPrediction = Prisma.PredictionGetPayload<{
+  include: {
+    match: {
+      include: {
+        homeClub: true
+        awayClub: true
+      }
+    }
+  }
+}>
+
+const ENTRY_WITH_TEMPLATE_INCLUDE = {
+  template: {
+    include: {
+      match: {
+        include: {
+          homeClub: true,
+          awayClub: true,
+        },
+      },
+    },
+  },
+} as const
+
+const selectionFromOptions = (options: unknown): string[] => {
+  if (!options) {
+    return []
+  }
+
+  const normalized = new Set<string>()
+
+  const consume = (value: unknown) => {
+    if (typeof value === 'string' && value.trim().length > 0) {
+      normalized.add(value.trim())
+      return
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      normalized.add(String(value))
+      return
+    }
+    if (value && typeof value === 'object') {
+      const candidate = value as { value?: unknown }
+      if (typeof candidate.value === 'string' && candidate.value.trim().length > 0) {
+        normalized.add(candidate.value.trim())
+      }
+    }
+  }
+
+  const walk = (input: unknown): void => {
+    if (Array.isArray(input)) {
+      input.forEach(consume)
+      return
+    }
+
+    if (input && typeof input === 'object') {
+      const record = input as Record<string, unknown>
+      if (Array.isArray(record.choices)) {
+        record.choices.forEach(consume)
+      }
+      if (Array.isArray(record.options)) {
+        record.options.forEach(consume)
+      }
+      if (Array.isArray(record.values)) {
+        record.values.forEach(consume)
+      }
+    }
+  }
+
+  walk(options)
+  return Array.from(normalized)
+}
+
+const matchIsLocked = (match: { status: MatchStatus; matchDateTime: Date }): boolean => {
+  if (match.status !== MatchStatus.SCHEDULED) {
+    return true
+  }
+  const now = Date.now()
+  return match.matchDateTime.getTime() <= now
+}
+
+const serializeEntry = (entry: EntryWithTemplate): UserPredictionEntryView => ({
+  id: entry.id.toString(),
+  templateId: entry.templateId.toString(),
+  matchId: entry.template.matchId.toString(),
+  selection: entry.selection,
+  submittedAt: entry.submittedAt.toISOString(),
+  status: entry.status,
+  scoreAwarded: entry.scoreAwarded ?? null,
+  resolvedAt: entry.resolvedAt ? entry.resolvedAt.toISOString() : null,
+  marketType: entry.template.marketType,
+  matchDateTime: entry.template.match.matchDateTime.toISOString(),
+  homeClub: {
+    id: entry.template.match.homeClub.id,
+    name: entry.template.match.homeClub.name,
+    shortName: entry.template.match.homeClub.shortName ?? null,
+    logoUrl: entry.template.match.homeClub.logoUrl ?? null,
+  },
+  awayClub: {
+    id: entry.template.match.awayClub.id,
+    name: entry.template.match.awayClub.name,
+    shortName: entry.template.match.awayClub.shortName ?? null,
+    logoUrl: entry.template.match.awayClub.logoUrl ?? null,
+  },
+})
+
+const serializeLegacyPrediction = (prediction: LegacyPrediction): UserPredictionEntryView => {
+  let marketType: UserPredictionEntryView['marketType'] = 'LEGACY_1X2'
+  let selection = prediction.result1x2 ?? 'N/A'
+
+  if (prediction.totalGoalsOver != null) {
+    marketType = 'LEGACY_TOTAL'
+    selection = `OVER_${prediction.totalGoalsOver}`
+  } else if (prediction.penaltyYes != null) {
+    marketType = 'LEGACY_EVENT'
+    selection = prediction.penaltyYes ? 'PENALTY_YES' : 'PENALTY_NO'
+  } else if (prediction.redCardYes != null) {
+    marketType = 'LEGACY_EVENT'
+    selection = prediction.redCardYes ? 'RED_CARD_YES' : 'RED_CARD_NO'
+  }
+
+  const status: PredictionEntryStatus =
+    prediction.isCorrect == null
+      ? PredictionEntryStatus.PENDING
+      : prediction.isCorrect
+        ? PredictionEntryStatus.WON
+        : PredictionEntryStatus.LOST
+
+  return {
+    id: prediction.id.toString(),
+    matchId: prediction.matchId.toString(),
+    selection,
+    submittedAt: prediction.predictionDate.toISOString(),
+    status,
+    scoreAwarded: prediction.pointsAwarded,
+    resolvedAt: prediction.updatedAt.toISOString(),
+    marketType,
+    matchDateTime: prediction.match.matchDateTime.toISOString(),
+    homeClub: {
+      id: prediction.match.homeClub.id,
+      name: prediction.match.homeClub.name,
+      shortName: prediction.match.homeClub.shortName ?? null,
+      logoUrl: prediction.match.homeClub.logoUrl ?? null,
+    },
+    awayClub: {
+      id: prediction.match.awayClub.id,
+      name: prediction.match.awayClub.name,
+      shortName: prediction.match.awayClub.shortName ?? null,
+      logoUrl: prediction.match.awayClub.logoUrl ?? null,
+    },
+  }
+}
 
 export default async function predictionRoutes(server: FastifyInstance) {
   server.get('/api/predictions/active', async (request, reply) => {
@@ -203,18 +371,7 @@ export default async function predictionRoutes(server: FastifyInstance) {
           where: { userId: user.id },
           orderBy: { submittedAt: 'desc' },
           take: 100,
-          include: {
-            template: {
-              include: {
-                match: {
-                  include: {
-                    homeClub: true,
-                    awayClub: true,
-                  },
-                },
-              },
-            },
-          },
+          include: ENTRY_WITH_TEMPLATE_INCLUDE,
         }),
         prisma.prediction.findMany({
           where: { userId: user.id },
@@ -231,77 +388,8 @@ export default async function predictionRoutes(server: FastifyInstance) {
         }),
       ])
 
-      const entryViews: UserPredictionEntryView[] = entries.map(entry => ({
-        id: entry.id.toString(),
-        templateId: entry.templateId.toString(),
-        matchId: entry.template.matchId.toString(),
-        selection: entry.selection,
-        submittedAt: entry.submittedAt.toISOString(),
-        status: entry.status,
-        scoreAwarded: entry.scoreAwarded ?? null,
-        resolvedAt: entry.resolvedAt ? entry.resolvedAt.toISOString() : null,
-        marketType: entry.template.marketType,
-        matchDateTime: entry.template.match.matchDateTime.toISOString(),
-        homeClub: {
-          id: entry.template.match.homeClub.id,
-          name: entry.template.match.homeClub.name,
-          shortName: entry.template.match.homeClub.shortName ?? null,
-          logoUrl: entry.template.match.homeClub.logoUrl ?? null,
-        },
-        awayClub: {
-          id: entry.template.match.awayClub.id,
-          name: entry.template.match.awayClub.name,
-          shortName: entry.template.match.awayClub.shortName ?? null,
-          logoUrl: entry.template.match.awayClub.logoUrl ?? null,
-        },
-      }))
-
-      const legacyViews: UserPredictionEntryView[] = legacy.map(prediction => {
-        let marketType: UserPredictionEntryView['marketType'] = 'LEGACY_1X2'
-        let selection = prediction.result1x2 ?? 'N/A'
-
-        if (prediction.totalGoalsOver != null) {
-          marketType = 'LEGACY_TOTAL'
-          selection = `OVER_${prediction.totalGoalsOver}`
-        } else if (prediction.penaltyYes != null) {
-          marketType = 'LEGACY_EVENT'
-          selection = prediction.penaltyYes ? 'PENALTY_YES' : 'PENALTY_NO'
-        } else if (prediction.redCardYes != null) {
-          marketType = 'LEGACY_EVENT'
-          selection = prediction.redCardYes ? 'RED_CARD_YES' : 'RED_CARD_NO'
-        }
-
-        const status: PredictionEntryStatus =
-          prediction.isCorrect == null
-            ? PredictionEntryStatus.PENDING
-            : prediction.isCorrect
-              ? PredictionEntryStatus.WON
-              : PredictionEntryStatus.LOST
-
-        return {
-          id: prediction.id.toString(),
-          matchId: prediction.matchId.toString(),
-          selection,
-          submittedAt: prediction.predictionDate.toISOString(),
-          status,
-          scoreAwarded: prediction.pointsAwarded,
-          resolvedAt: prediction.updatedAt.toISOString(),
-          marketType,
-          matchDateTime: prediction.match.matchDateTime.toISOString(),
-          homeClub: {
-            id: prediction.match.homeClub.id,
-            name: prediction.match.homeClub.name,
-            shortName: prediction.match.homeClub.shortName ?? null,
-            logoUrl: prediction.match.homeClub.logoUrl ?? null,
-          },
-          awayClub: {
-            id: prediction.match.awayClub.id,
-            name: prediction.match.awayClub.name,
-            shortName: prediction.match.awayClub.shortName ?? null,
-            logoUrl: prediction.match.awayClub.logoUrl ?? null,
-          },
-        }
-      })
+      const entryViews: UserPredictionEntryView[] = entries.map(serializeEntry)
+      const legacyViews: UserPredictionEntryView[] = legacy.map(serializeLegacyPrediction)
 
       return [...entryViews, ...legacyViews].sort((left, right) =>
         right.submittedAt.localeCompare(left.submittedAt)
@@ -331,5 +419,158 @@ export default async function predictionRoutes(server: FastifyInstance) {
     reply.header('X-Resource-Version', String(version))
 
     return reply.send({ ok: true, data: value, meta: { version } })
+  })
+
+  server.post('/api/predictions/templates/:templateId/entry', async (request, reply) => {
+    const { templateId: rawTemplateId } = request.params as { templateId?: string }
+    if (!rawTemplateId) {
+      return reply.status(400).send({ ok: false, error: 'missing_template_id' })
+    }
+
+    let templateId: bigint
+    try {
+      templateId = BigInt(rawTemplateId)
+    } catch (err) {
+      return reply.status(400).send({ ok: false, error: 'invalid_template_id' })
+    }
+
+    if (templateId <= 0) {
+      return reply.status(400).send({ ok: false, error: 'invalid_template_id' })
+    }
+
+    const token = extractSessionToken(request)
+    if (!token) {
+      return reply.status(401).send({ ok: false, error: 'no_token' })
+    }
+
+    const subject = resolveSessionSubject(token)
+    if (!subject) {
+      return reply.status(401).send({ ok: false, error: 'invalid_token' })
+    }
+
+    let telegramId: bigint
+    try {
+      telegramId = BigInt(subject)
+    } catch (err) {
+      return reply.status(401).send({ ok: false, error: 'invalid_token' })
+    }
+
+    const user = await prisma.appUser.findUnique({
+      where: { telegramId },
+    })
+
+    if (!user) {
+      return reply.status(404).send({ ok: false, error: 'user_not_found' })
+    }
+
+    const body = (request.body ?? {}) as { selection?: unknown }
+    if (typeof body.selection !== 'string') {
+      return reply.status(400).send({ ok: false, error: 'selection_required' })
+    }
+
+    const selection = body.selection.trim()
+    if (!selection) {
+      return reply.status(400).send({ ok: false, error: 'selection_required' })
+    }
+
+    if (selection.length > MAX_SELECTION_LENGTH) {
+      return reply.status(400).send({ ok: false, error: 'selection_too_long' })
+    }
+
+    const template = await prisma.predictionTemplate.findUnique({
+      where: { id: templateId },
+      include: {
+        match: {
+          include: {
+            homeClub: true,
+            awayClub: true,
+          },
+        },
+      },
+    })
+
+    if (!template || !template.match) {
+      return reply.status(404).send({ ok: false, error: 'template_not_found' })
+    }
+
+    if (matchIsLocked({ status: template.match.status, matchDateTime: template.match.matchDateTime })) {
+      return reply.status(409).send({ ok: false, error: 'match_locked' })
+    }
+
+    const allowedSelections = selectionFromOptions(template.options)
+    if (allowedSelections.length === 0) {
+      return reply.status(409).send({ ok: false, error: 'template_not_ready' })
+    }
+
+    if (!allowedSelections.includes(selection)) {
+      return reply.status(400).send({ ok: false, error: 'invalid_selection' })
+    }
+
+    const now = new Date()
+
+    type TxResult = { entry: EntryWithTemplate; created: boolean }
+
+    try {
+      const result = await prisma.$transaction<TxResult>(async tx => {
+        const existing = await tx.predictionEntry.findFirst({
+          where: {
+            userId: user.id,
+            templateId: template.id,
+          },
+          select: {
+            id: true,
+            status: true,
+          },
+        })
+
+        if (existing) {
+          if (existing.status !== PredictionEntryStatus.PENDING) {
+            throw new Error('ENTRY_LOCKED')
+          }
+
+          const updated = await tx.predictionEntry.update({
+            where: { id: existing.id },
+            data: {
+              selection,
+              submittedAt: now,
+              status: PredictionEntryStatus.PENDING,
+              scoreAwarded: null,
+              resolvedAt: null,
+              resolutionMeta: Prisma.JsonNull,
+            },
+            include: ENTRY_WITH_TEMPLATE_INCLUDE,
+          })
+
+          return { entry: updated, created: false }
+        }
+
+        const created = await tx.predictionEntry.create({
+          data: {
+            templateId: template.id,
+            userId: user.id,
+            selection,
+            submittedAt: now,
+            status: PredictionEntryStatus.PENDING,
+          },
+          include: ENTRY_WITH_TEMPLATE_INCLUDE,
+        })
+
+        return { entry: created, created: true }
+      })
+
+      await defaultCache.invalidate(USER_CACHE_KEY(user.id)).catch(() => undefined)
+
+      const view = serializeEntry(result.entry)
+
+      return reply
+        .status(result.created ? 201 : 200)
+        .send({ ok: true, data: view, meta: { created: result.created } })
+    } catch (err) {
+      if (err instanceof Error && err.message === 'ENTRY_LOCKED') {
+        return reply.status(409).send({ ok: false, error: 'entry_locked' })
+      }
+
+      throw err
+    }
   })
 }

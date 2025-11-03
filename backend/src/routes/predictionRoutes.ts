@@ -4,14 +4,18 @@ import prisma from '../db'
 import { defaultCache } from '../cache'
 import { buildWeakEtag, matchesIfNoneMatch } from '../utils/httpCaching'
 import { extractSessionToken, resolveSessionSubject } from '../utils/session'
-
-const UPCOMING_DEFAULT_DAYS = 6
-const UPCOMING_MAX_DAYS = 10
-const UPCOMING_CACHE_TTL_SECONDS = 300
-const UPCOMING_STALE_SECONDS = 120
-const USER_CACHE_TTL_SECONDS = 300
-const USER_STALE_SECONDS = 120
-const MAX_SELECTION_LENGTH = 64
+import {
+  ACTIVE_PREDICTION_CACHE_KEY,
+  PREDICTION_MAX_SELECTION_LENGTH,
+  PREDICTION_UPCOMING_CACHE_TTL_SECONDS,
+  PREDICTION_UPCOMING_DEFAULT_DAYS,
+  PREDICTION_UPCOMING_MAX_DAYS,
+  PREDICTION_UPCOMING_STALE_SECONDS,
+  PREDICTION_USER_CACHE_TTL_SECONDS,
+  PREDICTION_USER_STALE_SECONDS,
+  USER_PREDICTION_CACHE_KEY,
+} from '../services/predictionConstants'
+import { ensurePredictionTemplatesInRange } from '../services/predictionTemplateService'
 
 const toNumber = (value: unknown): number | null => {
   if (value == null) {
@@ -35,9 +39,9 @@ const toNumber = (value: unknown): number | null => {
 const normalizeDays = (raw: unknown): number => {
   const numeric = typeof raw === 'string' ? Number(raw) : Number(raw)
   if (!Number.isFinite(numeric)) {
-    return UPCOMING_DEFAULT_DAYS
+    return PREDICTION_UPCOMING_DEFAULT_DAYS
   }
-  const clamped = Math.max(1, Math.min(Math.trunc(numeric), UPCOMING_MAX_DAYS))
+  const clamped = Math.max(1, Math.min(Math.trunc(numeric), PREDICTION_UPCOMING_MAX_DAYS))
   return clamped
 }
 
@@ -95,9 +99,6 @@ type UserPredictionEntryView = {
     logoUrl: string | null
   }
 }
-
-const ACTIVE_CACHE_KEY = (days: number) => `predictions:list:${days}`
-const USER_CACHE_KEY = (userId: number) => `predictions:user:${userId}`
 
 type EntryWithTemplate = Prisma.PredictionEntryGetPayload<{
   include: {
@@ -273,6 +274,12 @@ export default async function predictionRoutes(server: FastifyInstance) {
     const until = new Date(now.getTime() + days * 24 * 60 * 60 * 1000)
 
     const loader = async (): Promise<ActivePredictionMatch[]> => {
+      await ensurePredictionTemplatesInRange({
+        from: now,
+        to: until,
+        excludeDaysFromCacheInvalidation: new Set([days]),
+      })
+
       const rows = await prisma.match.findMany({
         where: {
           status: MatchStatus.SCHEDULED,
@@ -318,10 +325,10 @@ export default async function predictionRoutes(server: FastifyInstance) {
       }))
     }
 
-    const cacheKey = ACTIVE_CACHE_KEY(days)
+  const cacheKey = ACTIVE_PREDICTION_CACHE_KEY(days)
     const { value, version } = await defaultCache.getWithMeta(cacheKey, loader, {
-      ttlSeconds: UPCOMING_CACHE_TTL_SECONDS,
-      staleWhileRevalidateSeconds: UPCOMING_STALE_SECONDS,
+      ttlSeconds: PREDICTION_UPCOMING_CACHE_TTL_SECONDS,
+      staleWhileRevalidateSeconds: PREDICTION_UPCOMING_STALE_SECONDS,
     })
 
     const etag = buildWeakEtag(cacheKey, version)
@@ -336,7 +343,7 @@ export default async function predictionRoutes(server: FastifyInstance) {
 
     reply.header(
       'Cache-Control',
-      `public, max-age=${UPCOMING_CACHE_TTL_SECONDS}, stale-while-revalidate=${UPCOMING_STALE_SECONDS}`
+  `public, max-age=${PREDICTION_UPCOMING_CACHE_TTL_SECONDS}, stale-while-revalidate=${PREDICTION_UPCOMING_STALE_SECONDS}`
     )
     reply.header('ETag', etag)
     reply.header('X-Resource-Version', String(version))
@@ -363,7 +370,7 @@ export default async function predictionRoutes(server: FastifyInstance) {
       return reply.status(404).send({ ok: false, error: 'user_not_found' })
     }
 
-    const cacheKey = USER_CACHE_KEY(user.id)
+  const cacheKey = USER_PREDICTION_CACHE_KEY(user.id)
 
     const loader = async (): Promise<UserPredictionEntryView[]> => {
       const [entries, legacy] = await Promise.all([
@@ -397,8 +404,8 @@ export default async function predictionRoutes(server: FastifyInstance) {
     }
 
     const { value, version } = await defaultCache.getWithMeta(cacheKey, loader, {
-      ttlSeconds: USER_CACHE_TTL_SECONDS,
-      staleWhileRevalidateSeconds: USER_STALE_SECONDS,
+      ttlSeconds: PREDICTION_USER_CACHE_TTL_SECONDS,
+      staleWhileRevalidateSeconds: PREDICTION_USER_STALE_SECONDS,
     })
 
     const etag = buildWeakEtag(cacheKey, version)
@@ -413,7 +420,7 @@ export default async function predictionRoutes(server: FastifyInstance) {
 
     reply.header(
       'Cache-Control',
-      `private, max-age=${USER_CACHE_TTL_SECONDS}, stale-while-revalidate=${USER_STALE_SECONDS}`
+  `private, max-age=${PREDICTION_USER_CACHE_TTL_SECONDS}, stale-while-revalidate=${PREDICTION_USER_STALE_SECONDS}`
     )
     reply.header('ETag', etag)
     reply.header('X-Resource-Version', String(version))
@@ -473,7 +480,7 @@ export default async function predictionRoutes(server: FastifyInstance) {
       return reply.status(400).send({ ok: false, error: 'selection_required' })
     }
 
-    if (selection.length > MAX_SELECTION_LENGTH) {
+  if (selection.length > PREDICTION_MAX_SELECTION_LENGTH) {
       return reply.status(400).send({ ok: false, error: 'selection_too_long' })
     }
 
@@ -558,7 +565,7 @@ export default async function predictionRoutes(server: FastifyInstance) {
         return { entry: created, created: true }
       })
 
-      await defaultCache.invalidate(USER_CACHE_KEY(user.id)).catch(() => undefined)
+  await defaultCache.invalidate(USER_PREDICTION_CACHE_KEY(user.id)).catch(() => undefined)
 
       const view = serializeEntry(result.entry)
 

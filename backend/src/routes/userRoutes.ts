@@ -1,4 +1,4 @@
-import { FastifyInstance, FastifyRequest } from 'fastify'
+import { FastifyInstance } from 'fastify'
 import prisma from '../db'
 import { serializePrisma, isSerializedAppUserPayload } from '../utils/serialization'
 import { defaultCache } from '../cache'

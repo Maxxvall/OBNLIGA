@@ -35,21 +35,21 @@ const STATUS_LABELS: Record<UserPredictionEntry['status'], string> = {
 
 const translateSubmitError = (code?: string): string => {
   switch (code) {
-    case 'no_token':
-    case 'unauthorized':
-      return 'Войдите в профиль, чтобы сделать прогноз.'
-    case 'match_locked':
-      return 'Матч уже начался — приём прогнозов закрыт.'
-    case 'template_not_ready':
-      return 'Этот рынок пока не активен.'
-    case 'entry_locked':
-      return 'Прогноз уже рассчитан и не может быть изменён.'
-    case 'invalid_selection':
-      return 'Выбранный вариант недоступен.'
-    case 'selection_required':
-      return 'Выберите вариант, прежде чем отправлять прогноз.'
-    default:
-      return 'Не удалось сохранить прогноз. Попробуйте чуть позже.'
+  case 'no_token':
+  case 'unauthorized':
+    return 'Войдите в профиль, чтобы сделать прогноз.'
+  case 'match_locked':
+    return 'Матч уже начался — приём прогнозов закрыт.'
+  case 'template_not_ready':
+    return 'Этот рынок пока не активен.'
+  case 'entry_locked':
+    return 'Прогноз уже рассчитан и не может быть изменён.'
+  case 'invalid_selection':
+    return 'Выбранный вариант недоступен.'
+  case 'selection_required':
+    return 'Выберите вариант, прежде чем отправлять прогноз.'
+  default:
+    return 'Не удалось сохранить прогноз. Попробуйте чуть позже.'
   }
 }
 

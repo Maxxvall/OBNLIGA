@@ -306,7 +306,7 @@ export async function fetchMatchLineups(
 
     const homePlayers = match.lineups
       .filter(lp => lp.clubId === match.homeTeamId)
-      .map((lp, idx) => ({
+      .map(lp => ({
         fn: lp.person.firstName,
         ln: lp.person.lastName,
         sn: shirtNumbers.get(lp.personId) ?? 0,
@@ -314,7 +314,7 @@ export async function fetchMatchLineups(
 
     const awayPlayers = match.lineups
       .filter(lp => lp.clubId === match.awayTeamId)
-      .map((lp, idx) => ({
+      .map(lp => ({
         fn: lp.person.firstName,
         ln: lp.person.lastName,
         sn: shirtNumbers.get(lp.personId) ?? 0,

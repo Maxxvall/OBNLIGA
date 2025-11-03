@@ -1,6 +1,6 @@
 const API_BASE = import.meta.env.VITE_BACKEND_URL ?? ''
 
-const buildUrl = (path: string) => {
+export const buildApiUrl = (path: string): string => {
   if (!path.startsWith('/')) {
     throw new Error('API paths must start with "/"')
   }
@@ -53,7 +53,7 @@ type HttpRequestOptions = Omit<RequestInit, 'headers'> & {
 }
 
 export async function httpRequest<T>(path: string, options?: HttpRequestOptions): Promise<ApiResponse<T>> {
-  const url = buildUrl(path)
+  const url = buildApiUrl(path)
   const { version, headers, ...rest } = options ?? {}
   const requestHeaders: Record<string, string> = headers
     ? { ...jsonHeaders, ...(headers as Record<string, string>) }

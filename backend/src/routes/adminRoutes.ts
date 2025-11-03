@@ -9,6 +9,7 @@ import {
   MatchEvent,
   MatchEventType,
   MatchStatus,
+  PredictionMarketType,
   Prisma,
   RoundType,
   SeriesFormat,
@@ -19,6 +20,19 @@ import { buildLeagueTable } from '../services/leagueTable'
 import { refreshFriendlyAggregates, refreshLeagueMatchAggregates } from '../services/leagueSchedule'
 import { matchBroadcastCacheKey } from '../services/matchDetailsPublic'
 import { createSeasonPlayoffs, runSeasonAutomation } from '../services/seasonAutomation'
+import {
+  ensurePredictionTemplatesForMatch,
+  invalidateUpcomingPredictionCaches,
+} from '../services/predictionTemplateService'
+import {
+  formatTotalLine,
+  suggestTotalGoalsLineForMatch,
+} from '../services/predictionTotalsService'
+import {
+  PREDICTION_TOTAL_GOALS_BASE_POINTS,
+  PREDICTION_TOTAL_MAX_LINE,
+  PREDICTION_TOTAL_MIN_LINE,
+} from '../services/predictionConstants'
 import { serializePrisma } from '../utils/serialization'
 import { defaultCache, PUBLIC_LEAGUE_RESULTS_KEY, PUBLIC_LEAGUE_SCHEDULE_KEY } from '../cache'
 import { deliverTelegramNewsNow, enqueueTelegramNewsJob } from '../queue/newsWorker'
@@ -92,6 +106,14 @@ type NewsUpdateBody = {
 
 type NewsParams = {
   newsId: string
+}
+
+type PredictionTemplateOverrideBody = {
+  marketType?: PredictionMarketType
+  mode?: 'auto' | 'manual'
+  line?: number | string
+  basePoints?: number
+  difficultyMultiplier?: number
 }
 
 const normalizeShirtNumber = (value: number | null | undefined): number | null => {
@@ -418,6 +440,118 @@ const normalizeBroadcastUrl = (value: string): string | null => {
   }
 
   return parsed.toString()
+}
+
+type TotalGoalsSuggestionView = {
+  line: number
+  fallback: boolean
+  sampleSize: number
+  averageGoals: number
+  standardDeviation: number
+  confidence: number
+  generatedAt: string
+  samples: Array<{
+    matchId: string
+    matchDateTime: string
+    homeTeamId: number
+    awayTeamId: number
+    totalGoals: number
+    weight: number
+    isFriendly: boolean
+  }>
+}
+
+const PREDICTION_TEMPLATE_SELECT = {
+  id: true,
+  matchId: true,
+  marketType: true,
+  options: true,
+  basePoints: true,
+  difficultyMultiplier: true,
+  isManual: true,
+  createdAt: true,
+  updatedAt: true,
+  createdBy: true,
+} as const
+
+type PredictionTemplateRecord = Prisma.PredictionTemplateGetPayload<{
+  select: typeof PREDICTION_TEMPLATE_SELECT
+}>
+
+const decimalToNumber = (value: Prisma.Decimal | number): number => {
+  if (typeof value === 'number') {
+    return value
+  }
+  return value.toNumber()
+}
+
+const buildManualTotalGoalsOptions = (line: number): Prisma.JsonObject => {
+  const formattedLine = formatTotalLine(line)
+  const numericLine = Number(formattedLine)
+
+  return {
+    line: numericLine,
+    formattedLine,
+    manual: true,
+    updatedAt: new Date().toISOString(),
+    choices: [
+      { value: `OVER_${formattedLine}`, label: `Больше ${formattedLine}` },
+      { value: `UNDER_${formattedLine}`, label: `Меньше ${formattedLine}` },
+    ],
+  }
+}
+
+const serializePredictionTemplateForAdmin = (
+  template: PredictionTemplateRecord
+): {
+  id: string
+  matchId: string
+  marketType: PredictionMarketType
+  options: Prisma.JsonValue
+  basePoints: number
+  difficultyMultiplier: number
+  isManual: boolean
+  createdBy: string | null
+  createdAt: string
+  updatedAt: string
+} => ({
+  id: template.id.toString(),
+  matchId: template.matchId.toString(),
+  marketType: template.marketType,
+  options: template.options,
+  basePoints: template.basePoints,
+  difficultyMultiplier: decimalToNumber(template.difficultyMultiplier),
+  isManual: template.isManual,
+  createdBy: template.createdBy ?? null,
+  createdAt: template.createdAt.toISOString(),
+  updatedAt: template.updatedAt.toISOString(),
+})
+
+const serializeTotalGoalsSuggestion = (
+  suggestion: Awaited<ReturnType<typeof suggestTotalGoalsLineForMatch>>
+): TotalGoalsSuggestionView | null => {
+  if (!suggestion) {
+    return null
+  }
+
+  return {
+    line: suggestion.line,
+    fallback: suggestion.fallback,
+    sampleSize: suggestion.sampleSize,
+    averageGoals: Number(suggestion.averageGoals.toFixed(3)),
+    standardDeviation: Number(suggestion.standardDeviation.toFixed(3)),
+    confidence: Number(suggestion.confidence.toFixed(3)),
+    generatedAt: suggestion.generatedAt.toISOString(),
+    samples: suggestion.samples.map(sample => ({
+      matchId: sample.matchId.toString(),
+      matchDateTime: sample.matchDateTime.toISOString(),
+      homeTeamId: sample.homeTeamId,
+      awayTeamId: sample.awayTeamId,
+      totalGoals: sample.totalGoals,
+      weight: sample.weight,
+      isFriendly: sample.isFriendly,
+    })),
+  }
 }
 
 const decodeAdImagePayload = (value: unknown, required: boolean): ParsedAdImage | null => {
@@ -3135,6 +3269,179 @@ export default async function (server: FastifyInstance) {
         })
         return sendSerialized(reply, matches)
       })
+
+      admin.patch<{ Params: { matchId: string }; Body: PredictionTemplateOverrideBody }>(
+        '/matches/:matchId/prediction-template',
+        async (request, reply) => {
+          const matchId = parseBigIntId(request.params.matchId, 'matchId')
+          const body = request.body ?? {}
+          const marketType = body.marketType ?? PredictionMarketType.TOTAL_GOALS
+
+          if (marketType !== PredictionMarketType.TOTAL_GOALS) {
+            return reply.status(400).send({ ok: false, error: 'unsupported_market_type' })
+          }
+
+          const mode = body.mode
+          if (mode !== 'auto' && mode !== 'manual') {
+            return reply.status(400).send({ ok: false, error: 'mode_required' })
+          }
+
+          const match = await prisma.match.findUnique({
+            where: { id: matchId },
+            select: { id: true, status: true },
+          })
+
+          if (!match) {
+            return reply.status(404).send({ ok: false, error: 'match_not_found' })
+          }
+
+          if (match.status !== MatchStatus.SCHEDULED) {
+            return reply.status(409).send({ ok: false, error: 'match_locked_for_predictions' })
+          }
+
+          let template = await prisma.predictionTemplate.findFirst({
+            where: { matchId, marketType },
+            select: PREDICTION_TEMPLATE_SELECT,
+          })
+
+          if (!template) {
+            await ensurePredictionTemplatesForMatch(matchId, prisma)
+            template = await prisma.predictionTemplate.findFirst({
+              where: { matchId, marketType },
+              select: PREDICTION_TEMPLATE_SELECT,
+            })
+          }
+
+          if (!template) {
+            return reply
+              .status(500)
+              .send({ ok: false, error: 'prediction_template_unavailable' })
+          }
+
+          const publishTopic =
+            typeof admin.publishTopic === 'function' ? admin.publishTopic.bind(admin) : undefined
+
+          if (mode === 'auto') {
+            await prisma.predictionTemplate.update({
+              where: { id: template.id },
+              data: { isManual: false, createdBy: null },
+            })
+
+            const summary = await ensurePredictionTemplatesForMatch(matchId, prisma)
+
+            const refreshed = await prisma.predictionTemplate.findUnique({
+              where: { id: template.id },
+              select: PREDICTION_TEMPLATE_SELECT,
+            })
+
+            const suggestion = await suggestTotalGoalsLineForMatch(matchId, prisma)
+            const suggestionView = serializeTotalGoalsSuggestion(suggestion)
+            const view = refreshed ? serializePredictionTemplateForAdmin(refreshed) : null
+
+            if (publishTopic && view) {
+              await publishTopic('admin.predictions', {
+                type: 'prediction.template.updated',
+                payload: view,
+              })
+            }
+
+            return reply.send({
+              ok: true,
+              data: {
+                mode: 'auto',
+                template: view,
+                summary,
+                suggestion: suggestionView,
+              },
+            })
+          }
+
+          const rawLineInput = body.line
+          const normalizedLineInput =
+            rawLineInput === undefined
+              ? Number.NaN
+              : typeof rawLineInput === 'string'
+                ? Number(rawLineInput.replace(',', '.'))
+                : Number(rawLineInput)
+
+          if (!Number.isFinite(normalizedLineInput)) {
+            return reply.status(400).send({ ok: false, error: 'line_required' })
+          }
+
+          const clampedLine = Number(formatTotalLine(normalizedLineInput))
+          if (
+            Number.isNaN(clampedLine) ||
+            clampedLine < PREDICTION_TOTAL_MIN_LINE ||
+            clampedLine > PREDICTION_TOTAL_MAX_LINE
+          ) {
+            return reply.status(400).send({ ok: false, error: 'line_out_of_range' })
+          }
+
+          const basePointsCandidate =
+            body.basePoints !== undefined
+              ? Number(body.basePoints)
+              : template.basePoints ?? PREDICTION_TOTAL_GOALS_BASE_POINTS
+
+          if (!Number.isFinite(basePointsCandidate) || basePointsCandidate < 0) {
+            return reply.status(400).send({ ok: false, error: 'base_points_invalid' })
+          }
+
+          const basePoints = Math.trunc(basePointsCandidate)
+          if (basePoints < 0 || basePoints > 1000) {
+            return reply.status(400).send({ ok: false, error: 'base_points_out_of_range' })
+          }
+
+          const difficultyCandidate =
+            body.difficultyMultiplier !== undefined
+              ? Number(body.difficultyMultiplier)
+              : decimalToNumber(template.difficultyMultiplier)
+
+          if (!Number.isFinite(difficultyCandidate) || difficultyCandidate <= 0) {
+            return reply.status(400).send({ ok: false, error: 'difficulty_invalid' })
+          }
+
+          const difficultyMultiplier = Number(difficultyCandidate)
+          if (difficultyMultiplier <= 0 || difficultyMultiplier > 10) {
+            return reply.status(400).send({ ok: false, error: 'difficulty_out_of_range' })
+          }
+
+          const manualOptions = buildManualTotalGoalsOptions(clampedLine)
+
+          const updated = await prisma.predictionTemplate.update({
+            where: { id: template.id },
+            data: {
+              options: manualOptions,
+              basePoints,
+              difficultyMultiplier,
+              isManual: true,
+              createdBy: request.admin?.sub ?? 'admin',
+            },
+            select: PREDICTION_TEMPLATE_SELECT,
+          })
+
+          await invalidateUpcomingPredictionCaches()
+
+          const suggestion = await suggestTotalGoalsLineForMatch(matchId, prisma)
+          const suggestionView = serializeTotalGoalsSuggestion(suggestion)
+          const view = serializePredictionTemplateForAdmin(updated)
+
+          if (publishTopic) {
+            await publishTopic('admin.predictions', {
+              type: 'prediction.template.updated',
+              payload: view,
+            })
+          }
+
+          return reply.send({
+            ok: true,
+            data: {
+              mode: 'manual',
+              template: view,
+              suggestion: suggestionView,
+            },
+          })
+        }
+      )
 
 
       admin.patch<{ Params: { seasonId: string } }>('/seasons/:seasonId/activate', async (request, reply) => {

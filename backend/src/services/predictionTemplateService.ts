@@ -223,7 +223,7 @@ const ensurePredictionTemplatesForMatchRecord = async (
   }
 }
 
-const invalidateUpcomingPredictionCaches = async (excludeDays?: Set<number>) => {
+export const invalidateUpcomingPredictionCaches = async (excludeDays?: Set<number>) => {
   const tasks: Promise<unknown>[] = []
   for (let day = 1; day <= PREDICTION_UPCOMING_MAX_DAYS; day += 1) {
     if (excludeDays?.has(day)) {

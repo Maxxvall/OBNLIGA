@@ -33,10 +33,21 @@ import {
   Season,
   Stadium,
   UserAchievement,
+  AdminPredictionMatch,
+  AdminPredictionTemplate,
+  PredictionTemplateOverrideResponse,
+  TotalGoalsSuggestionView,
 } from '../types'
 import { useAssistantStore } from './assistantStore'
 
-export type AdminTab = 'teams' | 'matches' | 'stats' | 'players' | 'news' | 'users'
+export type AdminTab =
+  | 'teams'
+  | 'matches'
+  | 'stats'
+  | 'players'
+  | 'news'
+  | 'users'
+  | 'predictions'
 
 const storageKey = 'obnliga-admin-token'
 const lineupStorageKey = 'obnliga-lineup-token'
@@ -127,6 +138,7 @@ interface AdminData {
   disqualifications: Disqualification[]
   news: NewsItem[]
   ads: AdBanner[]
+  predictionMatches: AdminPredictionMatch[]
 }
 
 interface AdminState {
@@ -159,6 +171,7 @@ interface AdminState {
   fetchStats(seasonId?: number, competitionId?: number): Promise<void>
   fetchUsers(): Promise<void>
   fetchPredictions(): Promise<void>
+  fetchPredictionMatches(options?: FetchOptions): Promise<void>
   fetchAchievements(): Promise<void>
   fetchDisqualifications(): Promise<void>
   fetchNews(options?: FetchOptions): Promise<void>
@@ -169,6 +182,11 @@ interface AdminState {
   upsertAd(item: AdBanner): void
   removeAd(id: string): void
   refreshTab(tab?: AdminTab): Promise<void>
+  setPredictionTemplateAuto(matchId: string): Promise<PredictionTemplateOverrideResponse>
+  setPredictionTemplateManual(
+    matchId: string,
+    input: PredictionTemplateManualInput
+  ): Promise<PredictionTemplateOverrideResponse>
 }
 
 type Setter = (
@@ -186,6 +204,7 @@ type FetchKey =
   | 'stats'
   | 'users'
   | 'predictions'
+  | 'predictionMatches'
   | 'achievements'
   | 'disqualifications'
   | 'news'
@@ -193,6 +212,12 @@ type FetchKey =
 
 type FetchOptions = {
   force?: boolean
+}
+
+export type PredictionTemplateManualInput = {
+  line: number
+  basePoints?: number
+  difficultyMultiplier?: number
 }
 
 const FETCH_TTL: Record<FetchKey, number> = {
@@ -204,6 +229,7 @@ const FETCH_TTL: Record<FetchKey, number> = {
   stats: 20_000,
   users: 60_000,
   predictions: 60_000,
+  predictionMatches: 20_000,
   achievements: 120_000,
   disqualifications: 30_000,
   news: 60_000,
@@ -230,6 +256,7 @@ const createEmptyData = (): AdminData => ({
   disqualifications: [],
   news: [],
   ads: [],
+  predictionMatches: [],
 })
 
 const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
@@ -461,6 +488,55 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     }
     wsClient.unsubscribe(ADMIN_NEWS_TOPIC)
     wsClient.setToken(undefined)
+  }
+
+  const applyPredictionTemplateOverride = (
+    matchId: string,
+    override: PredictionTemplateOverrideResponse
+  ): boolean => {
+    const normalizedMatchId = matchId.toString()
+    const targetMarket = override.template?.marketType ?? 'TOTAL_GOALS'
+    const activeSeasonId = get().selectedSeasonId
+    const cacheKey = composeCacheKey('predictionMatches', [
+      activeSeasonId ? `season:${activeSeasonId}` : undefined,
+    ])
+    fetchTimestamps[cacheKey] = Date.now()
+
+    let applied = false
+    set(state => {
+      const matches = state.data.predictionMatches
+      const matchIndex = matches.findIndex(entry => entry.matchId === normalizedMatchId)
+      if (matchIndex === -1) {
+        return {}
+      }
+
+      const current = matches[matchIndex]
+      const filteredTemplates = targetMarket
+        ? current.templates.filter(template => template.marketType !== targetMarket)
+        : current.templates.slice()
+
+      const nextTemplates =
+        override.template && targetMarket
+          ? [...filteredTemplates, override.template]
+          : filteredTemplates
+
+      const nextMatches = matches.slice()
+      nextMatches[matchIndex] = {
+        ...current,
+        templates: nextTemplates,
+        suggestion: override.suggestion ?? null,
+      }
+
+      applied = true
+      return {
+        data: {
+          ...state.data,
+          predictionMatches: nextMatches,
+        },
+      }
+    })
+
+    return applied
   }
 
   const store: AdminState = {
@@ -952,6 +1028,28 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         set(state => ({ data: { ...state.data, predictions } }))
       })
     },
+    async fetchPredictionMatches(options?: FetchOptions) {
+      if (get().mode !== 'admin') return
+      const seasonId = get().selectedSeasonId
+      await runCachedFetch(
+        'predictionMatches',
+        [seasonId ? `season:${seasonId}` : undefined],
+        async () => {
+          const token = ensureToken()
+          const params = new URLSearchParams()
+          if (seasonId) {
+            params.set('seasonId', String(seasonId))
+          }
+          const query = params.size ? `?${params.toString()}` : ''
+          const predictionMatches = await adminGet<AdminPredictionMatch[]>(
+            token,
+            `/api/admin/predictions/matches${query}`
+          )
+          set(state => ({ data: { ...state.data, predictionMatches } }))
+        },
+        options?.force ? 0 : undefined
+      )
+    },
     async fetchAchievements() {
       if (get().mode !== 'admin') return
       await runCachedFetch('achievements', [], async () => {
@@ -1011,6 +1109,62 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           ads: state.data.ads.filter(entry => entry.id !== id),
         },
       }))
+    },
+    async setPredictionTemplateAuto(matchId: string) {
+      if (get().mode !== 'admin') {
+        throw new AdminApiError('missing_token')
+      }
+      const token = ensureToken()
+      const result = await run('predictionTemplate', () =>
+        adminPatch<PredictionTemplateOverrideResponse>(
+          token,
+          `/api/admin/matches/${matchId}/prediction-template`,
+          { mode: 'auto' }
+        )
+      )
+
+      const applied = applyPredictionTemplateOverride(matchId, result)
+      if (!applied) {
+        await get().fetchPredictionMatches({ force: true })
+      }
+
+      return result
+    },
+    async setPredictionTemplateManual(matchId: string, input: PredictionTemplateManualInput) {
+      if (get().mode !== 'admin') {
+        throw new AdminApiError('missing_token')
+      }
+      const token = ensureToken()
+      const payload: {
+        mode: 'manual'
+        line: number
+        basePoints?: number
+        difficultyMultiplier?: number
+      } = {
+        mode: 'manual',
+        line: input.line,
+      }
+      if (input.basePoints !== undefined) {
+        payload.basePoints = input.basePoints
+      }
+      if (input.difficultyMultiplier !== undefined) {
+        payload.difficultyMultiplier = input.difficultyMultiplier
+      }
+
+      const result = await run('predictionTemplate', () =>
+        adminPatch<PredictionTemplateOverrideResponse>(
+          token,
+          `/api/admin/matches/${matchId}/prediction-template`,
+          payload
+        )
+      )
+
+      const applied = applyPredictionTemplateOverride(matchId, result)
+      if (!applied) {
+        await get().fetchPredictionMatches({ force: true })
+      }
+
+      return result
     },
     async fetchNews(options?: FetchOptions) {
       if (get().mode !== 'admin') return
@@ -1107,6 +1261,10 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
             get().fetchAchievements(),
           ])
           break
+        case 'predictions': {
+          await Promise.all([get().fetchPredictionMatches({ force: true })])
+          break
+        }
         default:
           break
       }

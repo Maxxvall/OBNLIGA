@@ -366,6 +366,66 @@ export interface Prediction {
   user?: AppUser
 }
 
+export interface TotalGoalsSuggestionSampleView {
+  matchId: string
+  matchDateTime: string
+  homeTeamId: number
+  awayTeamId: number
+  totalGoals: number
+  weight: number
+  isFriendly: boolean
+}
+
+export interface TotalGoalsSuggestionView {
+  line: number
+  fallback: boolean
+  sampleSize: number
+  averageGoals: number
+  standardDeviation: number
+  confidence: number
+  generatedAt: string
+  samples: TotalGoalsSuggestionSampleView[]
+}
+
+export interface AdminPredictionTemplate {
+  id: string
+  matchId: string
+  marketType: 'MATCH_OUTCOME' | 'TOTAL_GOALS'
+  options: unknown
+  basePoints: number
+  difficultyMultiplier: number
+  isManual: boolean
+  createdBy?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AdminPredictionMatch {
+  matchId: string
+  matchDateTime: string
+  status: MatchSummary['status']
+  homeClub: Club
+  awayClub: Club
+  templates: AdminPredictionTemplate[]
+  suggestion?: TotalGoalsSuggestionView | null
+}
+
+export interface PredictionTemplateOverrideResponse {
+  mode: 'auto' | 'manual'
+  template: AdminPredictionTemplate | null
+  suggestion: TotalGoalsSuggestionView | null
+  summary?: PredictionTemplateEnsureSummaryView
+}
+
+export interface PredictionTemplateEnsureSummaryView {
+  matchId: string
+  createdMarkets: Array<'MATCH_OUTCOME' | 'TOTAL_GOALS'>
+  updatedMarkets: Array<'MATCH_OUTCOME' | 'TOTAL_GOALS'>
+  skippedManualMarkets: Array<'MATCH_OUTCOME' | 'TOTAL_GOALS'>
+  changed: boolean
+  totalSuggestion?: TotalGoalsSuggestionView
+}
+
 export interface AchievementType {
   id: number
   name: string

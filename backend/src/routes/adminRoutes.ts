@@ -116,6 +116,70 @@ type PredictionTemplateOverrideBody = {
   difficultyMultiplier?: number
 }
 
+type ClubIdParams = { clubId: string }
+type PersonIdParams = { personId: string }
+type StadiumIdParams = { stadiumId: string }
+type CompetitionIdParams = { competitionId: string }
+type SeasonIdParams = { seasonId: string }
+type SeasonClubParams = { seasonId: string; clubId: string }
+type SeasonPersonParams = { seasonId: string; personId: string }
+type SeriesIdParams = { seriesId: string }
+type MatchIdParams = { matchId: string }
+type MatchEventParams = { matchId: string; eventId: string }
+type MatchPersonParams = { matchId: string; personId: string }
+type PredictionIdParams = { predictionId: string }
+type UserIdParams = { userId: string }
+type UserAchievementParams = { userId: string; achievementTypeId: string }
+type AchievementTypeParams = { achievementTypeId: string }
+type DisqualificationParams = { disqualificationId: string }
+
+type PublishTopicHandler = (topic: string, payload: unknown) => Promise<void> | void
+
+type FastifyInstanceWithPublishTopic = FastifyInstance & {
+  publishTopic?: PublishTopicHandler
+}
+
+type RawGroupStagePayload = {
+  groupCount?: number
+  groupSize?: number
+  qualifyCount?: number
+  groups?: RawGroupPayload[]
+}
+
+type RawGroupPayload = {
+  groupIndex?: number
+  label?: string
+  qualifyCount?: number
+  slots?: RawGroupSlotPayload[]
+}
+
+type RawGroupSlotPayload = {
+  position?: number
+  clubId?: number
+}
+
+const getParam = (params: unknown, key: string): string => {
+  if (params && typeof params === 'object' && key in (params as Record<string, unknown>)) {
+    const value = (params as Record<string, unknown>)[key]
+    if (value === undefined || value === null) {
+      throw new Error(`param_${key}_missing`)
+    }
+    return String(value)
+  }
+  throw new Error(`param_${key}_missing`)
+}
+
+const getOptionalParam = (params: unknown, key: string): string | undefined => {
+  if (params && typeof params === 'object' && key in (params as Record<string, unknown>)) {
+    const value = (params as Record<string, unknown>)[key]
+    if (value === undefined || value === null) {
+      return undefined
+    }
+    return String(value)
+  }
+  return undefined
+}
+
 const normalizeShirtNumber = (value: number | null | undefined): number | null => {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return null
@@ -551,6 +615,22 @@ const serializeTotalGoalsSuggestion = (
       weight: sample.weight,
       isFriendly: sample.isFriendly,
     })),
+  }
+}
+
+const isPublishTopicInstance = (
+  instance: FastifyInstance
+): instance is FastifyInstanceWithPublishTopic => {
+  return typeof (instance as { publishTopic?: PublishTopicHandler }).publishTopic === 'function'
+}
+
+const publishAdminTopic = async (
+  instance: FastifyInstance,
+  topic: string,
+  payload: unknown
+): Promise<void> => {
+  if (isPublishTopicInstance(instance)) {
+    await instance.publishTopic(topic, payload)
   }
 }
 
@@ -1991,9 +2071,11 @@ export default async function (server: FastifyInstance) {
         }
       })
 
-      admin.put('/clubs/:clubId', async (request, reply) => {
-        const clubId = parseNumericId((request.params as any).clubId, 'clubId')
-        const body = request.body as { name?: string; shortName?: string; logoUrl?: string }
+      admin.put<{ Params: ClubIdParams; Body: { name?: string; shortName?: string; logoUrl?: string } }>(
+        '/clubs/:clubId',
+        async (request, reply) => {
+          const clubId = parseNumericId(request.params.clubId, 'clubId')
+          const body = request.body ?? {}
         try {
           const club = await prisma.club.update({
             where: { id: clubId },
@@ -2010,8 +2092,8 @@ export default async function (server: FastifyInstance) {
         }
       })
 
-      admin.delete('/clubs/:clubId', async (request, reply) => {
-        const clubId = parseNumericId((request.params as any).clubId, 'clubId')
+      admin.delete<{ Params: ClubIdParams }>('/clubs/:clubId', async (request, reply) => {
+        const clubId = parseNumericId(request.params.clubId, 'clubId')
         const hasParticipants = await prisma.seasonParticipant.findFirst({ where: { clubId } })
         const hasFinishedMatches = await prisma.match.count({
           where: {
@@ -2030,8 +2112,8 @@ export default async function (server: FastifyInstance) {
         return reply.send({ ok: true })
       })
 
-      admin.get('/clubs/:clubId/players', async (request, reply) => {
-        const clubId = parseNumericId((request.params as any).clubId, 'clubId')
+      admin.get<{ Params: ClubIdParams }>('/clubs/:clubId/players', async (request, reply) => {
+        const clubId = parseNumericId(request.params.clubId, 'clubId')
         const players = await prisma.clubPlayer.findMany({
           where: { clubId },
           orderBy: [{ defaultShirtNumber: 'asc' }, { personId: 'asc' }],
@@ -2040,11 +2122,12 @@ export default async function (server: FastifyInstance) {
         return reply.send({ ok: true, data: players })
       })
 
-      admin.put('/clubs/:clubId/players', async (request, reply) => {
-        const clubId = parseNumericId((request.params as any).clubId, 'clubId')
-        const body = request.body as {
-          players?: Array<{ personId?: number; defaultShirtNumber?: number | null }>
-        }
+      admin.put<{
+        Params: ClubIdParams
+        Body: { players?: Array<{ personId?: number; defaultShirtNumber?: number | null }> }
+      }>('/clubs/:clubId/players', async (request, reply) => {
+        const clubId = parseNumericId(request.params.clubId, 'clubId')
+        const body = request.body ?? {}
 
         const entries = Array.isArray(body?.players) ? body.players : []
 
@@ -2128,9 +2211,12 @@ export default async function (server: FastifyInstance) {
         return reply.send({ ok: true, data: players })
       })
 
-      admin.post('/clubs/:clubId/players/import', async (request, reply) => {
-        const clubId = parseNumericId((request.params as any).clubId, 'clubId')
-        const body = request.body as { lines?: unknown; text?: unknown }
+      admin.post<{
+        Params: ClubIdParams
+        Body: { lines?: unknown; text?: unknown }
+      }>('/clubs/:clubId/players/import', async (request, reply) => {
+        const clubId = parseNumericId(request.params.clubId, 'clubId')
+        const body = request.body ?? {}
 
         const rawLines: string[] = []
         if (Array.isArray(body?.lines)) {
@@ -2344,7 +2430,7 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.put('/persons/:personId', async (request, reply) => {
-        const personId = parseNumericId((request.params as any).personId, 'personId')
+        const personId = parseNumericId(getParam(request.params, 'personId'), 'personId')
         const body = request.body as { firstName?: string; lastName?: string; isPlayer?: boolean }
         try {
           const person = await prisma.person.update({
@@ -2363,7 +2449,7 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.delete('/persons/:personId', async (request, reply) => {
-        const personId = parseNumericId((request.params as any).personId, 'personId')
+        const personId = parseNumericId(getParam(request.params, 'personId'), 'personId')
         const roster = await prisma.seasonRoster.findFirst({ where: { personId } })
         const lineup = await prisma.matchLineup.findFirst({ where: { personId } })
         if (roster || lineup) {
@@ -2597,7 +2683,7 @@ export default async function (server: FastifyInstance) {
 
             try {
               const payload = serializePrisma(news)
-              await (admin as any).publishTopic?.('home', {
+              await publishAdminTopic(admin, 'home', {
                 type: 'news.full',
                 payload,
               })
@@ -2644,7 +2730,7 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.put('/stadiums/:stadiumId', async (request, reply) => {
-        const stadiumId = parseNumericId((request.params as any).stadiumId, 'stadiumId')
+        const stadiumId = parseNumericId(getParam(request.params, 'stadiumId'), 'stadiumId')
         const body = request.body as { name?: string; city?: string }
         try {
           const stadium = await prisma.stadium.update({
@@ -2659,7 +2745,7 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.delete('/stadiums/:stadiumId', async (request, reply) => {
-        const stadiumId = parseNumericId((request.params as any).stadiumId, 'stadiumId')
+        const stadiumId = parseNumericId(getParam(request.params, 'stadiumId'), 'stadiumId')
         const hasMatches = await prisma.match.findFirst({ where: { stadiumId } })
         if (hasMatches) {
           return reply.status(409).send({ ok: false, error: 'stadium_used_in_matches' })
@@ -2694,7 +2780,7 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.put('/competitions/:competitionId', async (request, reply) => {
-        const competitionId = parseNumericId((request.params as any).competitionId, 'competitionId')
+        const competitionId = parseNumericId(getParam(request.params, 'competitionId'), 'competitionId')
         const body = request.body as {
           name?: string
           type?: CompetitionType
@@ -2716,7 +2802,7 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.delete('/competitions/:competitionId', async (request, reply) => {
-        const competitionId = parseNumericId((request.params as any).competitionId, 'competitionId')
+        const competitionId = parseNumericId(getParam(request.params, 'competitionId'), 'competitionId')
         try {
           let seasonIds: number[] = []
           await prisma.$transaction(async tx => {
@@ -2893,15 +2979,19 @@ export default async function (server: FastifyInstance) {
           | undefined
 
         if (seriesFormat === SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF) {
-          const rawGroupStage = body.groupStage
+          const rawGroupStage = body.groupStage as RawGroupStagePayload | undefined
           if (!rawGroupStage || typeof rawGroupStage !== 'object') {
             return reply.status(400).send({ ok: false, error: 'group_stage_required' })
           }
 
-          const rawGroups = Array.isArray(rawGroupStage.groups) ? rawGroupStage.groups : []
-          const parsedGroups = rawGroups.map((group: any, index: number) => {
-            const slotsRaw = Array.isArray(group?.slots) ? group.slots : []
-            const slots = slotsRaw.map((slot: any, slotIndex: number) => ({
+          const rawGroups = Array.isArray(rawGroupStage.groups)
+            ? (rawGroupStage.groups as RawGroupPayload[])
+            : []
+          const parsedGroups = rawGroups.map((group, index) => {
+            const slotsRaw = Array.isArray(group?.slots)
+              ? (group.slots as RawGroupSlotPayload[])
+              : []
+            const slots = slotsRaw.map((slot, slotIndex: number) => ({
               position: Number(slot?.position ?? slotIndex + 1),
               clubId: Number(slot?.clubId ?? 0),
             }))
@@ -2965,7 +3055,7 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.post('/seasons/:seasonId/playoffs', async (request, reply) => {
-        const seasonId = parseNumericId((request.params as any).seasonId, 'seasonId')
+        const seasonId = parseNumericId(getParam(request.params, 'seasonId'), 'seasonId')
         const body = request.body as { bestOfLength?: number }
         const bestOfLength = typeof body?.bestOfLength === 'number' ? body.bestOfLength : undefined
 
@@ -2994,7 +3084,7 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.put('/seasons/:seasonId', async (request, reply) => {
-        const seasonId = parseNumericId((request.params as any).seasonId, 'seasonId')
+        const seasonId = parseNumericId(getParam(request.params, 'seasonId'), 'seasonId')
         const body = request.body as {
           name?: string
           startDate?: string
@@ -3028,7 +3118,7 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.delete('/seasons/:seasonId', async (request, reply) => {
-        const seasonId = parseNumericId((request.params as any).seasonId, 'seasonId')
+        const seasonId = parseNumericId(getParam(request.params, 'seasonId'), 'seasonId')
         let competitionId: number | null = null
 
         try {
@@ -3098,7 +3188,7 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.post('/seasons/:seasonId/participants', async (request, reply) => {
-        const seasonId = parseNumericId((request.params as any).seasonId, 'seasonId')
+        const seasonId = parseNumericId(getParam(request.params, 'seasonId'), 'seasonId')
         const body = request.body as { clubId?: number }
         if (!body?.clubId) {
           return reply.status(400).send({ ok: false, error: 'clubId_required' })
@@ -3115,9 +3205,8 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.delete('/seasons/:seasonId/participants/:clubId', async (request, reply) => {
-        const { seasonId: seasonParam, clubId: clubParam } = request.params as any
-        const seasonId = parseNumericId(seasonParam, 'seasonId')
-        const clubId = parseNumericId(clubParam, 'clubId')
+        const seasonId = parseNumericId(getParam(request.params, 'seasonId'), 'seasonId')
+        const clubId = parseNumericId(getParam(request.params, 'clubId'), 'clubId')
         const matchPlayed = await prisma.match.findFirst({
           where: { seasonId, OR: [{ homeTeamId: clubId }, { awayTeamId: clubId }] },
         })
@@ -3129,7 +3218,7 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.post('/seasons/:seasonId/roster', async (request, reply) => {
-        const seasonId = parseNumericId((request.params as any).seasonId, 'seasonId')
+        const seasonId = parseNumericId(getParam(request.params, 'seasonId'), 'seasonId')
         const body = request.body as {
           clubId?: number
           personId?: number
@@ -3156,9 +3245,8 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.put('/seasons/:seasonId/roster/:personId', async (request, reply) => {
-        const { seasonId: seasonParam, personId: personParam } = request.params as any
-        const seasonId = parseNumericId(seasonParam, 'seasonId')
-        const personId = parseNumericId(personParam, 'personId')
+        const seasonId = parseNumericId(getParam(request.params, 'seasonId'), 'seasonId')
+        const personId = parseNumericId(getParam(request.params, 'personId'), 'personId')
         const body = request.body as { clubId?: number; shirtNumber?: number }
         if (!body?.clubId || !body?.shirtNumber) {
           return reply.status(400).send({ ok: false, error: 'club_and_shirt_required' })
@@ -3171,13 +3259,12 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.delete('/seasons/:seasonId/roster/:personId', async (request, reply) => {
-        const { seasonId: seasonParam, personId: personParam } = request.params as any
         const { clubId: clubQuery } = request.query as { clubId?: string }
         if (!clubQuery) {
           return reply.status(400).send({ ok: false, error: 'clubId_required' })
         }
-        const seasonId = parseNumericId(seasonParam, 'seasonId')
-        const personId = parseNumericId(personParam, 'personId')
+        const seasonId = parseNumericId(getParam(request.params, 'seasonId'), 'seasonId')
+        const personId = parseNumericId(getParam(request.params, 'personId'), 'personId')
         const clubId = parseNumericId(clubQuery, 'clubId')
         await prisma.seasonRoster.delete({
           where: { seasonId_clubId_personId: { seasonId, clubId, personId } },
@@ -3220,7 +3307,7 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.put('/series/:seriesId', async (request, reply) => {
-        const seriesId = parseBigIntId((request.params as any).seriesId, 'seriesId')
+        const seriesId = parseBigIntId(getParam(request.params, 'seriesId'), 'seriesId')
         const body = request.body as { seriesStatus?: SeriesStatus; winnerClubId?: number }
         const series = await prisma.matchSeries.update({
           where: { id: seriesId },
@@ -3233,7 +3320,7 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.delete('/series/:seriesId', async (request, reply) => {
-        const seriesId = parseBigIntId((request.params as any).seriesId, 'seriesId')
+        const seriesId = parseBigIntId(getParam(request.params, 'seriesId'), 'seriesId')
         const hasMatches = await prisma.match.findFirst({ where: { seriesId } })
         if (hasMatches) {
           return reply.status(409).send({ ok: false, error: 'series_has_matches' })
@@ -3657,7 +3744,7 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.delete('/friendly-matches/:matchId', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
+        const matchId = parseBigIntId(getParam(request.params, 'matchId'), 'matchId')
         const existing = await prisma.match.findUnique({
           where: { id: matchId },
           select: { id: true, isFriendly: true },
@@ -3680,7 +3767,7 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.put('/matches/:matchId', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
+        const matchId = parseBigIntId(getParam(request.params, 'matchId'), 'matchId')
         const body = request.body as Partial<{
           matchDateTime: string
           homeScore: number
@@ -3871,7 +3958,7 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.delete('/matches/:matchId', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
+        const matchId = parseBigIntId(getParam(request.params, 'matchId'), 'matchId')
         const match = await prisma.match.findUnique({ where: { id: matchId } })
         if (!match) return reply.status(404).send({ ok: false, error: 'match_not_found' })
         if (match.status === MatchStatus.FINISHED) {
@@ -3911,7 +3998,7 @@ export default async function (server: FastifyInstance) {
 
       // Lineups
       admin.get('/matches/:matchId/lineup', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
+        const matchId = parseBigIntId(getParam(request.params, 'matchId'), 'matchId')
         try {
           const enriched = await loadMatchLineupWithNumbers(matchId)
           return sendSerialized(reply, enriched)
@@ -3925,7 +4012,7 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.put('/matches/:matchId/lineup', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
+        const matchId = parseBigIntId(getParam(request.params, 'matchId'), 'matchId')
         const body = request.body as {
           personId?: number
           clubId?: number
@@ -3954,14 +4041,14 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.delete('/matches/:matchId/lineup/:personId', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
-        const personId = parseNumericId((request.params as any).personId, 'personId')
+        const matchId = parseBigIntId(getParam(request.params, 'matchId'), 'matchId')
+        const personId = parseNumericId(getParam(request.params, 'personId'), 'personId')
         await prisma.matchLineup.delete({ where: { matchId_personId: { matchId, personId } } })
         return reply.send({ ok: true })
       })
 
       admin.get('/matches/:matchId/statistics', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
+        const matchId = parseBigIntId(getParam(request.params, 'matchId'), 'matchId')
         try {
           const { value, version } = await getMatchStatisticsWithMeta(matchId)
           const serialized = serializePrisma(value)
@@ -3980,7 +4067,7 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.post('/matches/:matchId/statistics/adjust', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
+        const matchId = parseBigIntId(getParam(request.params, 'matchId'), 'matchId')
         const body = request.body as {
           clubId?: number
           metric?: string
@@ -4087,7 +4174,7 @@ export default async function (server: FastifyInstance) {
 
       // Events
       admin.get('/matches/:matchId/events', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
+        const matchId = parseBigIntId(getParam(request.params, 'matchId'), 'matchId')
         const match = await prisma.match.findUnique({
           where: { id: matchId },
           select: { seasonId: true },
@@ -4158,7 +4245,7 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.post('/matches/:matchId/events', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
+        const matchId = parseBigIntId(getParam(request.params, 'matchId'), 'matchId')
         const body = request.body as {
           playerId?: number
           teamId?: number
@@ -4212,8 +4299,8 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.put('/matches/:matchId/events/:eventId', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
-        const eventId = parseBigIntId((request.params as any).eventId, 'eventId')
+        const matchId = parseBigIntId(getParam(request.params, 'matchId'), 'matchId')
+        const eventId = parseBigIntId(getParam(request.params, 'eventId'), 'eventId')
         const body = request.body as Partial<{
           minute: number
           eventType: MatchEventType
@@ -4264,8 +4351,8 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.delete('/matches/:matchId/events/:eventId', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
-        const eventId = parseBigIntId((request.params as any).eventId, 'eventId')
+        const matchId = parseBigIntId(getParam(request.params, 'matchId'), 'matchId')
+        const eventId = parseBigIntId(getParam(request.params, 'eventId'), 'eventId')
         let result: { statAdjusted: boolean; deleted: true }
         try {
           result = await deleteMatchEvent(matchId, eventId)
@@ -4434,7 +4521,7 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.put('/users/:userId', async (request, reply) => {
-        const userId = parseNumericId((request.params as any).userId, 'userId')
+        const userId = parseNumericId(getParam(request.params, 'userId'), 'userId')
         const body = request.body as {
           firstName?: string
           currentStreak?: number
@@ -4456,7 +4543,7 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.post('/users/:userId/league-player', async (request, reply) => {
-        const userId = parseNumericId((request.params as any).userId, 'userId')
+        const userId = parseNumericId(getParam(request.params, 'userId'), 'userId')
         const body = request.body as { personId?: number }
 
         if (!body?.personId) {
@@ -4518,7 +4605,7 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.put('/predictions/:predictionId', async (request, reply) => {
-        const predictionId = parseBigIntId((request.params as any).predictionId, 'predictionId')
+        const predictionId = parseBigIntId(getParam(request.params, 'predictionId'), 'predictionId')
         const body = request.body as { isCorrect?: boolean; pointsAwarded?: number }
         const prediction = await prisma.prediction.update({
           where: { id: predictionId },
@@ -4559,7 +4646,7 @@ export default async function (server: FastifyInstance) {
 
       admin.put('/achievements/types/:achievementTypeId', async (request, reply) => {
         const achievementTypeId = parseNumericId(
-          (request.params as any).achievementTypeId,
+          getParam(request.params, 'achievementTypeId'),
           'achievementTypeId'
         )
         const body = request.body as {
@@ -4583,7 +4670,7 @@ export default async function (server: FastifyInstance) {
 
       admin.delete('/achievements/types/:achievementTypeId', async (request, reply) => {
         const achievementTypeId = parseNumericId(
-          (request.params as any).achievementTypeId,
+          getParam(request.params, 'achievementTypeId'),
           'achievementTypeId'
         )
         await prisma.userAchievement.deleteMany({ where: { achievementTypeId } })
@@ -4603,9 +4690,11 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.delete('/achievements/users/:userId/:achievementTypeId', async (request, reply) => {
-        const { userId: userParam, achievementTypeId: typeParam } = request.params as any
-        const userId = parseNumericId(userParam, 'userId')
-        const achievementTypeId = parseNumericId(typeParam, 'achievementTypeId')
+        const userId = parseNumericId(getParam(request.params, 'userId'), 'userId')
+        const achievementTypeId = parseNumericId(
+          getParam(request.params, 'achievementTypeId'),
+          'achievementTypeId'
+        )
         await prisma.userAchievement.delete({
           where: { userId_achievementTypeId: { userId, achievementTypeId } },
         })
@@ -4654,7 +4743,7 @@ export default async function (server: FastifyInstance) {
 
       admin.put('/disqualifications/:disqualificationId', async (request, reply) => {
         const disqualificationId = parseBigIntId(
-          (request.params as any).disqualificationId,
+          getParam(request.params, 'disqualificationId'),
           'disqualificationId'
         )
         const body = request.body as Partial<{
@@ -4675,7 +4764,7 @@ export default async function (server: FastifyInstance) {
 
       admin.delete('/disqualifications/:disqualificationId', async (request, reply) => {
         const disqualificationId = parseBigIntId(
-          (request.params as any).disqualificationId,
+          getParam(request.params, 'disqualificationId'),
           'disqualificationId'
         )
         await prisma.disqualification.delete({ where: { id: disqualificationId } })

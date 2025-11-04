@@ -76,8 +76,11 @@ const determineMatchWinnerClubId = (match: MatchOutcomeSource): number | null =>
   return null
 }
 
+type FinalizationOptions = {
+  publishTopic?: (topic: string, payload: unknown) => Promise<unknown>
+}
 
-type PredictionSettlementSummary = {
+type PredictionSettlementResult = {
   userIds: Set<number>
   settled: number
   won: number
@@ -85,15 +88,13 @@ type PredictionSettlementSummary = {
   voided: number
   cancelled: number
 }
-type FinalizationOptions = {
-  publishTopic?: (topic: string, payload: unknown) => Promise<unknown>
-}
 
 export async function handleMatchFinalization(
   matchId: bigint,
   logger: FastifyBaseLogger,
   options?: FinalizationOptions
-) {
+)
+{
   const match = await prisma.match.findUnique({
     where: { id: matchId },
     include: {
@@ -131,7 +132,7 @@ export async function handleMatchFinalization(
   const isBracketFormat =
     competitionFormat === ('PLAYOFF_BRACKET' as SeriesFormat) ||
     competitionFormat === SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF
-  let predictionSettlement: PredictionSettlementSummary | null = null
+  let predictionSettlement: PredictionSettlementResult | null = null
 
   await prisma.$transaction(
     async tx => {
@@ -154,7 +155,10 @@ export async function handleMatchFinalization(
 
   let settledUserIds: number[] = []
   if (predictionSettlement) {
-    settledUserIds = Array.from(predictionSettlement.userIds.values())
+    const settlementUserIds = (predictionSettlement as PredictionSettlementResult).userIds
+    if (settlementUserIds.size > 0) {
+      settledUserIds = Array.from(settlementUserIds.values())
+    }
   }
 
   if (settledUserIds.length > 0) {
@@ -687,7 +691,7 @@ async function updatePredictions(
   match: MatchWithPredictions,
   tx: PrismaTx,
   logger: FastifyBaseLogger
-): Promise<PredictionSettlementSummary | null> {
+): Promise<PredictionSettlementResult | null> {
   const result = resolveMatchResult(match)
 
   for (const prediction of match.predictions) {
@@ -752,7 +756,7 @@ async function updatePredictions(
     }
   }
 
-  let settlementSummary: PredictionSettlementSummary | null = null
+  let settlementSummary: PredictionSettlementResult | null = null
 
   try {
     const templates = await tx.predictionTemplate.findMany({
@@ -786,14 +790,7 @@ async function updatePredictions(
         tx,
         logger
       )
-      settlementSummary = {
-        userIds: settlement.userIds,
-        settled: settlement.settled,
-        won: settlement.won,
-        lost: settlement.lost,
-        voided: settlement.voided,
-        cancelled: settlement.cancelled,
-      }
+  settlementSummary = settlement as PredictionSettlementResult
     }
   } catch (err) {
     logger.error({ err, matchId: match.id.toString() }, 'failed to settle prediction entries')

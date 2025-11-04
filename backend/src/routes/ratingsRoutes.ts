@@ -48,12 +48,13 @@ export default async function ratingsRoutes(server: FastifyInstance) {
       RATING_MAX_PAGE_SIZE,
       pageSizeParam ?? RATING_DEFAULT_PAGE_SIZE
     )
-  const cacheKey = ratingPublicCacheKey(scope, page, normalizedPageSize)
+
+    const cacheKey = ratingPublicCacheKey(scope, page, normalizedPageSize)
 
     const loader = async () => {
       const leaderboard = await loadRatingLeaderboard(scope, {
         page,
-        pageSize: pageSizeParam,
+        pageSize: normalizedPageSize,
         ensureFresh: page === 1,
       })
 
@@ -61,7 +62,7 @@ export default async function ratingsRoutes(server: FastifyInstance) {
         scope: ratingScopeKey(leaderboard.scope),
         total: leaderboard.total,
         page: leaderboard.page,
-  pageSize: leaderboard.pageSize,
+        pageSize: leaderboard.pageSize,
         capturedAt: leaderboard.capturedAt.toISOString(),
         entries: leaderboard.entries.map(entry => ({
           userId: entry.userId,
@@ -82,7 +83,7 @@ export default async function ratingsRoutes(server: FastifyInstance) {
       }
     }
 
-  const { value, version } = await defaultCache.getWithMeta(cacheKey, loader, RATING_CACHE_OPTIONS)
+    const { value, version } = await defaultCache.getWithMeta(cacheKey, loader, RATING_CACHE_OPTIONS)
     const etag = buildWeakEtag(cacheKey, version)
 
     if (matchesIfNoneMatch(request.headers, etag)) {

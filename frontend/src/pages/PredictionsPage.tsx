@@ -669,26 +669,36 @@ const PredictionsPage: React.FC = () => {
 
   return (
     <div className="predictions-page">
-      <div className="predictions-tabs" role="tablist" aria-label="Прогнозы">
-        <button
-          type="button"
-          role="tab"
-          className={tab === 'upcoming' ? 'active' : ''}
-          aria-selected={tab === 'upcoming'}
-          onClick={() => setTab('upcoming')}
-        >
-          Ближайшие
-        </button>
-        <button
-          type="button"
-          role="tab"
-          className={tab === 'mine' ? 'active' : ''}
-          aria-selected={tab === 'mine'}
-          onClick={() => setTab('mine')}
-        >
-          Мои прогнозы
-        </button>
-      </div>
+      <header className="predictions-header">
+        <div className="predictions-header-content">
+          <div>
+            <h1 className="predictions-title">Прогнозы</h1>
+            <p className="predictions-subtitle">
+              Выбирайте исходы матчей и зарабатывайте очки в рейтинге.
+            </p>
+          </div>
+        </div>
+        <div className="predictions-tabs" role="tablist" aria-label="Прогнозы">
+          <button
+            type="button"
+            role="tab"
+            className={tab === 'upcoming' ? 'active' : ''}
+            aria-selected={tab === 'upcoming'}
+            onClick={() => setTab('upcoming')}
+          >
+            Ближайшие
+          </button>
+          <button
+            type="button"
+            role="tab"
+            className={tab === 'mine' ? 'active' : ''}
+            aria-selected={tab === 'mine'}
+            onClick={() => setTab('mine')}
+          >
+            Мои прогнозы
+          </button>
+        </div>
+      </header>
 
       <div className="predictions-tab-panel" role="tabpanel">
         {tab === 'upcoming' ? upcomingContent() : myContent()}

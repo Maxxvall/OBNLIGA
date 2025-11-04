@@ -15,7 +15,6 @@ import {
   RATING_LEADERBOARD_TTL_SECONDS,
   RATING_MAX_PAGE_SIZE,
   RATING_SNAPSHOT_LIMIT,
-  ratingScopeKey,
   resolveRatingLevel,
 } from './ratingConstants'
 

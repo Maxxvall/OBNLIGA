@@ -1,28 +1,35 @@
 :root {
-  --ratings-bg: rgba(12, 14, 22, 0.94);
-  --ratings-surface: rgba(22, 26, 38, 0.9);
-  --ratings-surface-strong: rgba(32, 36, 52, 0.92);
-  --ratings-border: rgba(255, 255, 255, 0.14);
-  --ratings-border-strong: rgba(130, 210, 255, 0.38);
-  --ratings-accent: #0fb9f1;
-  --ratings-text: rgba(255, 255, 255, 0.94);
-  --ratings-muted: rgba(255, 255, 255, 0.6);
+  --ratings-bg: rgba(9, 16, 30, 0.86);
+  --ratings-surface: rgba(14, 24, 42, 0.82);
+  --ratings-surface-strong: rgba(18, 30, 48, 0.78);
+  --ratings-border: rgba(0, 240, 255, 0.2);
+  --ratings-border-strong: rgba(0, 240, 255, 0.36);
+  --ratings-accent: rgba(0, 240, 255, 0.85);
+  --ratings-text: rgba(240, 250, 255, 0.96);
+  --ratings-muted: rgba(190, 215, 255, 0.7);
   --ratings-success: #44e6a6;
-  --ratings-shadow: 0 18px 36px rgba(8, 11, 18, 0.55);
+  --ratings-shadow: 0 24px 44px rgba(3, 8, 18, 0.72);
 }
 
 .ratings-page {
-  padding: 28px 32px 48px;
   color: var(--ratings-text);
-  background: linear-gradient(145deg, rgba(16, 18, 28, 0.98), rgba(10, 12, 22, 0.95));
-  min-height: 100%;
+  width: min(960px, 100%);
+  margin: 0 auto;
+  padding: 32px 16px 56px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
 }
 
 .ratings-header {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 18px;
+  padding: 22px 24px;
+  border-radius: 20px;
+  background: var(--ratings-bg);
+  border: 1px solid var(--ratings-border);
+  box-shadow: var(--ratings-shadow);
 }
 
 .ratings-title-row {
@@ -30,10 +37,11 @@
   justify-content: space-between;
   align-items: center;
   gap: 16px;
+  flex-wrap: wrap;
 }
 
 .ratings-title {
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
@@ -44,33 +52,46 @@
 }
 
 .ratings-scope-switch {
-  display: inline-flex;
-  padding: 4px;
-  border-radius: 999px;
-  background: rgba(22, 25, 36, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: var(--ratings-shadow);
+  display: grid;
+  grid-auto-flow: column;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 14px;
+  background: rgba(12, 20, 36, 0.85);
+  border: 1px solid rgba(0, 240, 255, 0.22);
+  box-shadow: 0 16px 28px rgba(3, 8, 18, 0.58);
 }
 
 .ratings-scope-switch button {
-  border: none;
+  border: 1px solid transparent;
   background: transparent;
-  color: var(--ratings-muted);
-  padding: 10px 18px;
-  border-radius: 999px;
-  font-size: 13px;
+  color: rgba(190, 215, 255, 0.74);
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   cursor: pointer;
-  transition: color 160ms ease, background 160ms ease, transform 160ms ease;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.ratings-scope-switch button:hover,
+.ratings-scope-switch button:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(0, 240, 255, 0.36);
+  outline: none;
 }
 
 .ratings-scope-switch button.active {
-  color: #ffffff;
-  background: linear-gradient(135deg, rgba(79, 112, 255, 0.4), rgba(15, 185, 241, 0.45));
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
-  transform: translateY(-1px);
+  color: rgba(12, 24, 38, 0.92);
+  background: linear-gradient(135deg, rgba(247, 154, 255, 0.48), rgba(0, 240, 255, 0.62));
+  border-color: rgba(0, 240, 255, 0.48);
+  box-shadow: 0 12px 26px rgba(0, 240, 255, 0.28);
 }
 
 .ratings-controls {
@@ -82,15 +103,18 @@
 
 .ratings-controls button {
   border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(20, 24, 36, 0.88);
+  border: 1px solid rgba(0, 240, 255, 0.24);
+  background: rgba(12, 20, 36, 0.62);
   color: var(--ratings-text);
   padding: 8px 14px;
-  font-size: 13px;
-  letter-spacing: 0.03em;
+  font-size: 12px;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: border-color 150ms ease, transform 150ms ease;
+  transition:
+    transform 150ms ease,
+    border-color 150ms ease,
+    background 150ms ease;
 }
 
 .ratings-controls button:hover:not(:disabled) {
@@ -280,7 +304,23 @@
 
 @media (max-width: 960px) {
   .ratings-page {
-    padding: 24px 18px 36px;
+    padding: 28px 12px 44px;
+  }
+
+  .ratings-header {
+    padding: 18px;
+  }
+
+  .ratings-title-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .ratings-scope-switch {
+    width: 100%;
+    grid-auto-flow: row;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   }
 
   .rating-card {

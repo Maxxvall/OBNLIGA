@@ -8,9 +8,11 @@ import {
   MatchEventType,
   MatchSeries,
   MatchStatus,
+  PredictionEntryStatus,
   PredictionResult,
   Prisma,
   RoundType,
+  RatingScope,
   SeriesFormat,
   SeriesStatus,
 } from '@prisma/client'
@@ -36,6 +38,12 @@ import {
   createInitialPlayoffPlans,
   stageNameForTeams,
 } from './seasonAutomation'
+import { settlePredictionEntries } from './predictionSettlement'
+import {
+  recalculateUserRatings,
+  ratingPublicCacheKey,
+} from './ratingAggregation'
+import { RATING_DEFAULT_PAGE_SIZE } from './ratingConstants'
 
 const YELLOW_CARD_LIMIT = 4
 const RED_CARD_BAN_MATCHES = 2
@@ -68,6 +76,15 @@ const determineMatchWinnerClubId = (match: MatchOutcomeSource): number | null =>
   return null
 }
 
+
+type PredictionSettlementSummary = {
+  userIds: Set<number>
+  settled: number
+  won: number
+  lost: number
+  voided: number
+  cancelled: number
+}
 type FinalizationOptions = {
   publishTopic?: (topic: string, payload: unknown) => Promise<unknown>
 }
@@ -114,20 +131,53 @@ export async function handleMatchFinalization(
   const isBracketFormat =
     competitionFormat === ('PLAYOFF_BRACKET' as SeriesFormat) ||
     competitionFormat === SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF
+  let predictionSettlement: PredictionSettlementSummary | null = null
+
   await prisma.$transaction(
     async tx => {
-    const includePlayoffRounds = isBracketFormat
-    await rebuildClubSeasonStats(seasonId, tx, { includePlayoffRounds })
-    await rebuildPlayerSeasonStats(seasonId, tx)
-    await rebuildPlayerCareerStats(seasonId, tx)
-    await processDisqualifications(match, tx)
-    await updatePredictions(match, tx)
-    if (match.seriesId) {
-      await updateSeriesState(match as SeriesMatch, tx, logger)
-    }
+      const includePlayoffRounds = isBracketFormat
+      await rebuildClubSeasonStats(seasonId, tx, { includePlayoffRounds })
+      await rebuildPlayerSeasonStats(seasonId, tx)
+      await rebuildPlayerCareerStats(seasonId, tx)
+      await processDisqualifications(match, tx)
+      predictionSettlement = await updatePredictions(
+        match as MatchWithPredictions,
+        tx,
+        logger
+      )
+      if (match.seriesId) {
+        await updateSeriesState(match as SeriesMatch, tx, logger)
+      }
     },
     { timeout: 20000 }
   )
+
+  let settledUserIds: number[] = []
+  if (predictionSettlement) {
+    settledUserIds = Array.from(predictionSettlement.userIds.values())
+  }
+
+  if (settledUserIds.length > 0) {
+    try {
+      await recalculateUserRatings({ userIds: settledUserIds })
+    } catch (err) {
+      logger.error({ err, matchId: match.id.toString() }, 'failed to recalculate user ratings')
+    }
+
+    const ratingCacheKeys = [
+      ratingPublicCacheKey(RatingScope.CURRENT, 1, RATING_DEFAULT_PAGE_SIZE),
+      ratingPublicCacheKey(RatingScope.YEARLY, 1, RATING_DEFAULT_PAGE_SIZE),
+    ]
+
+    await Promise.all(
+      [
+        ...ratingCacheKeys.map(key => defaultCache.invalidate(key).catch(() => undefined)),
+        ...settledUserIds.map(userId =>
+          defaultCache.invalidate(`user:rating:${userId}`).catch(() => undefined)
+        ),
+      ]
+    )
+  }
 
   // invalidate caches related to season/club summaries
   const impactedClubIds = new Set<number>()
@@ -629,10 +679,15 @@ async function processDisqualifications(match: MatchWithEvents, tx: PrismaTx) {
 }
 
 type MatchWithPredictions = Match & {
+  events: MatchEvent[]
   predictions: { id: bigint; result1x2: PredictionResult | null; userId: number }[]
 }
 
-async function updatePredictions(match: MatchWithPredictions, tx: PrismaTx) {
+async function updatePredictions(
+  match: MatchWithPredictions,
+  tx: PrismaTx,
+  logger: FastifyBaseLogger
+): Promise<PredictionSettlementSummary | null> {
   const result = resolveMatchResult(match)
 
   for (const prediction of match.predictions) {
@@ -656,46 +711,95 @@ async function updatePredictions(match: MatchWithPredictions, tx: PrismaTx) {
   }
 
   const achievementTypes = await tx.achievementType.findMany()
-  if (achievementTypes.length === 0) return
 
-  const usersToCheck = [...new Set(match.predictions.map(p => p.userId))]
-  if (usersToCheck.length === 0) return
+  if (achievementTypes.length > 0) {
+    const usersToCheck = [...new Set(match.predictions.map(p => p.userId))]
 
-  for (const userId of usersToCheck) {
-    const user = await tx.appUser.findUnique({
-      where: { id: userId },
-      include: {
-        predictions: true,
-        achievements: true,
-      },
-    })
-    if (!user) continue
+    for (const userId of usersToCheck) {
+      const user = await tx.appUser.findUnique({
+        where: { id: userId },
+        include: {
+          predictions: true,
+          achievements: true,
+        },
+      })
+      if (!user) continue
 
-    const correctCount = user.predictions.filter(p => p.isCorrect).length
-    const totalPredictions = user.predictions.length
+      const correctCount = user.predictions.filter(p => p.isCorrect).length
+      const totalPredictions = user.predictions.length
 
-    for (const achievement of achievementTypes) {
-      let achieved = false
-      if (achievement.metric === AchievementMetric.TOTAL_PREDICTIONS) {
-        achieved = totalPredictions >= achievement.requiredValue
-      } else if (achievement.metric === AchievementMetric.CORRECT_PREDICTIONS) {
-        achieved = correctCount >= achievement.requiredValue
-      }
+      for (const achievement of achievementTypes) {
+        let achieved = false
+        if (achievement.metric === AchievementMetric.TOTAL_PREDICTIONS) {
+          achieved = totalPredictions >= achievement.requiredValue
+        } else if (achievement.metric === AchievementMetric.CORRECT_PREDICTIONS) {
+          achieved = correctCount >= achievement.requiredValue
+        }
 
-      if (achieved) {
-        const already = user.achievements.find(ua => ua.achievementTypeId === achievement.id)
-        if (!already) {
-          await tx.userAchievement.create({
-            data: {
-              userId,
-              achievementTypeId: achievement.id,
-              achievedDate: new Date(),
-            },
-          })
+        if (achieved) {
+          const already = user.achievements.find(ua => ua.achievementTypeId === achievement.id)
+          if (!already) {
+            await tx.userAchievement.create({
+              data: {
+                userId,
+                achievementTypeId: achievement.id,
+                achievedDate: new Date(),
+              },
+            })
+          }
         }
       }
     }
   }
+
+  let settlementSummary: PredictionSettlementSummary | null = null
+
+  try {
+    const templates = await tx.predictionTemplate.findMany({
+      where: { matchId: match.id },
+      include: {
+        entries: {
+          where: { status: PredictionEntryStatus.PENDING },
+          select: {
+            id: true,
+            userId: true,
+            selection: true,
+            status: true,
+            submittedAt: true,
+          },
+        },
+      },
+    })
+
+    if (templates.length > 0) {
+      const settlement = await settlePredictionEntries(
+        {
+          id: match.id,
+          homeScore: match.homeScore,
+          awayScore: match.awayScore,
+          hasPenaltyShootout: match.hasPenaltyShootout,
+          penaltyHomeScore: match.penaltyHomeScore,
+          penaltyAwayScore: match.penaltyAwayScore,
+          events: match.events.map(event => ({ eventType: event.eventType })),
+          predictionTemplates: templates,
+        },
+        tx,
+        logger
+      )
+      settlementSummary = {
+        userIds: settlement.userIds,
+        settled: settlement.settled,
+        won: settlement.won,
+        lost: settlement.lost,
+        voided: settlement.voided,
+        cancelled: settlement.cancelled,
+      }
+    }
+  } catch (err) {
+    logger.error({ err, matchId: match.id.toString() }, 'failed to settle prediction entries')
+  }
+
+  return settlementSummary
 }
 
 function resolveMatchResult(match: Match): PredictionResult | null {

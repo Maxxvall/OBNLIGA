@@ -34,9 +34,7 @@ import {
   Stadium,
   UserAchievement,
   AdminPredictionMatch,
-  AdminPredictionTemplate,
   PredictionTemplateOverrideResponse,
-  TotalGoalsSuggestionView,
 } from '../types'
 import { useAssistantStore } from './assistantStore'
 
@@ -54,6 +52,7 @@ const lineupStorageKey = 'obnliga-lineup-token'
 const judgeStorageKey = 'obnliga-judge-token'
 const assistantStorageKey = 'obnliga-assistant-token'
 const ADMIN_NEWS_TOPIC = 'home'
+const ADMIN_PREDICTIONS_TOPIC = 'admin.predictions'
 
 const readPersistedToken = () => {
   if (typeof window === 'undefined') return undefined
@@ -171,7 +170,7 @@ interface AdminState {
   fetchStats(seasonId?: number, competitionId?: number): Promise<void>
   fetchUsers(): Promise<void>
   fetchPredictions(): Promise<void>
-  fetchPredictionMatches(options?: FetchOptions): Promise<void>
+  fetchPredictionMatches(options?: FetchOptions & { seasonId?: number }): Promise<void>
   fetchAchievements(): Promise<void>
   fetchDisqualifications(): Promise<void>
   fetchNews(options?: FetchOptions): Promise<void>
@@ -360,7 +359,6 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
 
   const handleAdminPatch = (message: WsMessage) => {
     if (!isPatchMessage(message)) return
-    if (message.topic !== ADMIN_NEWS_TOPIC) return
     if (get().mode !== 'admin') return
 
     const payload = message.payload
@@ -370,6 +368,118 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
 
     const patch = payload as { type?: unknown; payload?: unknown }
     const patchType = typeof patch.type === 'string' ? patch.type : undefined
+
+    if (message.topic === ADMIN_NEWS_TOPIC) {
+      if (patchType === 'news.full') {
+        const rawNews = patch.payload
+        if (!rawNews || typeof rawNews !== 'object') {
+          return
+        }
+        const news = rawNews as NewsItem
+        const cacheKey = composeCacheKey('news', [])
+        fetchTimestamps[cacheKey] = Date.now()
+        const current = get().data.news
+        const existingIndex = current.findIndex(entry => entry.id === news.id)
+        if (existingIndex >= 0) {
+          set(state => {
+            const nextNews = state.data.news.slice()
+            nextNews[existingIndex] = news
+            return {
+              data: {
+                ...state.data,
+                news: nextNews,
+              },
+            }
+          })
+        } else {
+          set(state => ({
+            data: {
+              ...state.data,
+              news: [news, ...state.data.news],
+            },
+          }))
+        }
+        return
+      }
+
+      if (patchType === 'news.remove') {
+        const rawPayload = patch.payload as { id?: string | number } | undefined
+        const rawId = rawPayload?.id
+        if (rawId === undefined || rawId === null) {
+          return
+        }
+        const id = typeof rawId === 'string' ? rawId : rawId.toString()
+        const current = get().data.news
+        if (!current.some(entry => entry.id === id)) {
+          return
+        }
+        const cacheKey = composeCacheKey('news', [])
+        fetchTimestamps[cacheKey] = Date.now()
+        set(state => ({
+          data: {
+            ...state.data,
+            news: state.data.news.filter(entry => entry.id !== id),
+          },
+        }))
+        return
+      }
+
+      if (patchType === 'ads.full') {
+        const rawAd = patch.payload
+        if (!rawAd || typeof rawAd !== 'object') {
+          return
+        }
+        const ad = rawAd as AdBanner
+        const cacheKey = composeCacheKey('ads', [])
+        fetchTimestamps[cacheKey] = Date.now()
+        set(state => {
+          const nextAds = state.data.ads.filter(entry => entry.id !== ad.id)
+          nextAds.push(ad)
+          return {
+            data: {
+              ...state.data,
+              ads: sortAdsList(nextAds),
+            },
+          }
+        })
+        return
+      }
+
+      if (patchType === 'ads.remove') {
+        const rawPayload = patch.payload as { id?: string | number } | undefined
+        const rawId = rawPayload?.id
+        if (rawId === undefined || rawId === null) {
+          return
+        }
+        const id = typeof rawId === 'string' ? rawId : rawId.toString()
+        const cacheKey = composeCacheKey('ads', [])
+        fetchTimestamps[cacheKey] = Date.now()
+        set(state => ({
+          data: {
+            ...state.data,
+            ads: state.data.ads.filter(entry => entry.id !== id),
+          },
+        }))
+      }
+      return
+    }
+
+    if (message.topic === ADMIN_PREDICTIONS_TOPIC) {
+      if (patchType === 'prediction.template.override') {
+        const rawPayload = patch.payload as
+          | { matchId?: string; override?: PredictionTemplateOverrideResponse }
+          | undefined
+        const matchId = rawPayload?.matchId
+        const override = rawPayload?.override
+        if (!matchId || !override) {
+          return
+        }
+        const applied = applyPredictionTemplateOverride(matchId, override)
+        if (!applied) {
+          void get().fetchPredictionMatches({ force: true }).catch(() => undefined)
+        }
+      }
+    }
 
     if (patchType === 'news.full') {
       const rawNews = patch.payload
@@ -1028,17 +1138,17 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         set(state => ({ data: { ...state.data, predictions } }))
       })
     },
-    async fetchPredictionMatches(options?: FetchOptions) {
+    async fetchPredictionMatches(options?: FetchOptions & { seasonId?: number }) {
       if (get().mode !== 'admin') return
-      const seasonId = get().selectedSeasonId
+      const resolvedSeasonId = options?.seasonId ?? get().selectedSeasonId
       await runCachedFetch(
         'predictionMatches',
-        [seasonId ? `season:${seasonId}` : undefined],
+        [resolvedSeasonId ? `season:${resolvedSeasonId}` : undefined],
         async () => {
           const token = ensureToken()
           const params = new URLSearchParams()
-          if (seasonId) {
-            params.set('seasonId', String(seasonId))
+          if (resolvedSeasonId) {
+            params.set('seasonId', String(resolvedSeasonId))
           }
           const query = params.size ? `?${params.toString()}` : ''
           const predictionMatches = await adminGet<AdminPredictionMatch[]>(

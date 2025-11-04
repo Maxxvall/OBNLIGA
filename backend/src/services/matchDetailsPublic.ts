@@ -448,7 +448,7 @@ export async function fetchMatchEvents(
     const version = calculateVersion(match.updatedAt)
 
     const events = match.events.map(ev => {
-      const team = ev.teamId === match.homeTeamId ? ('home' as const) : ('away' as const)
+      const team: 'home' | 'away' = ev.teamId === match.homeTeamId ? 'home' : 'away'
       const playerName = ev.player
         ? `${ev.player.firstName} ${ev.player.lastName}`
         : undefined
@@ -457,10 +457,10 @@ export async function fetchMatchEvents(
         ? `${ev.relatedPerson.firstName} ${ev.relatedPerson.lastName}`
         : undefined
 
-      const event: any = {
+      const event: MatchDetailsEvents['ev'][number] = {
         id: ev.id.toString(),
         min: ev.minute,
-        tp: ev.eventType as any,
+        tp: ev.eventType,
         tm: team,
       }
 

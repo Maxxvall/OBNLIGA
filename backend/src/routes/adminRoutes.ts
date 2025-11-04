@@ -23,10 +23,12 @@ import { createSeasonPlayoffs, runSeasonAutomation } from '../services/seasonAut
 import {
   ensurePredictionTemplatesForMatch,
   invalidateUpcomingPredictionCaches,
+  MatchTemplateEnsureSummary,
 } from '../services/predictionTemplateService'
 import {
   formatTotalLine,
   suggestTotalGoalsLineForMatch,
+  PredictionMatchContext,
 } from '../services/predictionTotalsService'
 import {
   PREDICTION_TOTAL_GOALS_BASE_POINTS,
@@ -116,24 +118,25 @@ type PredictionTemplateOverrideBody = {
   difficultyMultiplier?: number
 }
 
-type ClubIdParams = { clubId: string }
-type PersonIdParams = { personId: string }
-type StadiumIdParams = { stadiumId: string }
-type CompetitionIdParams = { competitionId: string }
-type SeasonIdParams = { seasonId: string }
-type SeasonClubParams = { seasonId: string; clubId: string }
-type SeasonPersonParams = { seasonId: string; personId: string }
-type SeriesIdParams = { seriesId: string }
-type MatchIdParams = { matchId: string }
-type MatchEventParams = { matchId: string; eventId: string }
-type MatchPersonParams = { matchId: string; personId: string }
-type PredictionIdParams = { predictionId: string }
-type UserIdParams = { userId: string }
-type UserAchievementParams = { userId: string; achievementTypeId: string }
-type AchievementTypeParams = { achievementTypeId: string }
-type DisqualificationParams = { disqualificationId: string }
+type PredictionTemplateEnsureSummaryView = {
+  matchId: string
+  createdMarkets: PredictionMarketType[]
+  updatedMarkets: PredictionMarketType[]
+  skippedManualMarkets: PredictionMarketType[]
+  changed: boolean
+  totalSuggestion?: TotalGoalsSuggestionView | null
+}
 
-type PublishTopicHandler = (topic: string, payload: unknown) => Promise<void> | void
+type PredictionTemplateOverrideView = {
+  mode: 'auto' | 'manual'
+  template: ReturnType<typeof serializePredictionTemplateForAdmin> | null
+  suggestion: TotalGoalsSuggestionView | null
+  summary?: PredictionTemplateEnsureSummaryView
+}
+
+type ClubIdParams = { clubId: string }
+
+type PublishTopicHandler = (topic: string, payload: unknown) => Promise<unknown> | unknown
 
 type FastifyInstanceWithPublishTopic = FastifyInstance & {
   publishTopic?: PublishTopicHandler
@@ -167,17 +170,6 @@ const getParam = (params: unknown, key: string): string => {
     return String(value)
   }
   throw new Error(`param_${key}_missing`)
-}
-
-const getOptionalParam = (params: unknown, key: string): string | undefined => {
-  if (params && typeof params === 'object' && key in (params as Record<string, unknown>)) {
-    const value = (params as Record<string, unknown>)[key]
-    if (value === undefined || value === null) {
-      return undefined
-    }
-    return String(value)
-  }
-  return undefined
 }
 
 const normalizeShirtNumber = (value: number | null | undefined): number | null => {
@@ -536,7 +528,7 @@ const PREDICTION_TEMPLATE_SELECT = {
   createdAt: true,
   updatedAt: true,
   createdBy: true,
-} as const
+} satisfies Prisma.PredictionTemplateSelect
 
 type PredictionTemplateRecord = Prisma.PredictionTemplateGetPayload<{
   select: typeof PREDICTION_TEMPLATE_SELECT
@@ -615,6 +607,104 @@ const serializeTotalGoalsSuggestion = (
       weight: sample.weight,
       isFriendly: sample.isFriendly,
     })),
+  }
+}
+
+const ADMIN_PREDICTION_MATCH_SELECT = {
+  id: true,
+  seasonId: true,
+  matchDateTime: true,
+  status: true,
+  homeTeamId: true,
+  awayTeamId: true,
+  isFriendly: true,
+  homeClub: {
+    select: {
+      id: true,
+      name: true,
+      shortName: true,
+      logoUrl: true,
+    },
+  },
+  awayClub: {
+    select: {
+      id: true,
+      name: true,
+      shortName: true,
+      logoUrl: true,
+    },
+  },
+  predictionTemplates: {
+    orderBy: { marketType: 'asc' },
+    select: PREDICTION_TEMPLATE_SELECT,
+  },
+} satisfies Prisma.MatchSelect
+
+type AdminPredictionMatchRecord = Prisma.MatchGetPayload<{
+  select: typeof ADMIN_PREDICTION_MATCH_SELECT
+}>
+
+type AdminPredictionClubView = {
+  id: number
+  name: string
+  shortName: string
+  logoUrl: string | null
+}
+
+type AdminPredictionMatchView = {
+  matchId: string
+  seasonId: number | null
+  matchDateTime: string
+  status: MatchStatus
+  homeClub: AdminPredictionClubView
+  awayClub: AdminPredictionClubView
+  templates: ReturnType<typeof serializePredictionTemplateForAdmin>[]
+  suggestion: TotalGoalsSuggestionView | null
+}
+
+const serializePredictionClub = (club: {
+  id: number
+  name: string
+  shortName: string
+  logoUrl: string | null
+}): AdminPredictionClubView => ({
+  id: club.id,
+  name: club.name,
+  shortName: club.shortName,
+  logoUrl: club.logoUrl ?? null,
+})
+
+const serializePredictionMatchForAdmin = (
+  match: AdminPredictionMatchRecord,
+  suggestion: TotalGoalsSuggestionView | null
+): AdminPredictionMatchView => ({
+  matchId: match.id.toString(),
+  seasonId: match.seasonId ?? null,
+  matchDateTime: match.matchDateTime ? match.matchDateTime.toISOString() : new Date().toISOString(),
+  status: match.status,
+  homeClub: serializePredictionClub(match.homeClub),
+  awayClub: serializePredictionClub(match.awayClub),
+  templates: match.predictionTemplates.map(serializePredictionTemplateForAdmin),
+  suggestion,
+})
+
+const serializePredictionTemplateEnsureSummary = (
+  summary?: MatchTemplateEnsureSummary | null
+): PredictionTemplateEnsureSummaryView | undefined => {
+  if (!summary) {
+    return undefined
+  }
+
+  return {
+    matchId: summary.matchId.toString(),
+    createdMarkets: summary.createdMarkets.slice(),
+    updatedMarkets: summary.updatedMarkets.slice(),
+    skippedManualMarkets: summary.skippedManualMarkets.slice(),
+    changed: summary.changed,
+    totalSuggestion:
+      summary.totalSuggestion !== undefined && summary.totalSuggestion !== null
+        ? serializeTotalGoalsSuggestion(summary.totalSuggestion) ?? undefined
+        : undefined,
   }
 }
 
@@ -3407,6 +3497,7 @@ export default async function (server: FastifyInstance) {
 
           const publishTopic =
             typeof admin.publishTopic === 'function' ? admin.publishTopic.bind(admin) : undefined
+          const matchIdString = matchId.toString()
 
           if (mode === 'auto') {
             await prisma.predictionTemplate.update({
@@ -3415,6 +3506,7 @@ export default async function (server: FastifyInstance) {
             })
 
             const summary = await ensurePredictionTemplatesForMatch(matchId, prisma)
+            const summaryView = serializePredictionTemplateEnsureSummary(summary)
 
             const refreshed = await prisma.predictionTemplate.findUnique({
               where: { id: template.id },
@@ -3423,23 +3515,28 @@ export default async function (server: FastifyInstance) {
 
             const suggestion = await suggestTotalGoalsLineForMatch(matchId, prisma)
             const suggestionView = serializeTotalGoalsSuggestion(suggestion)
-            const view = refreshed ? serializePredictionTemplateForAdmin(refreshed) : null
+            const refreshedSource = refreshed ?? template
+            const view = serializePredictionTemplateForAdmin(refreshedSource)
+            const overrideData: PredictionTemplateOverrideView = {
+              mode: 'auto',
+              template: view,
+              summary: summaryView,
+              suggestion: suggestionView,
+            }
 
-            if (publishTopic && view) {
+            if (publishTopic) {
               await publishTopic('admin.predictions', {
-                type: 'prediction.template.updated',
-                payload: view,
+                type: 'prediction.template.override',
+                payload: {
+                  matchId: matchIdString,
+                  override: overrideData,
+                },
               })
             }
 
             return reply.send({
               ok: true,
-              data: {
-                mode: 'auto',
-                template: view,
-                summary,
-                suggestion: suggestionView,
-              },
+              data: overrideData,
             })
           }
 
@@ -3511,21 +3608,25 @@ export default async function (server: FastifyInstance) {
           const suggestion = await suggestTotalGoalsLineForMatch(matchId, prisma)
           const suggestionView = serializeTotalGoalsSuggestion(suggestion)
           const view = serializePredictionTemplateForAdmin(updated)
+          const overrideData: PredictionTemplateOverrideView = {
+            mode: 'manual',
+            template: view,
+            suggestion: suggestionView,
+          }
 
           if (publishTopic) {
             await publishTopic('admin.predictions', {
-              type: 'prediction.template.updated',
-              payload: view,
+              type: 'prediction.template.override',
+              payload: {
+                matchId: matchIdString,
+                override: overrideData,
+              },
             })
           }
 
           return reply.send({
             ok: true,
-            data: {
-              mode: 'manual',
-              template: view,
-              suggestion: suggestionView,
-            },
+            data: overrideData,
           })
         }
       )
@@ -4590,6 +4691,64 @@ export default async function (server: FastifyInstance) {
         await defaultCache.invalidate(`user:${updated.telegramId.toString()}`)
 
         return sendSerialized(reply, updated)
+      })
+
+      admin.get('/predictions/matches', async (request, reply) => {
+        const { seasonId: rawSeasonId, limit: rawLimit } = request.query as {
+          seasonId?: string
+          limit?: string
+        }
+
+        let seasonId: number | undefined
+        if (rawSeasonId !== undefined) {
+          const parsed = Number(rawSeasonId)
+          if (!Number.isFinite(parsed)) {
+            return reply.status(400).send({ ok: false, error: 'season_invalid' })
+          }
+          seasonId = Math.trunc(parsed)
+        }
+
+        const defaultLimit = 100
+        let take = defaultLimit
+        if (rawLimit !== undefined) {
+          const parsed = Number(rawLimit)
+          if (!Number.isFinite(parsed) || parsed <= 0) {
+            return reply.status(400).send({ ok: false, error: 'limit_invalid' })
+          }
+          take = Math.min(defaultLimit, Math.trunc(parsed))
+        }
+
+        const matches = await prisma.match.findMany({
+          where: {
+            status: MatchStatus.SCHEDULED,
+            seasonId: seasonId ?? undefined,
+          },
+          orderBy: [{ matchDateTime: 'asc' }],
+          take,
+          select: ADMIN_PREDICTION_MATCH_SELECT,
+        })
+
+        if (!matches.length) {
+          return reply.send({ ok: true, data: [] })
+        }
+
+        const views = await Promise.all(
+          matches.map(async match => {
+            const matchContext: PredictionMatchContext = {
+              id: match.id,
+              matchDateTime: match.matchDateTime ?? new Date(),
+              homeTeamId: match.homeTeamId,
+              awayTeamId: match.awayTeamId,
+              status: match.status,
+              isFriendly: match.isFriendly,
+            }
+            const suggestionRaw = await suggestTotalGoalsLineForMatch(matchContext)
+            const suggestion = serializeTotalGoalsSuggestion(suggestionRaw)
+            return serializePredictionMatchForAdmin(match, suggestion)
+          })
+        )
+
+        return reply.send({ ok: true, data: views })
       })
 
       admin.get('/predictions', async (request, reply) => {

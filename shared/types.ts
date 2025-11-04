@@ -27,6 +27,55 @@ export type PredictionEntryStatus =
   | 'CANCELLED'
   | 'EXPIRED'
 
+export type RatingScopeKey = 'current' | 'yearly'
+
+export type RatingLevel =
+  | 'BRONZE'
+  | 'SILVER'
+  | 'GOLD'
+  | 'PLATINUM'
+  | 'DIAMOND'
+  | 'MYTHIC'
+
+export interface RatingLeaderboardEntryView {
+  userId: number
+  position: number
+  displayName: string
+  username: string | null
+  photoUrl: string | null
+  totalPoints: number
+  seasonalPoints: number
+  yearlyPoints: number
+  currentLevel: RatingLevel
+  mythicRank: number | null
+  currentStreak: number
+  maxStreak: number
+  lastPredictionAt: string | null
+  lastResolvedAt: string | null
+}
+
+export interface RatingLeaderboardResponse {
+  scope: RatingScopeKey
+  total: number
+  page: number
+  pageSize: number
+  capturedAt: string
+  entries: RatingLeaderboardEntryView[]
+}
+
+export interface UserRatingSummary {
+  totalPoints: number
+  seasonalPoints: number
+  yearlyPoints: number
+  currentLevel: RatingLevel
+  mythicRank: number | null
+  currentStreak: number
+  maxStreak: number
+  lastPredictionAt: string | null
+  lastResolvedAt: string | null
+  lastRecalculatedAt: string | null
+}
+
 export interface PredictionChoiceOption {
   value: string
   label: string

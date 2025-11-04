@@ -7,6 +7,7 @@ import { NewsSection } from './components/NewsSection'
 import LeaguePage from './pages/LeaguePage'
 import { TeamView } from './components/team/TeamView'
 import PredictionsPage from './pages/PredictionsPage'
+import RatingsPage from './pages/RatingsPage'
 import { MatchDetailsPage } from './pages/MatchDetailsPage'
 import { useAppStore } from './store/appStore'
 
@@ -75,12 +76,14 @@ export default function App() {
         )}
         {currentTab === 'league' && <LeaguePage />}
         {currentTab === 'predictions' && <PredictionsPage />}
+        {currentTab === 'leaderboard' && <RatingsPage />}
         {currentTab === 'profile' ? (
           <Profile />
         ) : (
           currentTab !== 'home' &&
           currentTab !== 'league' &&
-          currentTab !== 'predictions' && (
+          currentTab !== 'predictions' &&
+          currentTab !== 'leaderboard' && (
             <div className="placeholder">
               <div className="placeholder-card">
                 <h2>Страница в разработке</h2>

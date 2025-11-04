@@ -14,6 +14,10 @@ export const PREDICTION_TOTAL_MAX_LINE = 6.5
 
 export const PREDICTION_MATCH_OUTCOME_BASE_POINTS = 10
 export const PREDICTION_TOTAL_GOALS_BASE_POINTS = 12
+export const PREDICTION_PENALTY_EVENT_BASE_POINTS = 8
+export const PREDICTION_RED_CARD_EVENT_BASE_POINTS = 9
+
+export const PREDICTION_SPECIAL_EVENT_BASE_DIFFICULTY = 1
 
 export const ACTIVE_PREDICTION_CACHE_KEY = (days: number) => `predictions:list:${days}`
 export const USER_PREDICTION_CACHE_KEY = (userId: number) => `predictions:user:${userId}`

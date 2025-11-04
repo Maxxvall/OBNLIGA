@@ -1,9 +1,18 @@
-import { MatchStatus, PredictionMarketType, Prisma, PrismaClient } from '@prisma/client'
+import {
+  MatchEventType,
+  MatchStatus,
+  PredictionMarketType,
+  Prisma,
+  PrismaClient,
+} from '@prisma/client'
 import prisma from '../db'
 import { defaultCache } from '../cache'
 import {
   ACTIVE_PREDICTION_CACHE_KEY,
   PREDICTION_MATCH_OUTCOME_BASE_POINTS,
+  PREDICTION_PENALTY_EVENT_BASE_POINTS,
+  PREDICTION_RED_CARD_EVENT_BASE_POINTS,
+  PREDICTION_SPECIAL_EVENT_BASE_DIFFICULTY,
   PREDICTION_TOTAL_GOALS_BASE_POINTS,
   PREDICTION_UPCOMING_MAX_DAYS,
 } from './predictionConstants'
@@ -18,6 +27,46 @@ const MATCH_OUTCOME_CHOICES = [
   { value: 'ONE', label: 'Победа хозяев' },
   { value: 'DRAW', label: 'Ничья' },
   { value: 'TWO', label: 'Победа гостей' },
+]
+
+type SpecialEventDefinition = {
+  eventKey: 'penalty' | 'red_card'
+  title: string
+  description: string
+  yesValue: string
+  noValue: string
+  yesLabel: string
+  noLabel: string
+  relatedEvents: MatchEventType[]
+  basePoints: number
+  difficultyMultiplier: number
+}
+
+const SPECIAL_EVENT_DEFINITIONS: SpecialEventDefinition[] = [
+  {
+    eventKey: 'penalty',
+    title: 'Пенальти',
+    description: 'Будет ли назначен и реализован пенальти',
+    yesValue: 'PENALTY_YES',
+    noValue: 'PENALTY_NO',
+    yesLabel: 'Да',
+    noLabel: 'Нет',
+    relatedEvents: [MatchEventType.PENALTY_GOAL],
+    basePoints: PREDICTION_PENALTY_EVENT_BASE_POINTS,
+    difficultyMultiplier: PREDICTION_SPECIAL_EVENT_BASE_DIFFICULTY,
+  },
+  {
+    eventKey: 'red_card',
+    title: 'Красная карточка',
+    description: 'Покажут ли в матче красную карточку или вторую жёлтую',
+    yesValue: 'RED_CARD_YES',
+    noValue: 'RED_CARD_NO',
+    yesLabel: 'Да',
+    noLabel: 'Нет',
+    relatedEvents: [MatchEventType.RED_CARD, MatchEventType.SECOND_YELLOW_CARD],
+    basePoints: PREDICTION_RED_CARD_EVENT_BASE_POINTS,
+    difficultyMultiplier: PREDICTION_SPECIAL_EVENT_BASE_DIFFICULTY,
+  },
 ]
 
 const toPredictionMatchContext = (match: MatchWithTemplates): PredictionMatchContext => ({
@@ -71,6 +120,21 @@ const buildMatchOutcomeOptions = (): Prisma.JsonObject => ({
   valueType: 'enumeration',
 })
 
+const buildSpecialEventOptions = (definition: SpecialEventDefinition): Prisma.JsonObject => ({
+  kind: 'match_event_boolean',
+  version: 1,
+  eventKey: definition.eventKey,
+  title: definition.title,
+  description: definition.description,
+  yesValue: definition.yesValue,
+  noValue: definition.noValue,
+  relatedEvents: definition.relatedEvents,
+  choices: [
+    { value: definition.yesValue, label: definition.yesLabel },
+    { value: definition.noValue, label: definition.noLabel },
+  ],
+})
+
 const buildTotalGoalsOptions = (suggestion: TotalGoalsSuggestion): Prisma.JsonObject => {
   const formattedLine = formatTotalLine(suggestion.line)
   const overChoice = { value: `OVER_${formattedLine}`, label: `Больше ${formattedLine}` }
@@ -111,6 +175,15 @@ const jsonEquals = (left: Prisma.JsonValue, right: Prisma.JsonValue): boolean =>
   }
 }
 
+const extractEventKey = (options: Prisma.JsonValue): string | undefined => {
+  if (!options || typeof options !== 'object') {
+    return undefined
+  }
+  const record = options as Record<string, unknown>
+  const key = record.eventKey
+  return typeof key === 'string' && key.length > 0 ? key : undefined
+}
+
 const ensurePredictionTemplatesForMatchRecord = async (
   match: MatchWithTemplates,
   client: PrismaClient | Prisma.TransactionClient
@@ -127,8 +200,15 @@ const ensurePredictionTemplatesForMatchRecord = async (
   }
 
   const existingByMarket = new Map<PredictionMarketType, TemplateRow>()
+  const existingSpecialByEvent = new Map<string, TemplateRow>()
   for (const template of match.predictionTemplates) {
     existingByMarket.set(template.marketType, template)
+    if (template.marketType === PredictionMarketType.CUSTOM_BOOLEAN) {
+      const eventKey = extractEventKey(template.options)
+      if (eventKey) {
+        existingSpecialByEvent.set(eventKey, template)
+      }
+    }
   }
 
   const createdMarkets: PredictionMarketType[] = []
@@ -215,6 +295,49 @@ const ensurePredictionTemplatesForMatchRecord = async (
         },
       })
       updatedMarkets.push(PredictionMarketType.TOTAL_GOALS)
+    }
+  }
+
+  for (const definition of SPECIAL_EVENT_DEFINITIONS) {
+    const desiredOptions = buildSpecialEventOptions(definition)
+    const existing = existingSpecialByEvent.get(definition.eventKey)
+
+    if (!existing) {
+      await client.predictionTemplate.create({
+        data: {
+          matchId: match.id,
+          marketType: PredictionMarketType.CUSTOM_BOOLEAN,
+          options: desiredOptions,
+          basePoints: definition.basePoints,
+          difficultyMultiplier: definition.difficultyMultiplier,
+          isManual: false,
+        },
+      })
+      createdMarkets.push(PredictionMarketType.CUSTOM_BOOLEAN)
+      continue
+    }
+
+    if (existing.isManual) {
+      skippedManual.push(PredictionMarketType.CUSTOM_BOOLEAN)
+      continue
+    }
+
+    const needsUpdate =
+      existing.basePoints !== definition.basePoints
+        || Math.abs(existing.difficultyMultiplier.toNumber() - definition.difficultyMultiplier) > 0.01
+        || !jsonEquals(existing.options, desiredOptions)
+
+    if (needsUpdate) {
+      await client.predictionTemplate.update({
+        where: { id: existing.id },
+        data: {
+          options: desiredOptions,
+          basePoints: definition.basePoints,
+          difficultyMultiplier: definition.difficultyMultiplier,
+          isManual: false,
+        },
+      })
+      updatedMarkets.push(PredictionMarketType.CUSTOM_BOOLEAN)
     }
   }
 

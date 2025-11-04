@@ -397,7 +397,7 @@ export interface TotalGoalsSuggestionView {
 export interface AdminPredictionTemplate {
   id: string
   matchId: string
-  marketType: 'MATCH_OUTCOME' | 'TOTAL_GOALS'
+  marketType: 'MATCH_OUTCOME' | 'TOTAL_GOALS' | 'CUSTOM_BOOLEAN'
   options: unknown
   basePoints: number
   difficultyMultiplier: number
@@ -426,9 +426,9 @@ export interface PredictionTemplateOverrideResponse {
 
 export interface PredictionTemplateEnsureSummaryView {
   matchId: string
-  createdMarkets: Array<'MATCH_OUTCOME' | 'TOTAL_GOALS'>
-  updatedMarkets: Array<'MATCH_OUTCOME' | 'TOTAL_GOALS'>
-  skippedManualMarkets: Array<'MATCH_OUTCOME' | 'TOTAL_GOALS'>
+  createdMarkets: Array<'MATCH_OUTCOME' | 'TOTAL_GOALS' | 'CUSTOM_BOOLEAN'>
+  updatedMarkets: Array<'MATCH_OUTCOME' | 'TOTAL_GOALS' | 'CUSTOM_BOOLEAN'>
+  skippedManualMarkets: Array<'MATCH_OUTCOME' | 'TOTAL_GOALS' | 'CUSTOM_BOOLEAN'>
   changed: boolean
   totalSuggestion?: TotalGoalsSuggestionView
 }

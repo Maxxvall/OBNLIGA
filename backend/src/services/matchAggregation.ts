@@ -32,6 +32,7 @@ import { buildLeagueTable } from './leagueTable'
 import { refreshLeagueMatchAggregates } from './leagueSchedule'
 import { refreshLeagueStats } from './leagueStats'
 import { publicClubSummaryKey, refreshClubSummary } from './clubSummary'
+import { USER_PREDICTION_CACHE_KEY } from './predictionConstants'
 import {
   addDays,
   applyTimeToDate,
@@ -173,12 +174,15 @@ export async function handleMatchFinalization(
       ratingPublicCacheKey(RatingScope.YEARLY, 1, RATING_DEFAULT_PAGE_SIZE),
     ]
 
+    const userCacheKeys = settledUserIds.flatMap(userId => [
+      `user:rating:${userId}`,
+      USER_PREDICTION_CACHE_KEY(userId),
+    ])
+
     await Promise.all(
       [
         ...ratingCacheKeys.map(key => defaultCache.invalidate(key).catch(() => undefined)),
-        ...settledUserIds.map(userId =>
-          defaultCache.invalidate(`user:rating:${userId}`).catch(() => undefined)
-        ),
+        ...userCacheKeys.map(key => defaultCache.invalidate(key).catch(() => undefined)),
       ]
     )
   }

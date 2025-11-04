@@ -1487,7 +1487,7 @@ const buildRatingsAdminResponse = async (
   ])
 
   const anchor = context?.capturedAt ?? aggregate._max.lastRecalculatedAt ?? new Date()
-  const windows = computeRatingWindows(anchor, settings)
+  const windows = await computeRatingWindows(anchor, settings)
   const ratedUsers = aggregate._count.userId ?? 0
 
   return {
@@ -1772,7 +1772,7 @@ export default async function (server: FastifyInstance) {
           ensureFresh: page === 1,
         })
         const settings = await getRatingSettings()
-        const windows = computeRatingWindows(leaderboard.capturedAt, settings)
+  const windows = await computeRatingWindows(leaderboard.capturedAt, settings)
 
         return reply.send({
           ok: true,

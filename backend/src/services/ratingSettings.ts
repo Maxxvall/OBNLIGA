@@ -1,5 +1,6 @@
-import { Prisma, PrismaClient } from '@prisma/client'
+import { Prisma, PrismaClient, RatingScope } from '@prisma/client'
 import prisma from '../db'
+import { getActiveSeasonsMap } from './ratingSeasons'
 
 const SETTINGS_SINGLETON_ID = 1
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -120,13 +121,30 @@ export const composeRatingSettingsPayload = (snapshot: RatingSettingsSnapshot) =
   },
 })
 
-export const computeRatingWindows = (
+export const computeRatingWindows = async (
   anchor: Date,
-  snapshot: RatingSettingsSnapshot
+  snapshot: RatingSettingsSnapshot,
+  client: PrismaClientOrTx = prisma
 ) => {
   const reference = anchor.getTime()
-  const currentWindowStart = new Date(reference - snapshot.currentScopeDays * DAY_MS)
-  const yearlyWindowStart = new Date(reference - snapshot.yearlyScopeDays * DAY_MS)
+  const fallbackCurrentStart = new Date(reference - snapshot.currentScopeDays * DAY_MS)
+  const yearlyDurationDays = Math.max(snapshot.currentScopeDays, snapshot.yearlyScopeDays)
+  const fallbackYearlyStart = new Date(reference - yearlyDurationDays * DAY_MS)
+
+  const seasons = await getActiveSeasonsMap(client)
+  const activeCurrentSeason = seasons.get(RatingScope.CURRENT)
+  const activeYearlySeason = seasons.get(RatingScope.YEARLY)
+
+  const resolveSeasonStart = (season: { startsAt: Date } | undefined, fallback: Date) => {
+    if (!season?.startsAt) {
+      return fallback
+    }
+    const start = new Date(season.startsAt)
+    return start.getTime() <= reference ? start : fallback
+  }
+
+  const currentWindowStart = resolveSeasonStart(activeCurrentSeason, fallbackCurrentStart)
+  const yearlyWindowStart = resolveSeasonStart(activeYearlySeason, fallbackYearlyStart)
 
   return {
     anchor,

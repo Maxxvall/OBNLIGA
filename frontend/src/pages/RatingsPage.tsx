@@ -11,6 +11,8 @@ type ScopeState = {
   entries: RatingLeaderboardEntryView[]
   total: number
   capturedAt?: string
+  currentWindowStart?: string
+  yearlyWindowStart?: string
   page: number
   pageSize: number
   version?: string
@@ -48,6 +50,8 @@ const createInitialScopeState = (): ScopeState => ({
   entries: [],
   total: 0,
   capturedAt: undefined,
+  currentWindowStart: undefined,
+  yearlyWindowStart: undefined,
   page: 0,
   pageSize: PAGE_SIZE,
   version: undefined,
@@ -201,6 +205,8 @@ export function RatingsPage() {
           entries: nextEntries,
           total: data.total,
           capturedAt: data.capturedAt,
+          currentWindowStart: data.currentWindowStart,
+          yearlyWindowStart: data.yearlyWindowStart,
           page: data.page,
           pageSize: data.pageSize,
           version: nextVersion ?? prev[targetScope].version,
@@ -237,6 +243,16 @@ export function RatingsPage() {
   const isLoadingInitial = activeState.loading && activeState.entries.length === 0
   const isLoadingMore = activeState.loading && activeState.entries.length > 0
   const defaultHint = `Запросы кешируются до ${Math.round(CACHE_TTL_MS / 1000)} секунд для снижения нагрузки.`
+  const formattedCapturedAt = activeState.capturedAt
+    ? dateFormatter.format(new Date(activeState.capturedAt))
+    : null
+  const formattedCurrentWindow = activeState.currentWindowStart
+    ? dateFormatter.format(new Date(activeState.currentWindowStart))
+    : null
+  const formattedYearlyWindow = activeState.yearlyWindowStart
+    ? dateFormatter.format(new Date(activeState.yearlyWindowStart))
+    : null
+  const scopePointsLabel = scope === 'current' ? 'Очки сезона' : 'Очки года'
 
   const handleScopeChange = (nextScope: RatingScopeKey) => {
     if (nextScope === scope) {
@@ -281,10 +297,22 @@ export function RatingsPage() {
               </button>
             ))}
           </div>
-          <div className="ratings-updated">
-            {activeState.capturedAt
-              ? `Срез от ${dateFormatter.format(new Date(activeState.capturedAt))}`
-              : 'Срез обновляется каждые несколько минут'}
+          <div className="ratings-meta">
+            <span className="ratings-meta-line">
+              {formattedCapturedAt
+                ? `Срез от ${formattedCapturedAt}`
+                : 'Срез обновляется каждые несколько минут'}
+            </span>
+            <span className="ratings-meta-line">
+              {formattedCurrentWindow
+                ? `Текущее окно: ${formattedCurrentWindow}`
+                : 'Текущее окно: —'}
+            </span>
+            <span className="ratings-meta-line">
+              {formattedYearlyWindow
+                ? `Годовой рейтинг: ${formattedYearlyWindow}`
+                : 'Годовой рейтинг: —'}
+            </span>
           </div>
         </div>
         <div className="ratings-note">{hint ?? defaultHint}</div>
@@ -296,70 +324,79 @@ export function RatingsPage() {
       ) : activeState.entries.length === 0 ? (
         <div className="ratings-empty">Пока нет данных для отображения рейтинга.</div>
       ) : (
-        <ul className="ratings-list">
-          {activeState.entries.map((entry) => {
-            const seasonalLabel = scope === 'current' ? 'Очки сезона' : 'Очки года'
-            const seasonalValue = scope === 'current' ? entry.seasonalPoints : entry.yearlyPoints
-            const cardHighlight = entry.position <= 5 ? 'rating-card highlight' : 'rating-card'
-            const levelClass = entry.currentLevel === 'MYTHIC' ? 'rating-level mythic' : 'rating-level'
-            const currentStreakMeta = entry.currentStreak > 0
-              ? `Текущая серия: ${numberFormatter.format(entry.currentStreak)}`
-              : 'Серия пока не активна'
-            const rawAccuracy = typeof entry.predictionAccuracy === 'number' ? entry.predictionAccuracy : 0
-            const clampedAccuracy = Math.min(1, Math.max(0, rawAccuracy))
-            const accuracyLabel = percentFormatter.format(clampedAccuracy)
-            return (
-              <li key={`${entry.userId}-${entry.position}`} className={cardHighlight}>
-                <div className="rating-position">#{entry.position}</div>
-                <div className="rating-profile">
-                  <div className={entry.photoUrl ? 'rating-avatar' : 'rating-avatar fallback'}>
-                    {entry.photoUrl ? (
-                      <img src={entry.photoUrl} alt={entry.displayName} loading="lazy" />
-                    ) : (
-                      getFallbackInitials(entry.displayName)
-                    )}
-                  </div>
-                  <div className="rating-user-info">
-                    <span className="rating-name">{entry.displayName}</span>
-                    {entry.username ? (
-                      <span className="rating-username">@{entry.username}</span>
-                    ) : null}
-                    <span className={levelClass}>
-                      {levelLabels[entry.currentLevel]}
-                      {entry.mythicRank ? ` - Mythic #${entry.mythicRank}` : ''}
-                    </span>
-                  </div>
-                </div>
-                <div className="rating-stats">
-                  <div className="rating-stat-block">
-                    <span className="rating-stat-label">Всего очков</span>
-                    <span className="rating-stat-value">{numberFormatter.format(entry.totalPoints)}</span>
-                  </div>
-                  <div className="rating-stat-block">
-                    <span className="rating-stat-label">{seasonalLabel}</span>
-                    <span className="rating-stat-value">{numberFormatter.format(seasonalValue)}</span>
-                  </div>
-                  <div className="rating-stat-block">
-                    <span className="rating-stat-label">Лучшая серия</span>
-                    <span className="rating-stat-value">{numberFormatter.format(entry.maxStreak)}</span>
-                    <span className="rating-stat-meta">{currentStreakMeta}</span>
-                  </div>
-                  <div className="rating-stat-block">
-                    <span className="rating-stat-label">Прогнозы</span>
-                    <span className="rating-stat-value">{numberFormatter.format(entry.predictionCount)}</span>
-                    <span className="rating-stat-meta">
-                      Побед: {numberFormatter.format(entry.predictionWins)}
-                    </span>
-                  </div>
-                  <div className="rating-stat-block">
-                    <span className="rating-stat-label">% угаданных</span>
-                    <span className="rating-stat-value">{accuracyLabel}</span>
-                  </div>
-                </div>
-              </li>
-            )
-          })}
-        </ul>
+        <div className="ratings-table-container">
+          <table className="ratings-table">
+            <thead>
+              <tr>
+                <th className="col-position">Место</th>
+                <th>Игрок</th>
+                <th>{scopePointsLabel}</th>
+                <th>Прогнозы</th>
+                <th>% угаданных</th>
+                <th>Серии</th>
+                <th>Последний прогноз</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activeState.entries.map((entry) => {
+                const scopePoints = scope === 'current' ? entry.seasonalPoints : entry.yearlyPoints
+                const levelClass = entry.currentLevel === 'MYTHIC' ? 'rating-level mythic' : 'rating-level'
+                const rawAccuracy = typeof entry.predictionAccuracy === 'number' ? entry.predictionAccuracy : 0
+                const clampedAccuracy = Math.min(1, Math.max(0, rawAccuracy))
+                const accuracyLabel = percentFormatter.format(clampedAccuracy)
+                const rowClass = entry.position <= 3 ? 'ratings-row-top' : undefined
+                return (
+                  <tr key={`${entry.userId}-${entry.position}`} className={rowClass}>
+                    <td className="col-position">#{entry.position}</td>
+                    <td>
+                      <div className="rating-user">
+                        <div className={entry.photoUrl ? 'rating-avatar' : 'rating-avatar fallback'}>
+                          {entry.photoUrl ? (
+                            <img src={entry.photoUrl} alt={entry.displayName} loading="lazy" />
+                          ) : (
+                            getFallbackInitials(entry.displayName)
+                          )}
+                        </div>
+                        <div className="rating-user-info">
+                          <span className="rating-name">{entry.displayName}</span>
+                          {entry.username ? (
+                            <span className="rating-username">@{entry.username}</span>
+                          ) : null}
+                          <span className={levelClass}>
+                            {levelLabels[entry.currentLevel]}
+                            {entry.mythicRank ? ` · Mythic #${entry.mythicRank}` : ''}
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+                    <td
+                      className="col-points"
+                      title={`Всего очков: ${numberFormatter.format(entry.totalPoints)}`}
+                    >
+                      {numberFormatter.format(scopePoints)}
+                    </td>
+                    <td className="col-predictions">
+                      <span className="cell-value">{numberFormatter.format(entry.predictionCount)}</span>
+                      <span className="cell-meta">Побед: {numberFormatter.format(entry.predictionWins)}</span>
+                    </td>
+                    <td>{accuracyLabel}</td>
+                    <td className="col-streak">
+                      <span className="cell-value">{numberFormatter.format(entry.maxStreak)}</span>
+                      <span className="cell-meta">
+                        Текущая: {numberFormatter.format(entry.currentStreak)}
+                      </span>
+                    </td>
+                    <td className="col-date">
+                      {entry.lastPredictionAt
+                        ? dateFormatter.format(new Date(entry.lastPredictionAt))
+                        : '—'}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {hasMore ? (

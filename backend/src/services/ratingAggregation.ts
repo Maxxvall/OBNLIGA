@@ -17,7 +17,7 @@ import {
   RATING_SNAPSHOT_LIMIT,
   resolveRatingLevel,
 } from './ratingConstants'
-import { getRatingSettings } from './ratingSettings'
+import { computeRatingWindows, getRatingSettings } from './ratingSettings'
 
 type AggregatedUserRating = {
   userId: number
@@ -101,14 +101,10 @@ export const recalculateUserRatings = async (
   }
 
   await client.$transaction(async tx => {
-  // Resolve rolling window boundaries based on configurable settings
-  const settings = await getRatingSettings(tx)
-    const currentScopeDays = Math.max(1, settings.currentScopeDays)
-    const yearlyScopeDays = Math.max(currentScopeDays, settings.yearlyScopeDays)
-    const DAY_MS = 24 * 60 * 60 * 1000
-
-    const currentWindowStart = new Date(capturedAt.getTime() - currentScopeDays * DAY_MS)
-    const yearlyWindowStart = new Date(capturedAt.getTime() - yearlyScopeDays * DAY_MS)
+    const settings = await getRatingSettings(tx)
+    const windows = await computeRatingWindows(capturedAt, settings, tx)
+    const currentWindowStart = windows.currentWindowStart
+    const yearlyWindowStart = windows.yearlyWindowStart
 
     context.currentWindowStart = currentWindowStart
     context.yearlyWindowStart = yearlyWindowStart

@@ -6,6 +6,7 @@ import { StatsTab } from './tabs/StatsTab'
 import { PlayersTab } from './tabs/PlayersTab'
 import { UsersTab } from './tabs/UsersTab'
 import { NewsTab } from './tabs/NewsTab'
+import { PredictionsTab } from './tabs/PredictionsTab'
 import { ScrollToTopButton } from './ScrollToTopButton'
 
 const tabMeta: Record<AdminTab, { title: string; description: string }> = {
@@ -25,6 +26,10 @@ const tabMeta: Record<AdminTab, { title: string; description: string }> = {
     title: 'Ростеры и дисквалификации',
     description: 'Регистрация составов по сезонам, контроль заявок и санкций.',
   },
+  predictions: {
+    title: 'Прогнозы',
+    description: 'Настройка рынков и тоталов для предстоящих матчей.',
+  },
   news: {
     title: 'Новости',
     description: 'Публикация новостей, предпросмотр и отправка в Telegram.',
@@ -35,7 +40,7 @@ const tabMeta: Record<AdminTab, { title: string; description: string }> = {
   },
 }
 
-const tabsOrder: AdminTab[] = ['teams', 'matches', 'stats', 'players', 'news', 'users']
+const tabsOrder: AdminTab[] = ['teams', 'matches', 'stats', 'players', 'predictions', 'news', 'users']
 
 type StoreState = ReturnType<typeof useAdminStore.getState>
 
@@ -79,6 +84,8 @@ export const DashboardLayout = () => {
         return <StatsTab />
       case 'players':
         return <PlayersTab />
+      case 'predictions':
+        return <PredictionsTab />
       case 'news':
         return <NewsTab />
       case 'users':

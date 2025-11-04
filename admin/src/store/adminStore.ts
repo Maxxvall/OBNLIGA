@@ -590,12 +590,14 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     wsClient.setToken(token)
     wsClient.connect(token)
     wsClient.subscribe(ADMIN_NEWS_TOPIC)
+    wsClient.subscribe(ADMIN_PREDICTIONS_TOPIC)
   }
 
   const releaseAdminRealtime = () => {
     if (typeof window === 'undefined') {
       return
     }
+    wsClient.unsubscribe(ADMIN_PREDICTIONS_TOPIC)
     wsClient.unsubscribe(ADMIN_NEWS_TOPIC)
     wsClient.setToken(undefined)
   }

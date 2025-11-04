@@ -109,9 +109,13 @@ server.register(etagPlugin)
 
 // news worker supervisor (BullMQ)
 import { startNewsWorkerSupervisor, shutdownNewsWorker } from './queue/newsWorker'
+import { startRatingScheduler, stopRatingScheduler } from './services/ratingScheduler'
 
 server.addHook('onClose', async () => {
-  await shutdownNewsWorker(server.log)
+  await Promise.all([
+    shutdownNewsWorker(server.log),
+    stopRatingScheduler(server.log),
+  ])
 })
 
 const start = async () => {
@@ -123,6 +127,7 @@ const start = async () => {
     await server.register(websocketPlugin)
     await registerRealtime(server)
     await startNewsWorkerSupervisor(server.log)
+    await startRatingScheduler(server.log)
     await server.listen({ port: 3000, host: '0.0.0.0' })
     server.log.info('Server listening on 0.0.0.0:3000')
   } catch (err) {

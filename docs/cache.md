@@ -102,7 +102,7 @@ MATCH_WINDOW_POST_GRACE_MINUTES=30
 
 ### Leaderboards
 
-* `lb:*` — versioned, TTL **3600s** (1h).
+* `lb:*` — versioned, TTL **60s** (SWR **120s**); каждые 6 часов бэкграундная задача пересчитывает рейтинги и прогревает первый лист таблицы.
 
 ### Achievements / Ads / Admin stats
 

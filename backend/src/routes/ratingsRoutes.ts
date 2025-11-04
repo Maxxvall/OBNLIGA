@@ -55,9 +55,9 @@ export default async function ratingsRoutes(server: FastifyInstance) {
     const loader = async () => {
       const [leaderboard, settings] = await Promise.all([
         loadRatingLeaderboard(scope, {
-        page,
-        pageSize: normalizedPageSize,
-        ensureFresh: page === 1,
+          page,
+          pageSize: normalizedPageSize,
+          ensureFresh: page === 1,
         }),
         getRatingSettings(),
       ])
@@ -90,6 +90,9 @@ export default async function ratingsRoutes(server: FastifyInstance) {
           maxStreak: entry.maxStreak,
           lastPredictionAt: entry.lastPredictionAt,
           lastResolvedAt: entry.lastResolvedAt,
+          predictionCount: entry.predictionCount,
+          predictionWins: entry.predictionWins,
+          predictionAccuracy: entry.predictionAccuracy,
         })),
       }
     }
@@ -155,6 +158,9 @@ export default async function ratingsRoutes(server: FastifyInstance) {
           lastPredictionAt: streak?.lastPredictionAt?.toISOString() ?? null,
           lastResolvedAt: streak?.lastResolvedAt?.toISOString() ?? null,
           lastRecalculatedAt: null as string | null,
+          predictionCount: 0,
+          predictionWins: 0,
+          predictionAccuracy: 0,
         }
       }
 
@@ -169,6 +175,12 @@ export default async function ratingsRoutes(server: FastifyInstance) {
         lastPredictionAt: streak?.lastPredictionAt?.toISOString() ?? null,
         lastResolvedAt: streak?.lastResolvedAt?.toISOString() ?? null,
         lastRecalculatedAt: rating.lastRecalculatedAt?.toISOString() ?? null,
+        predictionCount: (rating as any).predictionCount ?? 0,
+        predictionWins: (rating as any).predictionWins ?? 0,
+        predictionAccuracy:
+          ((rating as any).predictionCount ?? 0) > 0
+            ? ((rating as any).predictionWins ?? 0) / (rating as any).predictionCount
+            : 0,
       }
     }
 

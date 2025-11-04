@@ -13,6 +13,9 @@ import {
   adminUpdateRatingSettings,
   adminRecalculateRatings,
   adminFetchRatingLeaderboard,
+  adminFetchRatingSeasons,
+  adminStartRatingSeason,
+  adminCloseRatingSeason,
 } from '../api/adminClient'
 import { assistantLogin } from '../api/assistantClient'
 import { judgeLogin } from '../api/judgeClient'
@@ -42,6 +45,8 @@ import {
   AdminRatingSettingsSummary,
   AdminRatingLeaderboardResponse,
   AdminRatingSettingsInput,
+  AdminRatingSeasonView,
+  AdminRatingSeasonsCollection,
 } from '../types'
 import { useAssistantStore } from './assistantStore'
 
@@ -148,6 +153,7 @@ interface AdminData {
   predictionMatches: AdminPredictionMatch[]
   ratingSettings?: AdminRatingSettingsSummary
   ratingLeaderboard?: AdminRatingLeaderboardResponse
+  ratingSeasons?: AdminRatingSeasonsCollection
 }
 
 interface AdminState {
@@ -189,6 +195,7 @@ interface AdminState {
   fetchNews(options?: FetchOptions): Promise<void>
   fetchRatingSettings(options?: FetchOptions): Promise<void>
   fetchRatingLeaderboard(options?: FetchOptions & { scope?: 'current' | 'yearly'; page?: number; pageSize?: number }): Promise<void>
+  fetchRatingSeasons(options?: FetchOptions): Promise<void>
   prependNews(item: NewsItem): void
   updateNews(item: NewsItem): void
   removeNews(id: string): void
@@ -203,6 +210,14 @@ interface AdminState {
   recalculateRatings(
     userIds?: number[]
   ): Promise<{ summary: AdminRatingSettingsSummary; meta?: { partial?: boolean; affectedUsers: number } }>
+  startRatingSeason(
+    scope: 'current' | 'yearly',
+    input: { durationDays: number; startsAt?: string }
+  ): Promise<AdminRatingSeasonView>
+  closeRatingSeason(
+    scope: 'current' | 'yearly',
+    input?: { endedAt?: string }
+  ): Promise<AdminRatingSeasonView>
   refreshTab(tab?: AdminTab): Promise<void>
   setPredictionTemplateAuto(matchId: string): Promise<PredictionTemplateOverrideResponse>
   setPredictionTemplateManual(
@@ -233,6 +248,7 @@ type FetchKey =
   | 'ads'
   | 'ratingSettings'
   | 'ratingLeaderboard'
+  | 'ratingSeasons'
 
 type FetchOptions = {
   force?: boolean
@@ -260,6 +276,7 @@ const FETCH_TTL: Record<FetchKey, number> = {
   ads: 60_000,
   ratingSettings: 60_000,
   ratingLeaderboard: 30_000,
+  ratingSeasons: 30_000,
 }
 
 const DEFAULT_RATING_PAGE_SIZE = 25
@@ -287,6 +304,7 @@ const createEmptyData = (): AdminData => ({
   predictionMatches: [],
   ratingSettings: undefined,
   ratingLeaderboard: undefined,
+  ratingSeasons: undefined,
 })
 
 const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
@@ -1332,6 +1350,33 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           : undefined
       return { summary, meta: normalizedMeta }
     },
+    async startRatingSeason(scope: 'current' | 'yearly', input: { durationDays: number; startsAt?: string }) {
+      if (get().mode !== 'admin') {
+        throw new AdminApiError('missing_token')
+      }
+      const token = ensureToken()
+      const payload = {
+        durationDays: Math.max(1, Math.trunc(input.durationDays)),
+        ...(input.startsAt ? { startsAt: input.startsAt } : {}),
+      }
+      const season = await run('ratingSeasonStart', () =>
+        adminStartRatingSeason(token, scope, payload)
+      )
+      await get().fetchRatingSeasons({ force: true })
+      return season
+    },
+    async closeRatingSeason(scope: 'current' | 'yearly', input?: { endedAt?: string }) {
+      if (get().mode !== 'admin') {
+        throw new AdminApiError('missing_token')
+      }
+      const token = ensureToken()
+      const payload = input?.endedAt ? { endedAt: input.endedAt } : undefined
+      const season = await run('ratingSeasonClose', () =>
+        adminCloseRatingSeason(token, scope, payload)
+      )
+      await get().fetchRatingSeasons({ force: true })
+      return season
+    },
     async setPredictionTemplateAuto(matchId: string) {
       if (get().mode !== 'admin') {
         throw new AdminApiError('missing_token')
@@ -1455,6 +1500,21 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         options?.force ? 0 : undefined
       )
     },
+    async fetchRatingSeasons(options?: FetchOptions) {
+      if (get().mode !== 'admin') return
+      await runCachedFetch(
+        'ratingSeasons',
+        [],
+        async () => {
+          const token = ensureToken()
+          const seasons = await adminFetchRatingSeasons(token)
+          set(state => ({
+            data: { ...state.data, ratingSeasons: seasons },
+          }))
+        },
+        options?.force ? 0 : undefined
+      )
+    },
     prependNews(item: NewsItem) {
       const cacheKey = composeCacheKey('news', [])
       fetchTimestamps[cacheKey] = Date.now()
@@ -1532,6 +1592,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           await Promise.all([
             get().fetchRatingSettings({ force: true }),
             get().fetchRatingLeaderboard({ force: true }),
+            get().fetchRatingSeasons({ force: true }),
           ])
           break
         }

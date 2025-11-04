@@ -544,6 +544,7 @@ model PredictionEntry {
   status         PredictionEntryStatus @default(PENDING)
   resolutionMeta Json?                 @map("resolution_meta")
   resolvedAt     DateTime?             @map("resolved_at")
+  createdAt      DateTime              @default(now()) @map("created_at")
 
   template PredictionTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
   user     AppUser            @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -622,6 +623,8 @@ model UserRating {
   yearlyPoints       Int         @default(0) @map("yearly_points")
   mythicRank         Int?        @map("mythic_rank")
   currentLevel       RatingLevel @default(BRONZE) @map("current_level")
+  predictionCount    Int         @default(0) @map("prediction_count")
+  predictionWins     Int         @default(0) @map("prediction_wins")
   lastRecalculatedAt DateTime?   @map("last_recalculated_at")
   createdAt          DateTime    @default(now()) @map("created_at")
   updatedAt          DateTime    @updatedAt @map("updated_at")
@@ -654,6 +657,44 @@ model RatingSettings {
   updatedAt        DateTime @updatedAt @map("updated_at")
 
   @@map("rating_settings")
+}
+
+model RatingSeason {
+  id           BigInt      @id @default(autoincrement()) @map("rating_season_id")
+  scope        RatingScope @map("scope")
+  startsAt     DateTime    @map("starts_at")
+  endsAt       DateTime    @map("ends_at")
+  closedAt     DateTime?   @map("closed_at")
+  durationDays Int         @map("duration_days")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  winners RatingSeasonWinner[]
+
+  @@index([scope, startsAt], map: "rating_season_scope_start_idx")
+  @@index([scope, closedAt], map: "rating_season_scope_closed_idx")
+  @@map("rating_season")
+}
+
+model RatingSeasonWinner {
+  id              BigInt       @id @default(autoincrement()) @map("rating_season_winner_id")
+  seasonId        BigInt       @map("season_id")
+  userId          Int          @map("user_id")
+  rank            Int          @map("rank")
+  scopePoints     Int          @map("scope_points")
+  totalPoints     Int          @map("total_points")
+  predictionCount Int          @default(0) @map("prediction_count")
+  predictionWins  Int          @default(0) @map("prediction_wins")
+  displayName     String       @map("display_name")
+  username        String?      @map("username")
+  photoUrl        String?      @map("photo_url")
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  season RatingSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@unique([seasonId, rank], map: "rating_season_winner_season_rank_unique")
+  @@index([userId, seasonId], map: "rating_season_winner_user_idx")
+  @@map("rating_season_winner")
 }
 
 model AdminPointAdjustment {

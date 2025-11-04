@@ -132,6 +132,15 @@ export function RatingsPage() {
   )
 
   const numberFormatter = useMemo(() => new Intl.NumberFormat('ru-RU'), [])
+  const percentFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat('ru-RU', {
+        style: 'percent',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 1,
+      }),
+    []
+  )
   const dateFormatter = useMemo(
     () =>
       new Intl.DateTimeFormat('ru-RU', {
@@ -293,9 +302,12 @@ export function RatingsPage() {
             const seasonalValue = scope === 'current' ? entry.seasonalPoints : entry.yearlyPoints
             const cardHighlight = entry.position <= 5 ? 'rating-card highlight' : 'rating-card'
             const levelClass = entry.currentLevel === 'MYTHIC' ? 'rating-level mythic' : 'rating-level'
-            const streakLabel = entry.currentStreak > 0
-              ? `Серия ${entry.currentStreak} побед`
+            const currentStreakMeta = entry.currentStreak > 0
+              ? `Текущая серия: ${numberFormatter.format(entry.currentStreak)}`
               : 'Серия пока не активна'
+            const rawAccuracy = typeof entry.predictionAccuracy === 'number' ? entry.predictionAccuracy : 0
+            const clampedAccuracy = Math.min(1, Math.max(0, rawAccuracy))
+            const accuracyLabel = percentFormatter.format(clampedAccuracy)
             return (
               <li key={`${entry.userId}-${entry.position}`} className={cardHighlight}>
                 <div className="rating-position">#{entry.position}</div>
@@ -330,8 +342,19 @@ export function RatingsPage() {
                   <div className="rating-stat-block">
                     <span className="rating-stat-label">Лучшая серия</span>
                     <span className="rating-stat-value">{numberFormatter.format(entry.maxStreak)}</span>
+                    <span className="rating-stat-meta">{currentStreakMeta}</span>
                   </div>
-                  <div className="rating-streak">{streakLabel}</div>
+                  <div className="rating-stat-block">
+                    <span className="rating-stat-label">Прогнозы</span>
+                    <span className="rating-stat-value">{numberFormatter.format(entry.predictionCount)}</span>
+                    <span className="rating-stat-meta">
+                      Побед: {numberFormatter.format(entry.predictionWins)}
+                    </span>
+                  </div>
+                  <div className="rating-stat-block">
+                    <span className="rating-stat-label">% угаданных</span>
+                    <span className="rating-stat-value">{accuracyLabel}</span>
+                  </div>
                 </div>
               </li>
             )

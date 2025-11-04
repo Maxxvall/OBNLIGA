@@ -52,6 +52,9 @@ export interface RatingLeaderboardEntryView {
   maxStreak: number
   lastPredictionAt: string | null
   lastResolvedAt: string | null
+  predictionCount: number
+  predictionWins: number
+  predictionAccuracy: number
 }
 
 export interface RatingLeaderboardResponse {
@@ -65,6 +68,38 @@ export interface RatingLeaderboardResponse {
   entries: RatingLeaderboardEntryView[]
 }
 
+export interface RatingSeasonWinnerView {
+  userId: number
+  rank: number
+  scopePoints: number
+  totalPoints: number
+  predictionCount: number
+  predictionWins: number
+  displayName: string | null
+  username: string | null
+  photoUrl: string | null
+  createdAt: string | null
+}
+
+export interface RatingSeasonView {
+  id: string | null
+  scope: RatingScopeKey
+  startsAt: string | null
+  endsAt: string | null
+  closedAt: string | null
+  durationDays: number
+  isActive: boolean
+  winners: RatingSeasonWinnerView[]
+}
+
+export type RatingSeasonsCollection = Record<
+  RatingScopeKey,
+  {
+    active: RatingSeasonView | null
+    history: RatingSeasonView[]
+  }
+>
+
 export interface UserRatingSummary {
   totalPoints: number
   seasonalPoints: number
@@ -76,6 +111,9 @@ export interface UserRatingSummary {
   lastPredictionAt: string | null
   lastResolvedAt: string | null
   lastRecalculatedAt: string | null
+  predictionCount: number
+  predictionWins: number
+  predictionAccuracy: number
 }
 
 export interface PredictionChoiceOption {

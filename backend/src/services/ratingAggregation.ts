@@ -30,6 +30,8 @@ type AggregatedUserRating = {
   maxStreak: number
   lastPredictionAt: Date | null
   lastResolvedAt: Date | null
+  predictionCount: number
+  predictionWins: number
 }
 
 type AggregationContext = {
@@ -180,6 +182,21 @@ export const recalculateUserRatings = async (
       `
     )
 
+    const predictionStats = await tx.$queryRaw<
+      Array<{ user_id: number; resolved_count: bigint; win_count: bigint }>
+    >(
+      Prisma.sql`
+        SELECT
+          pe.user_id,
+          COUNT(*) FILTER (WHERE pe.status <> 'PENDING')::bigint AS resolved_count,
+          COUNT(*) FILTER (WHERE pe.status = 'WON')::bigint AS win_count
+        FROM prediction_entry pe
+        WHERE true
+          ${userFilter}
+        GROUP BY pe.user_id
+      `
+    )
+
     const maxStreakRows = await tx.$queryRaw<Array<{ user_id: number; max_streak: bigint }>>(
       Prisma.sql`
         WITH resolved AS (
@@ -281,6 +298,14 @@ export const recalculateUserRatings = async (
     const currentStreakMap = new Map<number, number>()
     currentStreakRows.forEach(row => currentStreakMap.set(row.user_id, toNumber(row.current_streak)))
 
+    const predictionStatMap = new Map<number, { count: number; wins: number }>()
+    predictionStats.forEach(row =>
+      predictionStatMap.set(row.user_id, {
+        count: toNumber(row.resolved_count),
+        wins: toNumber(row.win_count),
+      })
+    )
+
     const userIdSet = new Set<number>()
     totalMap.forEach((_, userId) => userIdSet.add(userId))
     currentMap.forEach((_, userId) => userIdSet.add(userId))
@@ -289,6 +314,7 @@ export const recalculateUserRatings = async (
     lastDateMap.forEach((_, userId) => userIdSet.add(userId))
     maxStreakMap.forEach((_, userId) => userIdSet.add(userId))
     currentStreakMap.forEach((_, userId) => userIdSet.add(userId))
+  predictionStatMap.forEach((_, userId) => userIdSet.add(userId))
 
     if (userIds && userIds.length > 0) {
       userIds.forEach(id => userIdSet.add(id))
@@ -323,6 +349,8 @@ export const recalculateUserRatings = async (
         maxStreak,
         lastPredictionAt,
         lastResolvedAt,
+        predictionCount: predictionStatMap.get(userId)?.count ?? 0,
+        predictionWins: predictionStatMap.get(userId)?.wins ?? 0,
       })
     }
 
@@ -364,7 +392,9 @@ export const recalculateUserRatings = async (
             currentLevel: entry.level,
             mythicRank: entry.mythicRank,
             lastRecalculatedAt: capturedAt,
-          },
+            predictionCount: entry.predictionCount,
+            predictionWins: entry.predictionWins,
+          } as any,
           update: {
             totalPoints: entry.totalPoints,
             seasonalPoints: entry.seasonalPoints,
@@ -372,7 +402,9 @@ export const recalculateUserRatings = async (
             currentLevel: entry.level,
             mythicRank: entry.mythicRank,
             lastRecalculatedAt: capturedAt,
-          },
+            predictionCount: entry.predictionCount,
+            predictionWins: entry.predictionWins,
+          } as any,
         })
       )
 
@@ -465,6 +497,9 @@ export type RatingLeaderboardEntry = {
   maxStreak: number
   lastPredictionAt: string | null
   lastResolvedAt: string | null
+  predictionCount: number
+  predictionWins: number
+  predictionAccuracy: number
 }
 
 export type RatingLeaderboardResult = {
@@ -535,6 +570,11 @@ export const loadRatingLeaderboard = async (
         ? `@${row.user.username.trim()}`
         : `Игрок #${row.userId}`
 
+    const ratingRow = row as any
+    const predictionCount = Number(ratingRow?.predictionCount ?? 0)
+    const predictionWins = Number(ratingRow?.predictionWins ?? 0)
+    const predictionAccuracy = predictionCount > 0 ? predictionWins / predictionCount : 0
+
     return {
       userId: row.userId,
       position: (page - 1) * pageSize + index + 1,
@@ -550,6 +590,9 @@ export const loadRatingLeaderboard = async (
       maxStreak: streak?.maxStreak ?? 0,
       lastPredictionAt: streak?.lastPredictionAt?.toISOString() ?? null,
       lastResolvedAt: streak?.lastResolvedAt?.toISOString() ?? null,
+      predictionCount,
+      predictionWins,
+      predictionAccuracy,
     }
   })
 

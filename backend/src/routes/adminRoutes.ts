@@ -61,6 +61,13 @@ import {
   saveRatingSettings,
 } from '../services/ratingSettings'
 import {
+  closeActiveSeason,
+  fetchSeasonSummaries,
+  getActiveSeason,
+  SeasonWinnerInput,
+  startSeason,
+} from '../services/ratingSeasons'
+import {
   RequestError,
   broadcastMatchStatistics,
   createMatchEvent,
@@ -1515,6 +1522,57 @@ const parsePositiveInteger = (value: unknown, fallback: number): number => {
   return normalized > 0 ? normalized : fallback
 }
 
+const serializeSeasonWinnerRecord = (winner: any) => ({
+  userId: Number(winner?.userId ?? 0),
+  rank: Number(winner?.rank ?? 0),
+  scopePoints: Number(winner?.scopePoints ?? 0),
+  totalPoints: Number(winner?.totalPoints ?? 0),
+  predictionCount: Number(winner?.predictionCount ?? 0),
+  predictionWins: Number(winner?.predictionWins ?? 0),
+  displayName: typeof winner?.displayName === 'string' ? winner.displayName : null,
+  username: typeof winner?.username === 'string' ? winner.username : null,
+  photoUrl: typeof winner?.photoUrl === 'string' ? winner.photoUrl : null,
+  createdAt:
+    winner?.createdAt instanceof Date
+      ? winner.createdAt.toISOString()
+      : winner?.createdAt
+        ? new Date(winner.createdAt).toISOString()
+        : null,
+})
+
+const serializeSeasonRecord = (season: any) => ({
+  id:
+    season?.id != null
+      ? String(season.id)
+      : season?.rating_season_id != null
+        ? String(season.rating_season_id)
+        : null,
+  scope: ratingScopeKey((season?.scope ?? RatingScope.CURRENT) as RatingScope),
+  startsAt:
+    season?.startsAt instanceof Date
+      ? season.startsAt.toISOString()
+      : season?.startsAt
+        ? new Date(season.startsAt).toISOString()
+        : null,
+  endsAt:
+    season?.endsAt instanceof Date
+      ? season.endsAt.toISOString()
+      : season?.endsAt
+        ? new Date(season.endsAt).toISOString()
+        : null,
+  closedAt:
+    season?.closedAt instanceof Date
+      ? season.closedAt.toISOString()
+      : season?.closedAt
+        ? new Date(season.closedAt).toISOString()
+        : null,
+  durationDays: Number(season?.durationDays ?? 0),
+  isActive: season?.closedAt == null,
+  winners: Array.isArray(season?.winners)
+    ? season.winners.map(serializeSeasonWinnerRecord)
+    : [],
+})
+
 export default async function (server: FastifyInstance) {
   server.post('/api/admin/login', async (request, reply) => {
     const { login, password } = (request.body || {}) as { login?: string; password?: string }
@@ -1741,9 +1799,133 @@ export default async function (server: FastifyInstance) {
               maxStreak: entry.maxStreak,
               lastPredictionAt: entry.lastPredictionAt,
               lastResolvedAt: entry.lastResolvedAt,
+              predictionCount: entry.predictionCount,
+              predictionWins: entry.predictionWins,
+              predictionAccuracy: entry.predictionAccuracy,
             })),
           },
         })
+      })
+
+      admin.get('/ratings/seasons', async (request, reply) => {
+        let seasons: any[] = []
+        try {
+          seasons = (await fetchSeasonSummaries(undefined, { limit: 24 })) as any[]
+        } catch (err) {
+          request.server.log.error({ err }, 'admin ratings: failed to load seasons')
+        }
+
+        const grouped: Record<RatingScope, { active: ReturnType<typeof serializeSeasonRecord> | null; history: ReturnType<typeof serializeSeasonRecord>[] }> = {
+          [RatingScope.CURRENT]: { active: null, history: [] },
+          [RatingScope.YEARLY]: { active: null, history: [] },
+        }
+
+        for (const season of seasons as any[]) {
+          const serialized = serializeSeasonRecord(season)
+          const scopeKey = (season?.scope ?? RatingScope.CURRENT) as RatingScope
+          const bucket = grouped[scopeKey]
+          if (!bucket) {
+            continue
+          }
+          if (season?.closedAt == null && !bucket.active) {
+            bucket.active = serialized
+          } else {
+            bucket.history.push(serialized)
+          }
+        }
+
+        return reply.send({ ok: true, data: grouped })
+      })
+
+      admin.post('/ratings/seasons/:scope/start', async (request, reply) => {
+        const params = request.params as { scope?: string }
+        const scope = normalizeRatingScope(params?.scope)
+        const body = (request.body ?? {}) as { startsAt?: string | number | Date; durationDays?: unknown }
+
+        const durationValue = Number(body.durationDays)
+        if (!Number.isFinite(durationValue) || durationValue <= 0) {
+          return reply.status(400).send({ ok: false, error: 'season_duration_invalid' })
+        }
+
+        let startsAt: Date
+        if (body.startsAt) {
+          const candidate = new Date(body.startsAt)
+          if (Number.isNaN(candidate.getTime())) {
+            return reply.status(400).send({ ok: false, error: 'season_start_invalid' })
+          }
+          startsAt = candidate
+        } else {
+          startsAt = new Date()
+        }
+
+        const existing = await getActiveSeason(scope)
+        if (existing) {
+          return reply.status(409).send({ ok: false, error: 'season_already_active' })
+        }
+
+        const season = await startSeason(scope, Math.trunc(durationValue), startsAt)
+        const payload = serializeSeasonRecord({ ...season, winners: [] })
+        return reply.send({ ok: true, data: payload })
+      })
+
+      admin.post('/ratings/seasons/:scope/close', async (request, reply) => {
+        const params = request.params as { scope?: string }
+        const scope = normalizeRatingScope(params?.scope)
+        const body = (request.body ?? {}) as { endedAt?: string | number | Date }
+
+        let endedAt: Date
+        if (body.endedAt) {
+          const candidate = new Date(body.endedAt)
+          if (Number.isNaN(candidate.getTime())) {
+            return reply.status(400).send({ ok: false, error: 'season_end_invalid' })
+          }
+          endedAt = candidate
+        } else {
+          endedAt = new Date()
+        }
+
+        const activeSeason = await getActiveSeason(scope)
+        if (!activeSeason) {
+          return reply.status(404).send({ ok: false, error: 'season_not_found' })
+        }
+
+        if (endedAt.getTime() < new Date(activeSeason.startsAt).getTime()) {
+          endedAt = new Date(activeSeason.startsAt)
+        }
+
+        let leaderboard
+        try {
+          leaderboard = await loadRatingLeaderboard(scope, { page: 1, pageSize: 3, ensureFresh: true })
+        } catch (err) {
+          request.server.log.error({ err }, 'admin ratings: failed to load leaderboard for season close')
+          return reply.status(500).send({ ok: false, error: 'leaderboard_unavailable' })
+        }
+
+        const winners: SeasonWinnerInput[] = []
+        const limit = Math.min(3, leaderboard.entries.length)
+        for (let index = 0; index < limit; index += 1) {
+          const entry = leaderboard.entries[index]
+          winners.push({
+            userId: entry.userId,
+            rank: index + 1,
+            scopePoints:
+              scope === RatingScope.YEARLY ? entry.yearlyPoints : entry.seasonalPoints,
+            totalPoints: entry.totalPoints,
+            predictionCount: entry.predictionCount,
+            predictionWins: entry.predictionWins,
+            displayName: entry.displayName,
+            username: entry.username,
+            photoUrl: entry.photoUrl,
+          })
+        }
+
+        const closedSeason = await closeActiveSeason(scope, endedAt, winners)
+        if (!closedSeason) {
+          return reply.status(404).send({ ok: false, error: 'season_not_found' })
+        }
+
+        const payload = serializeSeasonRecord(closedSeason)
+        return reply.send({ ok: true, data: payload })
       })
 
       // News management

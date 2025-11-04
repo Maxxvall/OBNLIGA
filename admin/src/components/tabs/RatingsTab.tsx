@@ -1,6 +1,6 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
 import { useAdminStore } from '../../store/adminStore'
-import type { AdminRatingLeaderboardEntry } from '../../types'
+import type { AdminRatingLeaderboardEntry, AdminRatingSeasonView } from '../../types'
 import { formatDateTime } from '../../utils/date'
 import type { RatingLevel } from '@shared/types'
 
@@ -31,6 +31,8 @@ const scopeLabels: Record<'current' | 'yearly', string> = {
   current: 'Текущее окно',
   yearly: 'Годовой рейтинг',
 }
+
+const seasonScopes: ReadonlyArray<'current' | 'yearly'> = ['current', 'yearly']
 
 const pageSizeOptions = [25, 50, 100]
 
@@ -97,10 +99,13 @@ export const RatingsTab = () => {
     loading,
     fetchRatingSettings,
     fetchRatingLeaderboard,
+    fetchRatingSeasons,
     setRatingScope,
     setRatingPagination,
     updateRatingSettings,
     recalculateRatings,
+    startRatingSeason,
+    closeRatingSeason,
   } = useAdminStore(state => ({
     token: state.token,
     data: state.data,
@@ -110,14 +115,18 @@ export const RatingsTab = () => {
     loading: state.loading,
     fetchRatingSettings: state.fetchRatingSettings,
     fetchRatingLeaderboard: state.fetchRatingLeaderboard,
+    fetchRatingSeasons: state.fetchRatingSeasons,
     setRatingScope: state.setRatingScope,
     setRatingPagination: state.setRatingPagination,
     updateRatingSettings: state.updateRatingSettings,
     recalculateRatings: state.recalculateRatings,
+    startRatingSeason: state.startRatingSeason,
+    closeRatingSeason: state.closeRatingSeason,
   }))
 
   const ratingSettings = data.ratingSettings
   const ratingLeaderboard = data.ratingLeaderboard
+  const ratingSeasons = data.ratingSeasons
 
   const [formState, setFormState] = useState<SettingsFormState>({
     currentScopeDays: '',
@@ -127,13 +136,33 @@ export const RatingsTab = () => {
   const [settingsFeedback, setSettingsFeedback] = useState<FeedbackState>(null)
   const [recalcInput, setRecalcInput] = useState('')
   const [recalcFeedback, setRecalcFeedback] = useState<FeedbackState>(null)
+  const [seasonForms, setSeasonForms] = useState<Record<'current' | 'yearly', { durationDays: string; startsAt: string }>>({
+    current: { durationDays: '', startsAt: '' },
+    yearly: { durationDays: '', startsAt: '' },
+  })
+  const [seasonFeedback, setSeasonFeedback] = useState<Record<'current' | 'yearly', FeedbackState>>({
+    current: null,
+    yearly: null,
+  })
 
   const numberFormatter = useMemo(() => new Intl.NumberFormat('ru-RU'), [])
+  const percentFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat('ru-RU', {
+        style: 'percent',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 1,
+      }),
+    []
+  )
 
   const loadingSettings = Boolean(loading.ratingSettings)
   const savingSettings = Boolean(loading.ratingSettingsUpdate)
   const loadingLeaderboard = Boolean(loading.ratingLeaderboard)
   const recalculating = Boolean(loading.ratingRecalculate)
+  const loadingSeasons = Boolean(loading.ratingSeasons)
+  const startingSeason = Boolean(loading.ratingSeasonStart)
+  const closingSeason = Boolean(loading.ratingSeasonClose)
 
   useEffect(() => {
     if (!token) {
@@ -152,6 +181,40 @@ export const RatingsTab = () => {
       void fetchRatingLeaderboard({ force: true }).catch(() => undefined)
     }
   }, [token, ratingLeaderboard, fetchRatingLeaderboard])
+
+  useEffect(() => {
+    if (!token) {
+      return
+    }
+    if (!ratingSeasons) {
+      void fetchRatingSeasons({ force: true }).catch(() => undefined)
+    }
+  }, [token, ratingSeasons, fetchRatingSeasons])
+
+  useEffect(() => {
+    if (!ratingSettings) {
+      return
+    }
+    setSeasonForms(prev => {
+      const next = {
+        current: {
+          durationDays: String(ratingSettings.settings.currentScopeDays),
+          startsAt: prev.current.startsAt,
+        },
+        yearly: {
+          durationDays: String(ratingSettings.settings.yearlyScopeDays),
+          startsAt: prev.yearly.startsAt,
+        },
+      }
+      if (
+        next.current.durationDays === prev.current.durationDays &&
+        next.yearly.durationDays === prev.yearly.durationDays
+      ) {
+        return prev
+      }
+      return next
+    })
+  }, [ratingSettings])
 
   useEffect(() => {
     if (!ratingSettings) {
@@ -283,8 +346,10 @@ export const RatingsTab = () => {
   const handleRefresh = () => {
     setSettingsFeedback(null)
     setRecalcFeedback(null)
+    setSeasonFeedback({ current: null, yearly: null })
     void fetchRatingSettings({ force: true }).catch(() => undefined)
     void fetchRatingLeaderboard({ force: true }).catch(() => undefined)
+    void fetchRatingSeasons({ force: true }).catch(() => undefined)
   }
 
   const handleScopeChange = (scope: 'current' | 'yearly') => {
@@ -322,8 +387,143 @@ export const RatingsTab = () => {
     void setRatingPagination(1, Math.trunc(value)).catch(() => undefined)
   }
 
+  const handleSeasonInputChange = (
+    scope: 'current' | 'yearly',
+    field: 'durationDays' | 'startsAt',
+    value: string
+  ) => {
+    setSeasonForms(prev => ({
+      ...prev,
+      [scope]: {
+        ...prev[scope],
+        [field]: value,
+      },
+    }))
+    setSeasonFeedback(prev => ({ ...prev, [scope]: null }))
+  }
+
+  const handleSeasonStart = async (scope: 'current' | 'yearly') => {
+    setSeasonFeedback(prev => ({ ...prev, [scope]: null }))
+    const duration = parseScopeDays(seasonForms[scope].durationDays)
+    if (duration === null) {
+      setSeasonFeedback(prev => ({
+        ...prev,
+        [scope]: {
+          kind: 'error',
+          message: 'Укажите длительность сезона в днях.',
+        },
+      }))
+      return
+    }
+
+    const rawStartsAt = seasonForms[scope].startsAt.trim()
+    let startsAtIso: string | undefined
+    if (rawStartsAt) {
+      const parsed = new Date(rawStartsAt)
+      if (Number.isNaN(parsed.getTime())) {
+        setSeasonFeedback(prev => ({
+          ...prev,
+          [scope]: {
+            kind: 'error',
+            message: 'Некорректная дата начала сезона.',
+          },
+        }))
+        return
+      }
+      startsAtIso = parsed.toISOString()
+    }
+
+    try {
+      await startRatingSeason(scope, { durationDays: duration, startsAt: startsAtIso })
+      setSeasonFeedback(prev => ({
+        ...prev,
+        [scope]: { kind: 'success', message: 'Сезон запущен.' },
+      }))
+      setSeasonForms(prev => ({
+        ...prev,
+        [scope]: {
+          ...prev[scope],
+          startsAt: '',
+        },
+      }))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Не удалось создать сезон.'
+      setSeasonFeedback(prev => ({
+        ...prev,
+        [scope]: { kind: 'error', message },
+      }))
+    }
+  }
+
+  const handleSeasonClose = async (scope: 'current' | 'yearly') => {
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm('Завершить активный сезон и зафиксировать победителей?')
+      if (!confirmed) {
+        return
+      }
+    }
+    setSeasonFeedback(prev => ({ ...prev, [scope]: null }))
+    try {
+      await closeRatingSeason(scope)
+      setSeasonFeedback(prev => ({
+        ...prev,
+        [scope]: { kind: 'success', message: 'Сезон закрыт и победители зафиксированы.' },
+      }))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Не удалось закрыть сезон.'
+      setSeasonFeedback(prev => ({
+        ...prev,
+        [scope]: { kind: 'error', message },
+      }))
+    }
+  }
+
   const canPrev = currentPage > 1
   const canNext = Boolean(ratingLeaderboard && ratingLeaderboard.page < totalPages)
+
+  const formatSeasonRange = (season: AdminRatingSeasonView) => {
+    const start = formatIsoDate(season.startsAt)
+    const endSource = season.closedAt ?? season.endsAt
+    const end = formatIsoDate(endSource)
+    return `${start} — ${end}`
+  }
+
+  const renderSeasonWinners = (winners?: AdminRatingSeasonView['winners']) => {
+    if (!winners || winners.length === 0) {
+      return <div className="inline-feedback info">Победители не зафиксированы.</div>
+    }
+    return (
+      <ol className="season-winners">
+        {winners.slice(0, 3).map(winner => {
+          const displayName = winner.displayName?.trim()
+            || (winner.username ? `@${winner.username}` : `Игрок #${winner.userId}`)
+          const accuracy = winner.predictionCount > 0
+            ? winner.predictionWins / winner.predictionCount
+            : 0
+          return (
+            <li key={`${winner.rank}-${winner.userId}`}>
+              <span className="season-winner-rank">#{winner.rank}</span>
+              <div className="season-winner-body">
+                <div className="season-winner-name">
+                  <strong>{displayName}</strong>
+                  {winner.username && !displayName.startsWith('@') ? (
+                    <span className="ratings-username">@{winner.username}</span>
+                  ) : null}
+                </div>
+                <div className="season-winner-meta">
+                  <span>{numberFormatter.format(winner.scopePoints)} очков</span>
+                  <span>
+                    {numberFormatter.format(winner.predictionWins)}/
+                    {numberFormatter.format(winner.predictionCount)} • {percentFormatter.format(accuracy)}
+                  </span>
+                </div>
+              </div>
+            </li>
+          )
+        })}
+      </ol>
+    )
+  }
 
   return (
     <div className="tab-sections ratings-tab">
@@ -508,6 +708,165 @@ export const RatingsTab = () => {
       <section>
         <div className="tab-header">
           <div>
+            <h3>Сезоны рейтинга</h3>
+            <p>
+              Управляйте фиксированными окнами для награждения лидеров. Закрытие сезона сохраняет
+              текущий топ-3, а новый сезон начнёт считать очки с указанной даты.
+            </p>
+          </div>
+          <div className="tab-header-actions">
+            <button
+              type="button"
+              className="button-secondary"
+              onClick={() => fetchRatingSeasons({ force: true }).catch(() => undefined)}
+              disabled={loadingSeasons || startingSeason || closingSeason}
+            >
+              Обновить сезоны
+            </button>
+          </div>
+        </div>
+        <div className="card-grid ratings-season-grid">
+          {seasonScopes.map(scope => {
+            const bucket = ratingSeasons?.[scope]
+            const activeSeason = bucket?.active ?? null
+            const history = bucket?.history ?? []
+            const lastFinished = history[0]
+            const extraHistory = history.slice(1, 3)
+            const form = seasonForms[scope]
+            const feedback = seasonFeedback[scope]
+            const canStart = !activeSeason
+            const disableStart = loadingSeasons || startingSeason || closingSeason || !canStart
+            const disableClose = loadingSeasons || closingSeason || startingSeason || !activeSeason
+
+            return (
+              <section key={scope} className="card ratings-card ratings-season-card">
+                <h4>{scopeLabels[scope]}</h4>
+                <div className="season-section">
+                  <h5>Активный сезон</h5>
+                  {loadingSeasons && !bucket ? (
+                    <div className="inline-feedback info">Загружаем данные о сезоне…</div>
+                  ) : activeSeason ? (
+                    <>
+                      <dl className="season-details">
+                        <div className="season-detail-row">
+                          <dt>Начало</dt>
+                          <dd>{formatIsoDate(activeSeason.startsAt)}</dd>
+                        </div>
+                        <div className="season-detail-row">
+                          <dt>Плановое завершение</dt>
+                          <dd>{formatIsoDate(activeSeason.endsAt)}</dd>
+                        </div>
+                        <div className="season-detail-row">
+                          <dt>Длительность</dt>
+                          <dd>{numberFormatter.format(activeSeason.durationDays)} дн.</dd>
+                        </div>
+                      </dl>
+                      <div className="season-actions">
+                        <button
+                          type="button"
+                          className="button-danger compact"
+                          onClick={() => handleSeasonClose(scope)}
+                          disabled={disableClose}
+                        >
+                          Завершить сезон
+                        </button>
+                      </div>
+                      {activeSeason.winners && activeSeason.winners.length ? (
+                        <div className="season-subsection">
+                          <h6>Зафиксированные победители</h6>
+                          {renderSeasonWinners(activeSeason.winners)}
+                        </div>
+                      ) : null}
+                    </>
+                  ) : (
+                    <div className="inline-feedback info">Активный сезон не запущен.</div>
+                  )}
+                </div>
+
+                <div className="ratings-divider" />
+
+                <div className="season-section">
+                  <h5>Запуск нового сезона</h5>
+                  <div className="stacked season-form">
+                    <label>
+                      Длительность (дней)
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        value={form.durationDays}
+                        onChange={event =>
+                          handleSeasonInputChange(scope, 'durationDays', event.target.value)
+                        }
+                        disabled={startingSeason || closingSeason}
+                      />
+                    </label>
+                    <label>
+                      Дата начала (опционально)
+                      <input
+                        type="datetime-local"
+                        value={form.startsAt}
+                        onChange={event =>
+                          handleSeasonInputChange(scope, 'startsAt', event.target.value)
+                        }
+                        disabled={startingSeason || closingSeason}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="button-primary compact"
+                      onClick={() => handleSeasonStart(scope)}
+                      disabled={disableStart}
+                    >
+                      Начать сезон
+                    </button>
+                    {feedback ? (
+                      <div className={`inline-feedback ${feedback.kind}`}>
+                        <span>{feedback.message}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="ratings-divider" />
+
+                <div className="season-section">
+                  <h5>История</h5>
+                  {lastFinished ? (
+                    <div className="season-history">
+                      <div className="season-history-item">
+                        <div className="season-history-header">
+                          <strong>Последний сезон</strong>
+                          <span>{formatSeasonRange(lastFinished)}</span>
+                        </div>
+                        {renderSeasonWinners(lastFinished.winners)}
+                      </div>
+                      {extraHistory.map(historySeason => (
+                        <div
+                          key={historySeason.id ?? `${historySeason.scope}-${historySeason.startsAt}`}
+                          className="season-history-item"
+                        >
+                          <div className="season-history-header">
+                            <span>{formatSeasonRange(historySeason)}</span>
+                            <span>{numberFormatter.format(historySeason.durationDays)} дн.</span>
+                          </div>
+                          {renderSeasonWinners(historySeason.winners)}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="inline-feedback info">Нет завершённых сезонов.</div>
+                  )}
+                </div>
+              </section>
+            )
+          })}
+        </div>
+      </section>
+
+      <section>
+        <div className="tab-header">
+          <div>
             <h3>Таблица лидеров</h3>
             <p>
               Просматривайте позиции пользователей и переключайтесь между текущим и годовым окнами.
@@ -562,6 +921,8 @@ export const RatingsTab = () => {
                   <tr>
                     <th>Место</th>
                     <th>Пользователь</th>
+                    <th>Прогнозы</th>
+                    <th>% угаданных</th>
                     <th>{scopePointsLabel}</th>
                     <th>Всего очков</th>
                     <th>Уровень</th>
@@ -589,6 +950,13 @@ export const RatingsTab = () => {
                             ) : null}
                           </div>
                         </td>
+                        <td className="points">
+                          {numberFormatter.format(entry.predictionCount)}
+                          <span className="ratings-submeta">
+                            побед: {numberFormatter.format(entry.predictionWins)}
+                          </span>
+                        </td>
+                        <td>{percentFormatter.format(entry.predictionAccuracy || 0)}</td>
                         <td className="points">{numberFormatter.format(scopePoints)}</td>
                         <td className="points">{numberFormatter.format(entry.totalPoints)}</td>
                         <td>{levelMeta}</td>

@@ -12,6 +12,8 @@ import type {
   AdminRatingSettingsSummary,
   AdminRatingSettingsInput,
   AdminRatingLeaderboardResponse,
+  AdminRatingSeasonView,
+  AdminRatingSeasonsCollection,
 } from '../types'
 import type { AdBanner, AdBannerImage, NewsItem } from '@shared/types'
 
@@ -165,6 +167,10 @@ const ERROR_DICTIONARY: Record<string, string> = {
   season_not_found: 'Сезон не найден.',
   season_is_active: 'Нельзя удалить активный сезон. Сначала сделайте активным другой сезон.',
   season_delete_failed: 'Не удалось удалить сезон. Попробуйте ещё раз.',
+  season_duration_invalid: 'Длительность сезона должна быть положительным числом.',
+  season_start_invalid: 'Некорректная дата начала сезона.',
+  season_end_invalid: 'Некорректная дата завершения сезона.',
+  season_already_active: 'Сезон уже активен. Сначала завершите текущий.',
   series_already_exist: 'Серии уже созданы.',
   series_fields_required: 'Заполните поля серии.',
   series_format_locked: 'Формат серий изменить нельзя.',
@@ -179,6 +185,7 @@ const ERROR_DICTIONARY: Record<string, string> = {
   league_player_already_linked: 'Игрок уже привязан к другому пользователю.',
   already_verified: 'Пользователь уже подтверждён как игрок лиги.',
   verification_pending: 'Заявка уже ожидает подтверждения.',
+  leaderboard_unavailable: 'Не удалось получить таблицу рейтинга.',
 }
 
 const normalizeErrorKey = (value: string): string =>
@@ -442,6 +449,28 @@ export const adminFetchRatingLeaderboard = async (
   const path = `/api/admin/ratings/leaderboard${query ? `?${query}` : ''}`
   return adminGet(token, path)
 }
+
+export const adminFetchRatingSeasons = async (
+  token: string | undefined
+): Promise<AdminRatingSeasonsCollection> => adminGet(token, '/api/admin/ratings/seasons')
+
+export const adminStartRatingSeason = async (
+  token: string | undefined,
+  scope: 'current' | 'yearly',
+  payload: { startsAt?: string; durationDays: number }
+) =>
+  adminPost(token, `/api/admin/ratings/seasons/${scope}/start`, payload) as Promise<
+    AdminRatingSeasonView
+  >
+
+export const adminCloseRatingSeason = async (
+  token: string | undefined,
+  scope: 'current' | 'yearly',
+  payload?: { endedAt?: string }
+) =>
+  adminPost(token, `/api/admin/ratings/seasons/${scope}/close`, payload ?? {}) as Promise<
+    AdminRatingSeasonView
+  >
 
 export const adminDelete = async <T>(token: string | undefined, path: string): Promise<T> =>
   adminRequest<T>(token, path, { method: 'DELETE' })

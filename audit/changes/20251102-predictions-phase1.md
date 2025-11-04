@@ -8,6 +8,7 @@
 - Расширены общие типы `shared/types.ts` под новые DTO.
 - Обновлена схема БД `prisma/schema.prisma` (шаблоны, заявки, streak, рейтинг, аудит) и сгенерирован клиент.
 - Актуализирована документация: `docs/BD.md`, `docs/cache.md`, `audit/FEATURES_CHANGELOG.md`, `audit/code-audit-predictions-20251103.md`.
+- Расширена публичная страница рейтинга: добавлены счётчики прогнозов и точность попаданий.
 
 ## Файлы
 - backend/src/routes/predictionRoutes.ts
@@ -23,3 +24,5 @@
 - docs/cache.md
 - audit/FEATURES_CHANGELOG.md
 - audit/code-audit-predictions-20251103.md
+- frontend/src/pages/RatingsPage.tsx
+- frontend/src/styles/ratings.css

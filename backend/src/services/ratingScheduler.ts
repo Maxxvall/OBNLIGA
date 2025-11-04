@@ -50,6 +50,9 @@ const warmLeaderboardCache = async (logger: FastifyBaseLogger) => {
           maxStreak: entry.maxStreak,
           lastPredictionAt: entry.lastPredictionAt,
           lastResolvedAt: entry.lastResolvedAt,
+          predictionCount: entry.predictionCount,
+          predictionWins: entry.predictionWins,
+          predictionAccuracy: entry.predictionAccuracy,
         })),
       }
 

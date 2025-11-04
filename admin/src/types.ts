@@ -1,4 +1,10 @@
-import type { RatingLeaderboardEntryView, RatingLeaderboardResponse } from '@shared/types'
+import type {
+  RatingLeaderboardEntryView,
+  RatingLeaderboardResponse,
+  RatingSeasonView,
+  RatingSeasonWinnerView,
+  RatingSeasonsCollection,
+} from '@shared/types'
 
 export interface Club {
   id: number
@@ -519,3 +525,6 @@ export interface AdminRatingSettingsInput {
 
 export type AdminRatingLeaderboardResponse = RatingLeaderboardResponse
 export type AdminRatingLeaderboardEntry = RatingLeaderboardEntryView
+export type AdminRatingSeasonView = RatingSeasonView
+export type AdminRatingSeasonWinner = RatingSeasonWinnerView
+export type AdminRatingSeasonsCollection = RatingSeasonsCollection

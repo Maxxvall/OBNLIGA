@@ -13,7 +13,6 @@
 
 .ratings-page {
   color: var(--ratings-text);
-  width: min(960px, 100%);
   margin: 0 auto;
   padding: 32px 16px 56px;
   display: flex;

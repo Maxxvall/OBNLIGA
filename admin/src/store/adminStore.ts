@@ -259,7 +259,7 @@ const FETCH_TTL: Record<FetchKey, number> = {
   news: 60_000,
   ads: 60_000,
   ratingSettings: 60_000,
-  ratingLeaderboard: 20_000,
+  ratingLeaderboard: 30_000,
 }
 
 const DEFAULT_RATING_PAGE_SIZE = 25
@@ -1526,6 +1526,13 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           break
         case 'predictions': {
           await Promise.all([get().fetchPredictionMatches({ force: true })])
+          break
+        }
+        case 'ratings': {
+          await Promise.all([
+            get().fetchRatingSettings({ force: true }),
+            get().fetchRatingLeaderboard({ force: true }),
+          ])
           break
         }
         default:

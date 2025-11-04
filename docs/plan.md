@@ -54,9 +54,10 @@
     - ✅ Матчи ограничены ближайшими 6 днями, названия клубов отображаются полностью, калькулятор подсказывает альтернативные линии (±1 гол) для ручной настройки
     - ✅ Бэкенд готов: `GET /api/admin/predictions/matches` возвращает шаблоны и подсказки тоталов; в Zustand добавлены `fetchPredictionMatches`, `setPredictionTemplateAuto/Manual`
   - Вкладка `Achievements` позволяет CRUD для типов достижений, порогов уровней, загрузки иконок (повторно используя существующие upload-API) и ручной корректировки прогресса
+  - Вкладка `Ratings` показывает текущие окна расчёта, форму изменения периодов и пагинированный лидерборд. ✅ Собрана вкладка с формой редактирования окон, ручным пересчётом, переключателями `current/yearly`, пагинацией и привязкой к действиям `fetchRatingSettings`, `fetchRatingLeaderboard`, `setRatingScope`, `setRatingPagination`, `updateRatingSettings`, `recalculateRatings`.
   - Вкладка `Emergency` предоставляет регулирование очков, сбросы серий и представление откатов (с фильтрами по логам). Обязательные диалоги подтверждения и поле "причина"
 - Поток данных
-  - Переиспользовать паттерн Zustand с TTL; задать `FETCH_TTL` по области (predictions 20s, achievements 2m, emergency logs 15s). Обновлять кэши при поступлении WS-patch — ✅ реализовано для предстоящих матчей прогнозов
+  - Переиспользовать паттерн Zustand с TTL; задать `FETCH_TTL` по области (predictions 20s, ratingSettings 60s, ratingLeaderboard 30s, achievements 2m, emergency logs 15s). Обновлять кэши при поступлении WS-patch — ✅ реализовано для предстоящих матчей прогнозов, рейтинг временно обновляется явным refetch после мутаций
   - Подписаться на новые WS-топики `admin.predictions` и `admin.achievements` для инкрементальных обновлений — ✅ подписка `admin.predictions` добавлена, остаётся `admin.achievements`
   - Отображать историю аудита в таблицах (колонки: user, action, delta, timestamp, admin)
 

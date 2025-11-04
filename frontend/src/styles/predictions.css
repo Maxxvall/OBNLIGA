@@ -14,7 +14,6 @@
 
 .predictions-page {
   color: var(--prediction-text);
-  width: min(960px, 100%);
   margin: 0 auto;
   padding: 32px 16px 56px;
   display: flex;
@@ -187,7 +186,6 @@
   width: 36px;
   height: 36px;
   object-fit: contain;
-  filter: drop-shadow(0 6px 12px rgba(8, 10, 18, 0.65));
 }
 
 .prediction-vs {

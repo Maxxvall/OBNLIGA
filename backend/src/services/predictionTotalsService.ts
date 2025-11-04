@@ -27,6 +27,12 @@ export type TotalGoalsSample = {
   isFriendly: boolean
 }
 
+export type TotalGoalsLineAlternative = {
+  line: number
+  formattedLine: string
+  delta: number
+}
+
 export type TotalGoalsSuggestion = {
   line: number
   fallback: boolean
@@ -36,15 +42,12 @@ export type TotalGoalsSuggestion = {
   confidence: number
   samples: TotalGoalsSample[]
   generatedAt: Date
+  alternatives: TotalGoalsLineAlternative[]
 }
 
 const FRIENDLY_SAMPLE_WEIGHT = 0.6
 const DEFAULT_SAMPLE_WEIGHT = 1
 const MAX_SAMPLES = PREDICTION_TOTAL_LOOKBACK_MATCHES * 2
-
-const roundToHalf = (value: number): number => {
-  return Math.round(value * 2) / 2
-}
 
 const clampLine = (value: number): number => {
   if (!Number.isFinite(value)) {
@@ -76,6 +79,40 @@ const normalizeMatchContext = (
   status: row.status,
   isFriendly: row.isFriendly,
 })
+
+const roundToTenth = (value: number): number => {
+  return Math.round(value * 10) / 10
+}
+
+export const formatTotalLine = (line: number): string => {
+  const normalized = roundToTenth(clampLine(line))
+  return normalized.toFixed(1)
+}
+
+const buildLineAlternatives = (line: number): TotalGoalsLineAlternative[] => {
+  const variants: TotalGoalsLineAlternative[] = []
+  const normalizedBase = roundToTenth(clampLine(line))
+
+  const pushVariant = (delta: number) => {
+    const candidate = roundToTenth(clampLine(normalizedBase + delta))
+    if (candidate === normalizedBase) {
+      return
+    }
+    if (variants.some(variant => variant.line === candidate)) {
+      return
+    }
+    variants.push({
+      line: candidate,
+      formattedLine: formatTotalLine(candidate),
+      delta: roundToTenth(candidate - normalizedBase),
+    })
+  }
+
+  pushVariant(-1)
+  pushVariant(1)
+
+  return variants
+}
 
 const toSample = (row: {
   id: bigint
@@ -233,6 +270,7 @@ export const suggestTotalGoalsLineForMatch = async (
       confidence: 0,
       samples: [],
       generatedAt: new Date(),
+      alternatives: buildLineAlternatives(PREDICTION_DEFAULT_TOTAL_LINE),
     }
   }
 
@@ -244,8 +282,11 @@ export const suggestTotalGoalsLineForMatch = async (
   const confidence = Math.min(1, sampleSize / MAX_SAMPLES)
 
   const fallback = sampleSize < PREDICTION_TOTAL_MIN_SAMPLE_SIZE
-  const rawLine = fallback ? PREDICTION_DEFAULT_TOTAL_LINE : roundToHalf(averageGoals)
-  const line = clampLine(rawLine)
+  const rawLine = fallback
+    ? PREDICTION_DEFAULT_TOTAL_LINE
+    : roundToTenth(clampLine(averageGoals))
+  const line = roundToTenth(clampLine(rawLine))
+  const alternatives = buildLineAlternatives(line)
 
   return {
     line,
@@ -256,11 +297,10 @@ export const suggestTotalGoalsLineForMatch = async (
     confidence,
     samples,
     generatedAt: new Date(),
+    alternatives,
   }
 }
 
-export const formatTotalLine = (line: number): string => {
-  const normalized = clampLine(line)
-  const rounded = roundToHalf(normalized)
-  return Number.isInteger(rounded) ? `${rounded.toFixed(1)}` : `${rounded.toFixed(1)}`
-}
+export const computeTotalLineAlternatives = (
+  line: number
+): TotalGoalsLineAlternative[] => buildLineAlternatives(line)

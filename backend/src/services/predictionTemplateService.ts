@@ -86,6 +86,11 @@ const buildTotalGoalsOptions = (suggestion: TotalGoalsSuggestion): Prisma.JsonOb
     confidence: Number(suggestion.confidence.toFixed(3)),
     fallback: suggestion.fallback,
     generatedAt: suggestion.generatedAt.toISOString(),
+    alternatives: suggestion.alternatives.map(variant => ({
+      line: variant.line,
+      formattedLine: variant.formattedLine,
+      delta: variant.delta,
+    })),
   }
 }
 

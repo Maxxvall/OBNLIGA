@@ -175,14 +175,14 @@ const renderMatchHeader = (match: ActivePredictionMatch | UserPredictionEntry) =
       {match.homeClub.logoUrl ? (
         <img src={match.homeClub.logoUrl} alt={match.homeClub.name} />
       ) : null}
-      <span>{match.homeClub.shortName ?? match.homeClub.name}</span>
+      <span>{match.homeClub.name}</span>
     </div>
     <span className="prediction-vs">vs</span>
     <div className="prediction-club">
       {match.awayClub.logoUrl ? (
         <img src={match.awayClub.logoUrl} alt={match.awayClub.name} />
       ) : null}
-      <span>{match.awayClub.shortName ?? match.awayClub.name}</span>
+      <span>{match.awayClub.name}</span>
     </div>
   </div>
 )

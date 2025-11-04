@@ -376,6 +376,12 @@ export interface TotalGoalsSuggestionSampleView {
   isFriendly: boolean
 }
 
+export interface TotalGoalsLineAlternativeView {
+  line: number
+  formattedLine: string
+  delta: number
+}
+
 export interface TotalGoalsSuggestionView {
   line: number
   fallback: boolean
@@ -384,6 +390,7 @@ export interface TotalGoalsSuggestionView {
   standardDeviation: number
   confidence: number
   generatedAt: string
+  alternatives: TotalGoalsLineAlternativeView[]
   samples: TotalGoalsSuggestionSampleView[]
 }
 

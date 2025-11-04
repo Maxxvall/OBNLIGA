@@ -27,6 +27,7 @@ import {
 } from '../services/predictionTemplateService'
 import {
   formatTotalLine,
+  computeTotalLineAlternatives,
   suggestTotalGoalsLineForMatch,
   PredictionMatchContext,
 } from '../services/predictionTotalsService'
@@ -498,6 +499,12 @@ const normalizeBroadcastUrl = (value: string): string | null => {
   return parsed.toString()
 }
 
+type TotalGoalsLineAlternativeView = {
+  line: number
+  formattedLine: string
+  delta: number
+}
+
 type TotalGoalsSuggestionView = {
   line: number
   fallback: boolean
@@ -506,6 +513,7 @@ type TotalGoalsSuggestionView = {
   standardDeviation: number
   confidence: number
   generatedAt: string
+  alternatives: TotalGoalsLineAlternativeView[]
   samples: Array<{
     matchId: string
     matchDateTime: string
@@ -544,6 +552,7 @@ const decimalToNumber = (value: Prisma.Decimal | number): number => {
 const buildManualTotalGoalsOptions = (line: number): Prisma.JsonObject => {
   const formattedLine = formatTotalLine(line)
   const numericLine = Number(formattedLine)
+  const alternatives = computeTotalLineAlternatives(numericLine)
 
   return {
     line: numericLine,
@@ -554,6 +563,11 @@ const buildManualTotalGoalsOptions = (line: number): Prisma.JsonObject => {
       { value: `OVER_${formattedLine}`, label: `Больше ${formattedLine}` },
       { value: `UNDER_${formattedLine}`, label: `Меньше ${formattedLine}` },
     ],
+    alternatives: alternatives.map(variant => ({
+      line: variant.line,
+      formattedLine: variant.formattedLine,
+      delta: variant.delta,
+    })),
   }
 }
 
@@ -598,6 +612,11 @@ const serializeTotalGoalsSuggestion = (
     standardDeviation: Number(suggestion.standardDeviation.toFixed(3)),
     confidence: Number(suggestion.confidence.toFixed(3)),
     generatedAt: suggestion.generatedAt.toISOString(),
+    alternatives: suggestion.alternatives.map(variant => ({
+      line: variant.line,
+      formattedLine: variant.formattedLine,
+      delta: Number(variant.delta.toFixed(1)),
+    })),
     samples: suggestion.samples.map(sample => ({
       matchId: sample.matchId.toString(),
       matchDateTime: sample.matchDateTime.toISOString(),
@@ -4718,10 +4737,18 @@ export default async function (server: FastifyInstance) {
           take = Math.min(defaultLimit, Math.trunc(parsed))
         }
 
+        const now = new Date()
+        const sixDaysMs = 6 * 24 * 60 * 60 * 1000
+        const until = new Date(now.getTime() + sixDaysMs)
+
         const matches = await prisma.match.findMany({
           where: {
             status: MatchStatus.SCHEDULED,
             seasonId: seasonId ?? undefined,
+            matchDateTime: {
+              gte: now,
+              lte: until,
+            },
           },
           orderBy: [{ matchDateTime: 'asc' }],
           take,

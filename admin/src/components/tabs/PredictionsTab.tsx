@@ -34,7 +34,7 @@ const statusLabels: Record<AdminPredictionMatch['status'], string> = {
 }
 
 const formatClubName = (club: AdminPredictionMatch['homeClub']): string => {
-  return club.shortName?.trim() || club.name
+  return club.name
 }
 
 const formatNumber = (value?: number | null, fractionDigits = 2): string => {
@@ -70,6 +70,13 @@ type TotalGoalsOptionsView = {
   confidence?: number
   fallback?: boolean
   generatedAt?: string
+  alternatives?: TotalGoalsAlternativeOption[]
+}
+
+type TotalGoalsAlternativeOption = {
+  line: number
+  formattedLine: string
+  delta: number
 }
 
 const parseTotalGoalsOptions = (template?: AdminPredictionTemplate): TotalGoalsOptionsView => {
@@ -81,6 +88,28 @@ const parseTotalGoalsOptions = (template?: AdminPredictionTemplate): TotalGoalsO
     return {}
   }
   const raw = source as Record<string, unknown>
+  const alternatives = Array.isArray(raw.alternatives)
+    ? raw.alternatives
+        .map(candidate => {
+          if (!candidate || typeof candidate !== 'object') {
+            return null
+          }
+          const record = candidate as Record<string, unknown>
+          const lineValue = parseNumericField(record.line)
+          const formattedLine =
+            typeof record.formattedLine === 'string' ? record.formattedLine : undefined
+          const deltaValue = parseNumericField(record.delta) ?? 0
+          if (lineValue === undefined || formattedLine === undefined) {
+            return null
+          }
+          return {
+            line: lineValue,
+            formattedLine,
+            delta: deltaValue,
+          } as TotalGoalsAlternativeOption
+        })
+        .filter((value): value is TotalGoalsAlternativeOption => Boolean(value))
+    : undefined
   return {
     line: parseNumericField(raw.line),
     formattedLine: typeof raw.formattedLine === 'string' ? raw.formattedLine : undefined,
@@ -91,6 +120,7 @@ const parseTotalGoalsOptions = (template?: AdminPredictionTemplate): TotalGoalsO
     confidence: parseNumericField(raw.confidence),
     fallback: raw.fallback === true,
     generatedAt: typeof raw.generatedAt === 'string' ? raw.generatedAt : undefined,
+    alternatives,
   }
 }
 
@@ -148,6 +178,15 @@ const confidenceToPercent = (value?: number): string | null => {
   const normalized = value > 1 ? value : value * 100
   const percent = Math.round(normalized)
   return `${percent}%`
+}
+
+const formatAlternativeLine = (line: number, delta?: number): string => {
+  const base = formatNumber(line, 1)
+  if (delta === undefined || Number.isNaN(delta) || delta === 0) {
+    return base
+  }
+  const deltaLabel = delta > 0 ? `+${formatNumber(delta, 1)}` : formatNumber(delta, 1)
+  return `${base} (${deltaLabel})`
 }
 
 export const PredictionsTab = () => {
@@ -439,6 +478,16 @@ export const PredictionsTab = () => {
         {suggestion.fallback ? (
           <li className="prediction-tag warning">Используется fallback-порог</li>
         ) : null}
+        {suggestion.alternatives.length ? (
+          <li>
+            <span>Доп. линии</span>
+            <strong>
+              {suggestion.alternatives
+                .map(alt => formatAlternativeLine(alt.line, alt.delta))
+                .join(' / ')}
+            </strong>
+          </li>
+        ) : null}
       </ul>
     )
   }
@@ -600,6 +649,16 @@ export const PredictionsTab = () => {
                   <span>Обновлено</span>
                   <strong>{totalUpdatedLabel ?? '—'}</strong>
                 </li>
+                {totalOptions.alternatives && totalOptions.alternatives.length ? (
+                  <li>
+                    <span>Рекомендации</span>
+                    <strong>
+                      {totalOptions.alternatives
+                        .map(alt => formatAlternativeLine(alt.line, alt.delta))
+                        .join(' / ')}
+                    </strong>
+                  </li>
+                ) : null}
               </ul>
 
               <div className="prediction-actions">

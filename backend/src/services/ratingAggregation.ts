@@ -17,6 +17,7 @@ import {
   RATING_SNAPSHOT_LIMIT,
   resolveRatingLevel,
 } from './ratingConstants'
+import { getRatingSettings } from './ratingSettings'
 
 type AggregatedUserRating = {
   userId: number
@@ -32,9 +33,9 @@ type AggregatedUserRating = {
 }
 
 type AggregationContext = {
-  seasonId: number | null
-  year: number
   capturedAt: Date
+  currentWindowStart: Date
+  yearlyWindowStart: Date
   entries: AggregatedUserRating[]
 }
 
@@ -81,8 +82,6 @@ const executeInChunks = async (
 
 export type RatingAggregationOptions = {
   userIds?: number[]
-  seasonId?: number | null
-  year?: number
 }
 
 export const recalculateUserRatings = async (
@@ -93,23 +92,24 @@ export const recalculateUserRatings = async (
   const capturedAt = new Date()
 
   const context: AggregationContext = {
-    seasonId: null,
-    year: options.year ?? new Date().getUTCFullYear(),
     capturedAt,
+    currentWindowStart: capturedAt,
+    yearlyWindowStart: capturedAt,
     entries: [],
   }
 
   await client.$transaction(async tx => {
-    if (typeof options.seasonId === 'number') {
-      context.seasonId = options.seasonId
-    } else {
-      const activeSeason = await tx.season.findFirst({
-        where: { isActive: true },
-        orderBy: { startDate: 'desc' },
-        select: { id: true },
-      })
-      context.seasonId = activeSeason?.id ?? null
-    }
+  // Resolve rolling window boundaries based on configurable settings
+  const settings = await getRatingSettings(tx)
+    const currentScopeDays = Math.max(1, settings.currentScopeDays)
+    const yearlyScopeDays = Math.max(currentScopeDays, settings.yearlyScopeDays)
+    const DAY_MS = 24 * 60 * 60 * 1000
+
+    const currentWindowStart = new Date(capturedAt.getTime() - currentScopeDays * DAY_MS)
+    const yearlyWindowStart = new Date(capturedAt.getTime() - yearlyScopeDays * DAY_MS)
+
+    context.currentWindowStart = currentWindowStart
+    context.yearlyWindowStart = yearlyWindowStart
 
     const userFilter = buildUserFilter(userIds)
 
@@ -124,31 +124,27 @@ export const recalculateUserRatings = async (
       `
     )
 
-    const seasonal = context.seasonId
-      ? await tx.$queryRaw<Array<{ user_id: number; seasonal_points: bigint }>>(
-          Prisma.sql`
-            SELECT pe.user_id, COALESCE(SUM(pe.score_awarded), 0)::bigint AS seasonal_points
-            FROM prediction_entry pe
-            JOIN prediction_template pt ON pt.prediction_template_id = pe.template_id
-            JOIN match m ON m.match_id = pt.match_id
-            WHERE pe.status <> 'PENDING'
-              AND pe.score_awarded IS NOT NULL
-              AND m.season_id = ${context.seasonId}
-              ${userFilter}
-            GROUP BY pe.user_id
-          `
-        )
-      : []
+    const current = await tx.$queryRaw<Array<{ user_id: number; current_points: bigint }>>(
+      Prisma.sql`
+        SELECT pe.user_id, COALESCE(SUM(pe.score_awarded), 0)::bigint AS current_points
+        FROM prediction_entry pe
+        WHERE pe.status <> 'PENDING'
+          AND pe.score_awarded IS NOT NULL
+          AND pe.resolved_at IS NOT NULL
+          AND pe.resolved_at >= ${currentWindowStart}
+          ${userFilter}
+        GROUP BY pe.user_id
+      `
+    )
 
     const yearly = await tx.$queryRaw<Array<{ user_id: number; yearly_points: bigint }>>(
       Prisma.sql`
         SELECT pe.user_id, COALESCE(SUM(pe.score_awarded), 0)::bigint AS yearly_points
         FROM prediction_entry pe
-        JOIN prediction_template pt ON pt.prediction_template_id = pe.template_id
-        JOIN match m ON m.match_id = pt.match_id
         WHERE pe.status <> 'PENDING'
           AND pe.score_awarded IS NOT NULL
-          AND date_part('year', m.match_date_time) = ${context.year}
+          AND pe.resolved_at IS NOT NULL
+          AND pe.resolved_at >= ${yearlyWindowStart}
           ${userFilter}
         GROUP BY pe.user_id
       `
@@ -250,8 +246,8 @@ export const recalculateUserRatings = async (
     const totalMap = new Map<number, number>()
     totals.forEach(row => totalMap.set(row.user_id, toNumber(row.total_points)))
 
-    const seasonalMap = new Map<number, number>()
-    seasonal.forEach(row => seasonalMap.set(row.user_id, toNumber(row.seasonal_points)))
+    const currentMap = new Map<number, number>()
+    current.forEach(row => currentMap.set(row.user_id, toNumber(row.current_points)))
 
     const yearlyMap = new Map<number, number>()
     yearly.forEach(row => yearlyMap.set(row.user_id, toNumber(row.yearly_points)))
@@ -287,7 +283,7 @@ export const recalculateUserRatings = async (
 
     const userIdSet = new Set<number>()
     totalMap.forEach((_, userId) => userIdSet.add(userId))
-    seasonalMap.forEach((_, userId) => userIdSet.add(userId))
+    currentMap.forEach((_, userId) => userIdSet.add(userId))
     yearlyMap.forEach((_, userId) => userIdSet.add(userId))
     adjustmentMap.forEach((_, userId) => userIdSet.add(userId))
     lastDateMap.forEach((_, userId) => userIdSet.add(userId))
@@ -303,7 +299,7 @@ export const recalculateUserRatings = async (
     for (const userId of userIdSet) {
       const totalPoints = (totalMap.get(userId) ?? 0) + (adjustmentMap.get(userId)?.global ?? 0)
       const seasonalPoints =
-        (seasonalMap.get(userId) ?? 0)
+        (currentMap.get(userId) ?? 0)
         + (adjustmentMap.get(userId)?.global ?? 0)
         + (adjustmentMap.get(userId)?.current ?? 0)
       const yearlyPoints =

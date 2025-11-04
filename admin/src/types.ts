@@ -1,3 +1,5 @@
+import type { RatingLeaderboardEntryView, RatingLeaderboardResponse } from '@shared/types'
+
 export interface Club {
   id: number
   name: string
@@ -486,3 +488,34 @@ export interface LineupPortalRosterEntry {
     matchesRemaining: number
   }
 }
+
+export interface AdminRatingSettingsSummary {
+  settings: {
+    currentScopeDays: number
+    yearlyScopeDays: number
+    updatedAt: string
+    defaults: {
+      currentScopeDays: number
+      yearlyScopeDays: number
+    }
+  }
+  windows: {
+    anchor: string
+    currentWindowStart: string
+    yearlyWindowStart: string
+  }
+  totals: {
+    ratedUsers: number
+    mythicPlayers: number
+  }
+  lastRecalculatedAt: string
+}
+
+export interface AdminRatingSettingsInput {
+  currentScopeDays: number
+  yearlyScopeDays: number
+  recalculate?: boolean
+}
+
+export type AdminRatingLeaderboardResponse = RatingLeaderboardResponse
+export type AdminRatingLeaderboardEntry = RatingLeaderboardEntryView

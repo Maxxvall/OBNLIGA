@@ -14,6 +14,7 @@ import {
   RATING_MAX_PAGE_SIZE,
   ratingScopeKey,
 } from '../services/ratingConstants'
+import { getRatingSettings } from '../services/ratingSettings'
 
 type RatingsQuery = {
   scope?: string
@@ -52,11 +53,19 @@ export default async function ratingsRoutes(server: FastifyInstance) {
     const cacheKey = ratingPublicCacheKey(scope, page, normalizedPageSize)
 
     const loader = async () => {
-      const leaderboard = await loadRatingLeaderboard(scope, {
+      const [leaderboard, settings] = await Promise.all([
+        loadRatingLeaderboard(scope, {
         page,
         pageSize: normalizedPageSize,
         ensureFresh: page === 1,
-      })
+        }),
+        getRatingSettings(),
+      ])
+
+      const anchor = leaderboard.capturedAt
+      const DAY_MS = 24 * 60 * 60 * 1000
+      const currentWindowStart = new Date(anchor.getTime() - settings.currentScopeDays * DAY_MS)
+      const yearlyWindowStart = new Date(anchor.getTime() - settings.yearlyScopeDays * DAY_MS)
 
       return {
         scope: ratingScopeKey(leaderboard.scope),
@@ -64,6 +73,8 @@ export default async function ratingsRoutes(server: FastifyInstance) {
         page: leaderboard.page,
         pageSize: leaderboard.pageSize,
         capturedAt: leaderboard.capturedAt.toISOString(),
+        currentWindowStart: currentWindowStart.toISOString(),
+        yearlyWindowStart: yearlyWindowStart.toISOString(),
         entries: leaderboard.entries.map(entry => ({
           userId: entry.userId,
           position: entry.position,

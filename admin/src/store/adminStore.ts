@@ -9,6 +9,10 @@ import {
   translateAdminError,
   adminDelete,
   adminFetchAds,
+  adminFetchRatingSettings,
+  adminUpdateRatingSettings,
+  adminRecalculateRatings,
+  adminFetchRatingLeaderboard,
 } from '../api/adminClient'
 import { assistantLogin } from '../api/assistantClient'
 import { judgeLogin } from '../api/judgeClient'
@@ -35,6 +39,9 @@ import {
   UserAchievement,
   AdminPredictionMatch,
   PredictionTemplateOverrideResponse,
+  AdminRatingSettingsSummary,
+  AdminRatingLeaderboardResponse,
+  AdminRatingSettingsInput,
 } from '../types'
 import { useAssistantStore } from './assistantStore'
 
@@ -46,6 +53,7 @@ export type AdminTab =
   | 'news'
   | 'users'
   | 'predictions'
+  | 'ratings'
 
 const storageKey = 'obnliga-admin-token'
 const lineupStorageKey = 'obnliga-lineup-token'
@@ -138,6 +146,8 @@ interface AdminData {
   news: NewsItem[]
   ads: AdBanner[]
   predictionMatches: AdminPredictionMatch[]
+  ratingSettings?: AdminRatingSettingsSummary
+  ratingLeaderboard?: AdminRatingLeaderboardResponse
 }
 
 interface AdminState {
@@ -149,6 +159,9 @@ interface AdminState {
   assistantToken?: string
   error?: string
   activeTab: AdminTab
+  ratingScope: 'current' | 'yearly'
+  ratingPage: number
+  ratingPageSize: number
   selectedCompetitionId?: number
   selectedSeasonId?: number
   newsVersion?: number
@@ -174,12 +187,22 @@ interface AdminState {
   fetchAchievements(): Promise<void>
   fetchDisqualifications(): Promise<void>
   fetchNews(options?: FetchOptions): Promise<void>
+  fetchRatingSettings(options?: FetchOptions): Promise<void>
+  fetchRatingLeaderboard(options?: FetchOptions & { scope?: 'current' | 'yearly'; page?: number; pageSize?: number }): Promise<void>
   prependNews(item: NewsItem): void
   updateNews(item: NewsItem): void
   removeNews(id: string): void
   fetchAds(options?: FetchOptions): Promise<void>
   upsertAd(item: AdBanner): void
   removeAd(id: string): void
+  setRatingScope(scope: 'current' | 'yearly'): Promise<void>
+  setRatingPagination(page: number, pageSize?: number): Promise<void>
+  updateRatingSettings(
+    input: AdminRatingSettingsInput
+  ): Promise<{ summary: AdminRatingSettingsSummary; meta?: { recalculated?: boolean; affectedUsers?: number } }>
+  recalculateRatings(
+    userIds?: number[]
+  ): Promise<{ summary: AdminRatingSettingsSummary; meta?: { partial?: boolean; affectedUsers: number } }>
   refreshTab(tab?: AdminTab): Promise<void>
   setPredictionTemplateAuto(matchId: string): Promise<PredictionTemplateOverrideResponse>
   setPredictionTemplateManual(
@@ -208,6 +231,8 @@ type FetchKey =
   | 'disqualifications'
   | 'news'
   | 'ads'
+  | 'ratingSettings'
+  | 'ratingLeaderboard'
 
 type FetchOptions = {
   force?: boolean
@@ -233,7 +258,11 @@ const FETCH_TTL: Record<FetchKey, number> = {
   disqualifications: 30_000,
   news: 60_000,
   ads: 60_000,
+  ratingSettings: 60_000,
+  ratingLeaderboard: 20_000,
 }
+
+const DEFAULT_RATING_PAGE_SIZE = 25
 
 const createEmptyData = (): AdminData => ({
   clubs: [],
@@ -256,6 +285,8 @@ const createEmptyData = (): AdminData => ({
   news: [],
   ads: [],
   predictionMatches: [],
+  ratingSettings: undefined,
+  ratingLeaderboard: undefined,
 })
 
 const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
@@ -660,6 +691,9 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     assistantToken: initialMode === 'assistant' ? initialAssistantToken : undefined,
     error: undefined,
     activeTab: 'teams',
+  ratingScope: 'current',
+  ratingPage: 1,
+  ratingPageSize: DEFAULT_RATING_PAGE_SIZE,
     selectedCompetitionId: undefined,
     selectedSeasonId: undefined,
     newsVersion: undefined,
@@ -1222,6 +1256,82 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         },
       }))
     },
+    async setRatingScope(scope: 'current' | 'yearly') {
+      if (get().mode !== 'admin') return
+      if (get().ratingScope === scope) return
+      set({ ratingScope: scope, ratingPage: 1 })
+      await get().fetchRatingLeaderboard({ scope, page: 1, pageSize: get().ratingPageSize, force: true })
+    },
+    async setRatingPagination(page: number, pageSize?: number) {
+      if (get().mode !== 'admin') return
+      const normalizedPage = Number.isFinite(page) && page > 0 ? Math.trunc(page) : 1
+      const normalizedSize =
+        pageSize && Number.isFinite(pageSize) && pageSize > 0 ? Math.trunc(pageSize) : get().ratingPageSize
+      set({ ratingPage: normalizedPage, ratingPageSize: normalizedSize })
+      await get().fetchRatingLeaderboard({
+        scope: get().ratingScope,
+        page: normalizedPage,
+        pageSize: normalizedSize,
+        force: true,
+      })
+    },
+    async updateRatingSettings(input: AdminRatingSettingsInput) {
+      if (get().mode !== 'admin') {
+        throw new AdminApiError('missing_token')
+      }
+      const token = ensureToken()
+      const { data: summary, meta } = await run('ratingSettingsUpdate', () =>
+        adminUpdateRatingSettings(token, input)
+      )
+      set(state => ({
+        data: { ...state.data, ratingSettings: summary },
+      }))
+      fetchTimestamps[composeCacheKey('ratingSettings', [])] = Date.now()
+      await get().fetchRatingLeaderboard({
+        scope: get().ratingScope,
+        page: get().ratingPage,
+        pageSize: get().ratingPageSize,
+        force: true,
+      })
+      const normalizedMeta = meta
+        ? {
+            recalculated: Boolean((meta as { recalculated?: boolean }).recalculated),
+            affectedUsers:
+              typeof (meta as { affectedUsers?: number }).affectedUsers === 'number'
+                ? (meta as { affectedUsers?: number }).affectedUsers
+                : undefined,
+          }
+        : undefined
+      return { summary, meta: normalizedMeta }
+    },
+    async recalculateRatings(userIds?: number[]) {
+      if (get().mode !== 'admin') {
+        throw new AdminApiError('missing_token')
+      }
+      const token = ensureToken()
+      const payload = userIds && userIds.length ? { userIds } : undefined
+      const { data: summary, meta } = await run('ratingRecalculate', () =>
+        adminRecalculateRatings(token, payload)
+      )
+      set(state => ({
+        data: { ...state.data, ratingSettings: summary },
+      }))
+      fetchTimestamps[composeCacheKey('ratingSettings', [])] = Date.now()
+      await get().fetchRatingLeaderboard({
+        scope: get().ratingScope,
+        page: get().ratingPage,
+        pageSize: get().ratingPageSize,
+        force: true,
+      })
+      const normalizedMeta =
+        meta && typeof (meta as { affectedUsers?: number }).affectedUsers === 'number'
+          ? {
+              partial: Boolean((meta as { partial?: boolean }).partial),
+              affectedUsers: (meta as { affectedUsers: number }).affectedUsers,
+            }
+          : undefined
+      return { summary, meta: normalizedMeta }
+    },
     async setPredictionTemplateAuto(matchId: string) {
       if (get().mode !== 'admin') {
         throw new AdminApiError('missing_token')
@@ -1299,6 +1409,47 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           set(state => ({
             data: { ...state.data, news },
             newsVersion: version ?? state.newsVersion,
+          }))
+        },
+        options?.force ? 0 : undefined
+      )
+    },
+    async fetchRatingSettings(options?: FetchOptions) {
+      if (get().mode !== 'admin') return
+      await runCachedFetch(
+        'ratingSettings',
+        [],
+        async () => {
+          const token = ensureToken()
+          const summary = await adminFetchRatingSettings(token)
+          set(state => ({
+            data: { ...state.data, ratingSettings: summary },
+          }))
+        },
+        options?.force ? 0 : undefined
+      )
+    },
+    async fetchRatingLeaderboard(options?: FetchOptions & { scope?: 'current' | 'yearly'; page?: number; pageSize?: number }) {
+      if (get().mode !== 'admin') return
+      const scope = options?.scope ?? get().ratingScope
+      const page = options?.page ?? get().ratingPage
+      const pageSize = options?.pageSize ?? get().ratingPageSize
+
+      await runCachedFetch(
+        'ratingLeaderboard',
+        [scope, page, pageSize],
+        async () => {
+          const token = ensureToken()
+          const leaderboard = await adminFetchRatingLeaderboard(token, {
+            scope,
+            page,
+            pageSize,
+          })
+          set(state => ({
+            ratingScope: scope,
+            ratingPage: page,
+            ratingPageSize: pageSize,
+            data: { ...state.data, ratingLeaderboard: leaderboard },
           }))
         },
         options?.force ? 0 : undefined

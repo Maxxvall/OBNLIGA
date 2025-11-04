@@ -646,6 +646,16 @@ model RatingSnapshot {
   @@map("rating_snapshot")
 }
 
+model RatingSettings {
+  id               Int      @id @default(autoincrement()) @map("rating_settings_id")
+  currentScopeDays Int      @map("current_scope_days")
+  yearlyScopeDays  Int      @map("yearly_scope_days")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("rating_settings")
+}
+
 model AdminPointAdjustment {
   id              BigInt       @id @default(autoincrement()) @map("point_adjustment_id")
   userId          Int          @map("user_id")

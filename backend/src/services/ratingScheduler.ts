@@ -73,6 +73,8 @@ const runAggregation = async (logger: FastifyBaseLogger) => {
     logger.info(
       {
         capturedAt: context.capturedAt.toISOString(),
+        currentWindowStart: context.currentWindowStart.toISOString(),
+        yearlyWindowStart: context.yearlyWindowStart.toISOString(),
         entries: context.entries.length,
       },
       'rating scheduler: ratings recalculated'

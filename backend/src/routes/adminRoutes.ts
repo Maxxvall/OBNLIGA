@@ -11,6 +11,8 @@ import {
   MatchStatus,
   PredictionMarketType,
   Prisma,
+  RatingLevel,
+  RatingScope,
   RoundType,
   SeriesFormat,
   SeriesStatus,
@@ -41,6 +43,23 @@ import { defaultCache, PUBLIC_LEAGUE_RESULTS_KEY, PUBLIC_LEAGUE_SCHEDULE_KEY } f
 import { deliverTelegramNewsNow, enqueueTelegramNewsJob } from '../queue/newsWorker'
 import { secureEquals } from '../utils/secureEquals'
 import { parseBigIntId, parseNumericId, parseOptionalNumericId } from '../utils/parsers'
+import {
+  recalculateUserRatings,
+  ratingPublicCacheKey,
+  loadRatingLeaderboard,
+} from '../services/ratingAggregation'
+import {
+  RATING_DEFAULT_PAGE_SIZE,
+  RATING_MAX_PAGE_SIZE,
+  ratingScopeKey,
+} from '../services/ratingConstants'
+import {
+  composeRatingSettingsPayload,
+  computeRatingWindows,
+  getRatingSettings,
+  RatingSettingsSnapshot,
+  saveRatingSettings,
+} from '../services/ratingSettings'
 import {
   RequestError,
   broadcastMatchStatistics,
@@ -1417,6 +1436,85 @@ const adminAuthHook = async (request: FastifyRequest, reply: FastifyReply) => {
   }
 }
 
+type RatingsAggregationContext = Awaited<ReturnType<typeof recalculateUserRatings>>
+
+const ADMIN_RATING_USER_INVALIDATION_LIMIT = 500
+const ADMIN_RATING_CACHE_PAGE_SIZES = Array.from(
+  new Set([RATING_DEFAULT_PAGE_SIZE, 10, 20, 25, 50, 100])
+)
+
+const invalidateRatingsCaches = async (context?: RatingsAggregationContext) => {
+  const baseInvalidations = [] as Array<Promise<unknown>>
+
+  for (const size of ADMIN_RATING_CACHE_PAGE_SIZES) {
+    baseInvalidations.push(
+      defaultCache.invalidate(ratingPublicCacheKey(RatingScope.CURRENT, 1, size)).catch(() => undefined)
+    )
+    baseInvalidations.push(
+      defaultCache.invalidate(ratingPublicCacheKey(RatingScope.YEARLY, 1, size)).catch(() => undefined)
+    )
+  }
+
+  if (context) {
+    const targetedUsers = context.entries.slice(0, ADMIN_RATING_USER_INVALIDATION_LIMIT)
+    for (const entry of targetedUsers) {
+      baseInvalidations.push(
+        defaultCache.invalidate(`user:rating:${entry.userId}`).catch(() => undefined)
+      )
+    }
+  }
+
+  await Promise.all(baseInvalidations)
+}
+
+const buildRatingsAdminResponse = async (
+  settings: RatingSettingsSnapshot,
+  context?: RatingsAggregationContext
+) => {
+  const [aggregate, mythicPlayers] = await Promise.all([
+    prisma.userRating.aggregate({
+      _count: { userId: true },
+      _max: { lastRecalculatedAt: true },
+    }),
+    prisma.userRating.count({ where: { currentLevel: RatingLevel.MYTHIC } }),
+  ])
+
+  const anchor = context?.capturedAt ?? aggregate._max.lastRecalculatedAt ?? new Date()
+  const windows = computeRatingWindows(anchor, settings)
+  const ratedUsers = aggregate._count.userId ?? 0
+
+  return {
+    settings: composeRatingSettingsPayload(settings),
+    windows: {
+      anchor: anchor.toISOString(),
+      currentWindowStart: windows.currentWindowStart.toISOString(),
+      yearlyWindowStart: windows.yearlyWindowStart.toISOString(),
+    },
+    totals: {
+      ratedUsers,
+      mythicPlayers,
+    },
+    lastRecalculatedAt: anchor.toISOString(),
+  }
+}
+
+const normalizeRatingScope = (raw?: string): RatingScope => {
+  if (!raw) {
+    return RatingScope.CURRENT
+  }
+  const normalized = raw.trim().toUpperCase()
+  return normalized === RatingScope.YEARLY ? RatingScope.YEARLY : RatingScope.CURRENT
+}
+
+const parsePositiveInteger = (value: unknown, fallback: number): number => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) {
+    return fallback
+  }
+  const normalized = Math.trunc(numeric)
+  return normalized > 0 ? normalized : fallback
+}
+
 export default async function (server: FastifyInstance) {
   server.post('/api/admin/login', async (request, reply) => {
     const { login, password } = (request.body || {}) as { login?: string; password?: string }
@@ -1513,6 +1611,139 @@ export default async function (server: FastifyInstance) {
       // Admin profile info
       admin.get('/me', async (request, reply) => {
         return reply.send({ ok: true, admin: request.admin })
+      })
+
+      // Ratings management
+      admin.get('/ratings/settings', async (_request, reply) => {
+        const settings = await getRatingSettings()
+        const payload = await buildRatingsAdminResponse(settings)
+        return reply.send({ ok: true, data: payload })
+      })
+
+      admin.put('/ratings/settings', async (request, reply) => {
+        const body = (request.body ?? {}) as {
+          currentScopeDays?: unknown
+          yearlyScopeDays?: unknown
+          recalculate?: unknown
+        }
+
+        const currentScopeDays = Number(body.currentScopeDays)
+        const yearlyScopeDays = Number(body.yearlyScopeDays)
+        if (!Number.isFinite(currentScopeDays) || !Number.isFinite(yearlyScopeDays)) {
+          return reply.status(400).send({ ok: false, error: 'rating_settings_invalid' })
+        }
+
+        const saved = await saveRatingSettings({
+          currentScopeDays: Math.trunc(currentScopeDays),
+          yearlyScopeDays: Math.trunc(yearlyScopeDays),
+        })
+
+        let context: RatingsAggregationContext | undefined
+        const shouldRecalculate = Boolean(body.recalculate)
+        if (shouldRecalculate) {
+          try {
+            context = await recalculateUserRatings()
+          } catch (err) {
+            request.server.log.error({ err }, 'admin ratings: recalculation failed after settings update')
+            return reply.status(500).send({ ok: false, error: 'rating_recalculate_failed' })
+          }
+        }
+
+        await invalidateRatingsCaches(context)
+
+        const payload = await buildRatingsAdminResponse(saved, context)
+        return reply.send({
+          ok: true,
+          data: payload,
+          meta: {
+            recalculated: shouldRecalculate,
+            affectedUsers: context?.entries.length,
+          },
+        })
+      })
+
+      admin.post('/ratings/recalculate', async (request, reply) => {
+        const body = (request.body ?? {}) as { userIds?: unknown }
+        let userIds: number[] | undefined
+        if (Array.isArray(body.userIds)) {
+          userIds = body.userIds
+            .map(value => Number(value))
+            .filter(value => Number.isFinite(value) && value > 0)
+            .map(value => Math.trunc(value))
+          if (userIds.length === 0) {
+            userIds = undefined
+          }
+        }
+
+        let context: RatingsAggregationContext
+        try {
+          context = await recalculateUserRatings({ userIds })
+        } catch (err) {
+          request.server.log.error({ err, userIds }, 'admin ratings: manual recalculation failed')
+          return reply.status(500).send({ ok: false, error: 'rating_recalculate_failed' })
+        }
+
+        await invalidateRatingsCaches(context)
+
+        const settings = await getRatingSettings()
+        const payload = await buildRatingsAdminResponse(settings, context)
+        return reply.send({
+          ok: true,
+          data: payload,
+          meta: {
+            partial: Boolean(userIds),
+            affectedUsers: context.entries.length,
+          },
+        })
+      })
+
+      admin.get('/ratings/leaderboard', async (request, reply) => {
+        const query = request.query as { scope?: string; page?: string; pageSize?: string } | undefined
+        const scope = normalizeRatingScope(query?.scope)
+        const rawPage = query?.page
+        const rawPageSize = query?.pageSize
+        const page = parsePositiveInteger(rawPage, 1)
+        const requestedPageSize = rawPageSize
+          ? parsePositiveInteger(rawPageSize, RATING_DEFAULT_PAGE_SIZE)
+          : RATING_DEFAULT_PAGE_SIZE
+        const pageSize = Math.min(RATING_MAX_PAGE_SIZE, requestedPageSize)
+
+        const leaderboard = await loadRatingLeaderboard(scope, {
+          page,
+          pageSize,
+          ensureFresh: page === 1,
+        })
+        const settings = await getRatingSettings()
+        const windows = computeRatingWindows(leaderboard.capturedAt, settings)
+
+        return reply.send({
+          ok: true,
+          data: {
+            scope: ratingScopeKey(leaderboard.scope),
+            total: leaderboard.total,
+            page: leaderboard.page,
+            pageSize: leaderboard.pageSize,
+            capturedAt: leaderboard.capturedAt.toISOString(),
+            currentWindowStart: windows.currentWindowStart.toISOString(),
+            yearlyWindowStart: windows.yearlyWindowStart.toISOString(),
+            entries: leaderboard.entries.map(entry => ({
+              userId: entry.userId,
+              position: entry.position,
+              displayName: entry.displayName,
+              username: entry.username,
+              photoUrl: entry.photoUrl,
+              totalPoints: entry.totalPoints,
+              seasonalPoints: entry.seasonalPoints,
+              yearlyPoints: entry.yearlyPoints,
+              currentLevel: entry.currentLevel,
+              mythicRank: entry.mythicRank,
+              currentStreak: entry.currentStreak,
+              maxStreak: entry.maxStreak,
+              lastPredictionAt: entry.lastPredictionAt,
+              lastResolvedAt: entry.lastResolvedAt,
+            })),
+          },
+        })
       })
 
       // News management

@@ -9,6 +9,9 @@ import type {
   SeasonAutomationResult,
   SeriesFormat,
   Person,
+  AdminRatingSettingsSummary,
+  AdminRatingSettingsInput,
+  AdminRatingLeaderboardResponse,
 } from '../types'
 import type { AdBanner, AdBannerImage, NewsItem } from '@shared/types'
 
@@ -155,6 +158,8 @@ const ERROR_DICTIONARY: Record<string, string> = {
   playoffs_not_supported: 'Этот формат турнира не поддерживает плей-офф.',
   regular_season_not_finished: 'Регулярный сезон ещё не завершён.',
   roster_fields_required: 'Заполните поля состава.',
+  rating_settings_invalid: 'Некорректные параметры периода рейтинга.',
+  rating_recalculate_failed: 'Не удалось пересчитать рейтинг. Попробуйте ещё раз.',
   season_dates_locked: 'Даты сезона заблокированы — сезон уже начался.',
   season_fields_required: 'Заполните поля сезона.',
   season_not_found: 'Сезон не найден.',
@@ -402,6 +407,41 @@ export const adminPatch = async <T>(
     method: 'PATCH',
     body: body === undefined ? undefined : JSON.stringify(body),
   })
+
+export const adminFetchRatingSettings = async (
+  token: string | undefined
+): Promise<AdminRatingSettingsSummary> => adminGet(token, '/api/admin/ratings/settings')
+
+export const adminUpdateRatingSettings = async (
+  token: string | undefined,
+  input: AdminRatingSettingsInput
+) =>
+  adminRequestWithMeta<AdminRatingSettingsSummary>(token, '/api/admin/ratings/settings', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  })
+
+export const adminRecalculateRatings = async (
+  token: string | undefined,
+  body?: { userIds?: number[] }
+) =>
+  adminRequestWithMeta<AdminRatingSettingsSummary>(token, '/api/admin/ratings/recalculate', {
+    method: 'POST',
+    body: body ? JSON.stringify(body) : undefined,
+  })
+
+export const adminFetchRatingLeaderboard = async (
+  token: string | undefined,
+  params: { scope?: string; page?: number; pageSize?: number }
+): Promise<AdminRatingLeaderboardResponse> => {
+  const search = new URLSearchParams()
+  if (params.scope) search.set('scope', params.scope)
+  if (params.page) search.set('page', String(params.page))
+  if (params.pageSize) search.set('pageSize', String(params.pageSize))
+  const query = search.toString()
+  const path = `/api/admin/ratings/leaderboard${query ? `?${query}` : ''}`
+  return adminGet(token, path)
+}
 
 export const adminDelete = async <T>(token: string | undefined, path: string): Promise<T> =>
   adminRequest<T>(token, path, { method: 'DELETE' })

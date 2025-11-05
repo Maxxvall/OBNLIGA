@@ -600,3 +600,32 @@ export interface MatchComment {
   text: string
   createdAt: string
 }
+
+// ============================================================
+// User Achievements API Types
+// ============================================================
+
+export interface UserAchievementLevel {
+  id: number
+  level: number
+  threshold: number
+  iconUrl: string | null
+  title: string
+  description: string | null
+}
+
+export interface UserAchievementProgress {
+  achievementId: number
+  achievementName: string
+  achievementDescription: string | null
+  currentLevel: number
+  progressCount: number
+  lastUnlockedAt: string | null
+  levels: UserAchievementLevel[]
+}
+
+export interface UserAchievementsSummary {
+  achievements: UserAchievementProgress[]
+  totalUnlocked: number
+  generatedAt: string
+}

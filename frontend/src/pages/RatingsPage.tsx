@@ -246,7 +246,7 @@ export function RatingsPage() {
   const formattedYearlyWindowEnd = activeState.yearlyWindowEnd
     ? dateFormatter.format(new Date(activeState.yearlyWindowEnd))
     : null
-  const scopePointsLabel = scope === 'current' ? 'Очки сезона' : 'Очки года'
+  const scopePointsLabel = scope === 'current' ? 'Сезон' : 'Год'
 
   const handleScopeChange = (nextScope: RatingScopeKey) => {
     if (nextScope === scope) {

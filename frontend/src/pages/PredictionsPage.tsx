@@ -89,7 +89,7 @@ const translateChoiceLabel = (marketType: PredictionMarketType, rawValue: string
 
   if (marketType === 'MATCH_OUTCOME') {
     if (upper === 'ONE' || upper === '1') return 'П1'
-    if (upper === 'DRAW' || upper === 'X') return 'Х'
+    if (upper === 'DRAW' || upper === 'X') return 'Х' // Кириллическая Х
     if (upper === 'TWO' || upper === '2') return 'П2'
   }
 

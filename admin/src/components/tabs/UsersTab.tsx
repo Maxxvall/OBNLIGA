@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { adminDelete, adminPost, adminPut } from '../../api/adminClient'
 import { useAdminStore } from '../../store/adminStore'
-import { AchievementType, AppUser, LeaguePlayerStatus, Person, Prediction } from '../../types'
+import { AppUser, LeaguePlayerStatus, Person, Prediction } from '../../types'
 
 type UserEditFormState = {
   id: number | ''
@@ -9,15 +9,6 @@ type UserEditFormState = {
   currentStreak: number | ''
   totalPredictions: number | ''
 }
-
-type AchievementFormState = {
-  name: string
-  description: string
-  requiredValue: number | ''
-  metric: AchievementType['metric']
-}
-
-type AchievementEditFormState = AchievementFormState & { id: number | '' }
 
 type PredictionEditState = {
   pointsAwarded: number | ''
@@ -31,24 +22,6 @@ const defaultUserForm: UserEditFormState = {
   firstName: '',
   currentStreak: '',
   totalPredictions: '',
-}
-
-const defaultAchievementForm: AchievementFormState = {
-  name: '',
-  description: '',
-  requiredValue: '',
-  metric: 'TOTAL_PREDICTIONS',
-}
-
-const defaultAchievementEditForm: AchievementEditFormState = {
-  id: '',
-  ...defaultAchievementForm,
-}
-
-const metricLabels: Record<AchievementType['metric'], string> = {
-  DAILY_LOGIN: 'Ежедневная активность',
-  TOTAL_PREDICTIONS: 'Общее число прогнозов',
-  CORRECT_PREDICTIONS: 'Удачные прогнозы',
 }
 
 const leagueStatusLabels: Record<LeaguePlayerStatus, string> = {
@@ -88,11 +61,6 @@ export const UsersTab = () => {
     }))
 
   const [userForm, setUserForm] = useState<UserEditFormState>(defaultUserForm)
-  const [achievementForm, setAchievementForm] =
-    useState<AchievementFormState>(defaultAchievementForm)
-  const [achievementEditForm, setAchievementEditForm] = useState<AchievementEditFormState>(
-    defaultAchievementEditForm
-  )
   const [feedback, setFeedback] = useState<string | null>(null)
   const [feedbackLevel, setFeedbackLevel] = useState<FeedbackLevel>('info')
   const [userFilter, setUserFilter] = useState('')
@@ -103,15 +71,12 @@ export const UsersTab = () => {
   const [linkError, setLinkError] = useState<string | null>(null)
   const [linkSubmitting, setLinkSubmitting] = useState(false)
 
-  const isLoading = Boolean(loading.users || loading.predictions || loading.achievements)
+  const isLoading = Boolean(loading.users || loading.predictions)
 
   useEffect(() => {
     if (!token) return
     if (!data.users.length) void fetchUsers().catch(() => undefined)
     if (!data.predictions.length) void fetchPredictions().catch(() => undefined)
-    if (!data.achievementTypes.length || !data.userAchievements.length) {
-      void fetchAchievements().catch(() => undefined)
-    }
     if (!data.persons.length) {
       void fetchDictionaries().catch(() => undefined)
     }
@@ -119,12 +84,9 @@ export const UsersTab = () => {
     token,
     data.users.length,
     data.predictions.length,
-    data.achievementTypes.length,
-    data.userAchievements.length,
     data.persons.length,
     fetchUsers,
     fetchPredictions,
-    fetchAchievements,
     fetchDictionaries,
   ])
 
@@ -176,65 +138,6 @@ export const UsersTab = () => {
       await fetchUsers()
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Не удалось обновить пользователя'
-      handleFeedback(message, 'error')
-    }
-  }
-
-  const handleAchievementSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!achievementForm.name || !achievementForm.requiredValue) {
-      handleFeedback('Название и значение обязательны', 'error')
-      return
-    }
-    try {
-      await adminPost(token, '/api/admin/achievements/types', {
-        name: achievementForm.name.trim(),
-        description: achievementForm.description.trim() || undefined,
-        requiredValue: Number(achievementForm.requiredValue),
-        metric: achievementForm.metric,
-      })
-      setAchievementForm(defaultAchievementForm)
-      handleFeedback('Тип достижения создан', 'success')
-      await fetchAchievements()
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Не удалось создать достижение'
-      handleFeedback(message, 'error')
-    }
-  }
-
-  const handleAchievementEditSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!achievementEditForm.id) {
-      handleFeedback('Выберите достижение', 'error')
-      return
-    }
-    try {
-      await adminPut(token, `/api/admin/achievements/types/${achievementEditForm.id}`, {
-        name: achievementEditForm.name.trim() || undefined,
-        description: achievementEditForm.description.trim() || undefined,
-        requiredValue:
-          achievementEditForm.requiredValue === ''
-            ? undefined
-            : Number(achievementEditForm.requiredValue),
-        metric: achievementEditForm.metric,
-      })
-      handleFeedback('Достижение обновлено', 'success')
-      setAchievementEditForm(defaultAchievementEditForm)
-      await fetchAchievements()
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Не удалось обновить достижение'
-      handleFeedback(message, 'error')
-    }
-  }
-
-  const handleAchievementDelete = async (achievementTypeId: number) => {
-    if (!window.confirm('Удалить тип достижения?')) return
-    try {
-      await adminDelete(token, `/api/admin/achievements/types/${achievementTypeId}`)
-      handleFeedback('Тип достижения удалён', 'success')
-      await fetchAchievements()
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Не удалось удалить достижение'
       handleFeedback(message, 'error')
     }
   }
@@ -300,17 +203,6 @@ export const UsersTab = () => {
       return fullName.includes(userFilter.toLowerCase())
     })
   }, [data.users, userFilter])
-
-  const userAchievements = useMemo(() => {
-    const grouped = new Map<number, AchievementType[]>()
-    for (const entry of data.userAchievements) {
-      const current = grouped.get(entry.userId) ?? []
-      const type = data.achievementTypes.find(item => item.id === entry.achievementTypeId)
-      if (type) current.push(type)
-      grouped.set(entry.userId, current)
-    }
-    return grouped
-  }, [data.achievementTypes, data.userAchievements])
 
   const activeLinkUser = useMemo(() => {
     if (!linkModalUserId) return null
@@ -428,166 +320,6 @@ export const UsersTab = () => {
             </button>
           </form>
         </article>
-
-        <article className="card">
-          <header>
-            <h4>Новое достижение</h4>
-            <p>Добавьте геймификацию для мотивации пользователей.</p>
-          </header>
-          <form className="stacked" onSubmit={handleAchievementSubmit}>
-            <label>
-              Название
-              <input
-                value={achievementForm.name}
-                onChange={event =>
-                  setAchievementForm(form => ({ ...form, name: event.target.value }))
-                }
-                required
-              />
-            </label>
-            <label>
-              Описание
-              <textarea
-                value={achievementForm.description}
-                onChange={event =>
-                  setAchievementForm(form => ({ ...form, description: event.target.value }))
-                }
-              />
-            </label>
-            <label>
-              Метрика
-              <select
-                value={achievementForm.metric}
-                onChange={event =>
-                  setAchievementForm(form => ({
-                    ...form,
-                    metric: event.target.value as AchievementType['metric'],
-                  }))
-                }
-              >
-                <option value="TOTAL_PREDICTIONS">Общее число прогнозов</option>
-                <option value="DAILY_LOGIN">Ежедневная активность</option>
-                <option value="CORRECT_PREDICTIONS">Точность</option>
-              </select>
-            </label>
-            <label>
-              Необходимое значение
-              <input
-                type="number"
-                min={1}
-                value={achievementForm.requiredValue}
-                onChange={event =>
-                  setAchievementForm(form => ({
-                    ...form,
-                    requiredValue: event.target.value ? Number(event.target.value) : '',
-                  }))
-                }
-                required
-              />
-            </label>
-            <button className="button-primary" type="submit">
-              Добавить
-            </button>
-          </form>
-        </article>
-
-        <article className="card">
-          <header>
-            <h4>Редактировать достижение</h4>
-            <p>При изменении метрики система пересчитает награды.</p>
-          </header>
-          <form className="stacked" onSubmit={handleAchievementEditSubmit}>
-            <label>
-              Достижение
-              <select
-                value={achievementEditForm.id}
-                onChange={event => {
-                  const value = event.target.value ? Number(event.target.value) : ''
-                  if (!value) {
-                    setAchievementEditForm(defaultAchievementEditForm)
-                    return
-                  }
-                  const achievement = data.achievementTypes.find(item => item.id === value)
-                  if (!achievement) return
-                  setAchievementEditForm({
-                    id: achievement.id,
-                    name: achievement.name,
-                    description: achievement.description ?? '',
-                    requiredValue: achievement.requiredValue,
-                    metric: achievement.metric,
-                  })
-                }}
-              >
-                <option value="">—</option>
-                {data.achievementTypes.map(achievement => (
-                  <option key={achievement.id} value={achievement.id}>
-                    {achievement.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Название
-              <input
-                value={achievementEditForm.name}
-                onChange={event =>
-                  setAchievementEditForm(form => ({ ...form, name: event.target.value }))
-                }
-              />
-            </label>
-            <label>
-              Описание
-              <textarea
-                value={achievementEditForm.description}
-                onChange={event =>
-                  setAchievementEditForm(form => ({ ...form, description: event.target.value }))
-                }
-              />
-            </label>
-            <label>
-              Метрика
-              <select
-                value={achievementEditForm.metric}
-                onChange={event =>
-                  setAchievementEditForm(form => ({
-                    ...form,
-                    metric: event.target.value as AchievementType['metric'],
-                  }))
-                }
-              >
-                <option value="TOTAL_PREDICTIONS">Общее число прогнозов</option>
-                <option value="DAILY_LOGIN">Ежедневная активность</option>
-                <option value="CORRECT_PREDICTIONS">Точность</option>
-              </select>
-            </label>
-            <label>
-              Значение
-              <input
-                type="number"
-                min={1}
-                value={achievementEditForm.requiredValue}
-                onChange={event =>
-                  setAchievementEditForm(form => ({
-                    ...form,
-                    requiredValue: event.target.value ? Number(event.target.value) : '',
-                  }))
-                }
-              />
-            </label>
-            <div className="form-actions">
-              <button className="button-primary" type="submit" disabled={!achievementEditForm.id}>
-                Сохранить
-              </button>
-              <button
-                className="button-secondary"
-                type="button"
-                onClick={() => setAchievementEditForm(defaultAchievementEditForm)}
-              >
-                Очистить
-              </button>
-            </div>
-          </form>
-        </article>
       </section>
 
       <section className="card" style={{ gridColumn: '1 / -1' }}>
@@ -613,7 +345,6 @@ export const UsersTab = () => {
               <th>Игрок лиги</th>
               <th>Серия</th>
               <th>Прогнозов</th>
-              <th>Достижения</th>
               <th aria-label="Действия" />
             </tr>
           </thead>
@@ -631,11 +362,6 @@ export const UsersTab = () => {
                 <td>{user.leaguePlayer ? formatPersonName(user.leaguePlayer) : '—'}</td>
                 <td>{user.currentStreak}</td>
                 <td>{user.totalPredictions}</td>
-                <td>
-                  {(userAchievements.get(user.id) ?? [])
-                    .map(achievement => achievement.name)
-                    .join(', ') || '—'}
-                </td>
                 <td className="table-actions">
                   <button
                     type="button"
@@ -661,56 +387,6 @@ export const UsersTab = () => {
           </tbody>
         </table>
         {!filteredUsers.length ? <p className="muted">Пользователей не найдено.</p> : null}
-      </section>
-
-      <section className="card" style={{ gridColumn: '1 / -1' }}>
-        <header>
-          <h4>Типы достижений</h4>
-          <p>Удаление приведёт к пересчёту прогресса у всех пользователей.</p>
-        </header>
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Название</th>
-              <th>Метрика</th>
-              <th>Значение</th>
-              <th aria-label="Действия" />
-            </tr>
-          </thead>
-          <tbody>
-            {data.achievementTypes.map(achievement => (
-              <tr key={achievement.id}>
-                <td>{achievement.name}</td>
-                <td>{metricLabels[achievement.metric]}</td>
-                <td>{achievement.requiredValue}</td>
-                <td className="table-actions">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setAchievementEditForm({
-                        id: achievement.id,
-                        name: achievement.name,
-                        description: achievement.description ?? '',
-                        requiredValue: achievement.requiredValue,
-                        metric: achievement.metric,
-                      })
-                    }
-                  >
-                    Изм.
-                  </button>
-                  <button
-                    type="button"
-                    className="danger"
-                    onClick={() => handleAchievementDelete(achievement.id)}
-                  >
-                    Удал.
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {!data.achievementTypes.length ? <p className="muted">Ещё нет достижений.</p> : null}
       </section>
 
       <section className="card" style={{ gridColumn: '1 / -1' }}>

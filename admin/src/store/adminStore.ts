@@ -59,6 +59,7 @@ export type AdminTab =
   | 'users'
   | 'predictions'
   | 'ratings'
+  | 'achievements'
 
 const storageKey = 'obnliga-admin-token'
 const lineupStorageKey = 'obnliga-lineup-token'

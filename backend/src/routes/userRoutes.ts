@@ -150,4 +150,84 @@ export default async function (server: FastifyInstance) {
       return reply.status(500).send({ ok: false, error: 'internal' })
     }
   })
+
+  // Get user achievements progress
+  server.get('/api/users/me/achievements', async (request, reply) => {
+    const token = extractSessionToken(request)
+    if (!token) {
+      return reply.status(401).send({ ok: false, error: 'no_token' })
+    }
+
+    const subject = resolveSessionSubject(token)
+    if (!subject) {
+      request.log.warn('user achievements: token verification failed')
+      return reply.status(401).send({ ok: false, error: 'invalid_token' })
+    }
+
+    const cacheKey = `user:achievements:${subject}`
+
+    try {
+      const achievements = await defaultCache.get(
+        cacheKey,
+        async () => {
+          const user = await prisma.appUser.findUnique({
+            where: { telegramId: BigInt(subject) },
+          })
+
+          if (!user) {
+            return null
+          }
+
+          const progress = await prisma.userAchievementProgress.findMany({
+            where: { userId: user.id },
+            include: {
+              achievement: {
+                include: {
+                  levels: {
+                    orderBy: { level: 'asc' },
+                  },
+                },
+              },
+            },
+          })
+
+          return progress.map(p => ({
+            achievementId: p.achievementId,
+            achievementName: p.achievement.name,
+            achievementDescription: p.achievement.description,
+            currentLevel: p.currentLevel,
+            progressCount: p.progressCount,
+            lastUnlockedAt: p.lastUnlockedAt?.toISOString() || null,
+            levels: p.achievement.levels.map(l => ({
+              id: l.id,
+              level: l.level,
+              threshold: l.threshold,
+              iconUrl: l.iconUrl,
+              title: l.title,
+              description: l.description,
+            })),
+          }))
+        },
+        300 // 5 min fresh
+      )
+
+      if (achievements === null) {
+        return reply.status(404).send({ ok: false, error: 'user_not_found' })
+      }
+
+      const totalUnlocked = achievements.reduce((sum, a) => sum + a.currentLevel, 0)
+
+      return reply.send({
+        ok: true,
+        data: {
+          achievements,
+          totalUnlocked,
+          generatedAt: new Date().toISOString(),
+        },
+      })
+    } catch (err) {
+      request.log.error({ err }, 'user achievements fetch failed')
+      return reply.status(500).send({ ok: false, error: 'internal' })
+    }
+  })
 }

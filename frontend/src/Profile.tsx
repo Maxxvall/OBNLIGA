@@ -1,4 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { UserRatingSummary, UserAchievementsSummary } from '@shared/types'
+import { fetchMyRating } from './api/ratingsApi'
+import { fetchMyAchievements } from './api/achievementsApi'
 import './profile.css'
 
 type LeaguePlayerStatus = 'NONE' | 'PENDING' | 'VERIFIED'
@@ -100,7 +103,7 @@ const CACHE_TTL = 5 * 60 * 1000 // 5 минут
 const CACHE_KEY = 'obnliga_profile_cache'
 const PROFILE_REFRESH_INTERVAL_MS = 90_000
 
-type ProfileSection = 'overview' | 'stats'
+type ProfileSection = 'overview' | 'stats' | 'achievements'
 
 export default function Profile() {
   const [user, setUser] = useState<Nullable<ProfileUser>>(null)
@@ -109,6 +112,8 @@ export default function Profile() {
   const [verifyLoading, setVerifyLoading] = useState(false)
   const [verifyError, setVerifyError] = useState<string | null>(null)
   const [activeSection, setActiveSection] = useState<ProfileSection>('overview')
+  const [rating, setRating] = useState<UserRatingSummary | null>(null)
+  const [achievements, setAchievements] = useState<UserAchievementsSummary | null>(null)
   const [isCompactLayout, setIsCompactLayout] = useState<boolean>(() => {
     if (typeof window === 'undefined') {
       return false
@@ -391,6 +396,30 @@ export default function Profile() {
     }
   }, [isCompactLayout, activeSection])
 
+  // Загрузка рейтинга пользователя
+  useEffect(() => {
+    if (!user) return
+    
+    void (async () => {
+      const result = await fetchMyRating()
+      if (result.ok) {
+        setRating(result.data)
+      }
+    })()
+  }, [user])
+
+  // Загрузка достижений пользователя
+  useEffect(() => {
+    if (!user) return
+    
+    void (async () => {
+      const result = await fetchMyAchievements()
+      if (result.data) {
+        setAchievements(result.data)
+      }
+    })()
+  }, [user])
+
   const status: LeaguePlayerStatus =
     user && isLeagueStatus(user.leaguePlayerStatus) ? user.leaguePlayerStatus : 'NONE'
   const isVerified = status === 'VERIFIED'
@@ -487,6 +516,74 @@ export default function Profile() {
     )
   }, [careerRows, isVerified, renderCareerRange])
 
+  const achievementsBlock = useMemo(() => {
+    if (!achievements) {
+      return null
+    }
+
+    return (
+      <section className="profile-section">
+        <div className="profile-card">
+          <header className="profile-card-header">
+            <h2>Достижения</h2>
+            <span className="achievements-count">{achievements.totalUnlocked} разблокировано</span>
+          </header>
+          <div className="achievements-grid">
+            {achievements.achievements.length > 0 ? (
+              achievements.achievements.map(achievement => {
+                const currentLevelData = achievement.levels.find(l => l.level === achievement.currentLevel)
+                const nextLevelData = achievement.levels.find(l => l.level === achievement.currentLevel + 1)
+                const progress = nextLevelData
+                  ? Math.min(100, (achievement.progressCount / nextLevelData.threshold) * 100)
+                  : 100
+
+                return (
+                  <div key={achievement.achievementId} className="achievement-card">
+                    <div className="achievement-icon">
+                      {currentLevelData?.iconUrl ? (
+                        <img src={currentLevelData.iconUrl} alt={currentLevelData.title} />
+                      ) : (
+                        <div className="achievement-icon-placeholder">🏆</div>
+                      )}
+                    </div>
+                    <div className="achievement-info">
+                      <h3 className="achievement-title">
+                        {currentLevelData?.title || achievement.achievementName}
+                      </h3>
+                      <p className="achievement-description">
+                        {currentLevelData?.description || achievement.achievementDescription}
+                      </p>
+                      {nextLevelData ? (
+                        <div className="achievement-progress">
+                          <div className="achievement-progress-bar">
+                            <div
+                              className="achievement-progress-fill"
+                              style={{ width: `${progress}%` }}
+                            />
+                          </div>
+                          <div className="achievement-progress-text">
+                            {achievement.progressCount} / {nextLevelData.threshold}
+                            {' — '} Уровень {nextLevelData.level}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="achievement-completed">✓ Максимальный уровень</div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })
+            ) : (
+              <div className="profile-table-placeholder">
+                <p>Достижения появятся по мере участия в прогнозах и активности.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+    )
+  }, [achievements])
+
   const statusMessage = (() => {
     if (status === 'PENDING') {
       return 'Заявка на подтверждение отправлена. Ожидайте решения администратора.'
@@ -573,7 +670,7 @@ export default function Profile() {
         <div className="profile-header">
           <div className="profile-hero-card">
             <div className="avatar-section">
-              <div className="profile-avatar-wrapper">
+              <div className={`profile-avatar-wrapper${rating ? ` rating-border-${rating.currentLevel.toLowerCase()}` : ''}`}>
                 {user && user.photoUrl ? (
                   <img
                     src={user.photoUrl}
@@ -650,10 +747,20 @@ export default function Profile() {
             >
               Карьера
             </button>
+            <button
+              type="button"
+              className={activeSection === 'achievements' ? 'active' : ''}
+              onClick={() => setActiveSection('achievements')}
+              role="tab"
+              aria-selected={activeSection === 'achievements'}
+            >
+              Достижения
+            </button>
           </div>
         ) : null}
 
         {(!isCompactLayout || activeSection === 'stats') && careerBlock}
+        {(!isCompactLayout || activeSection === 'achievements') && achievementsBlock}
 
         {showVerifyModal ? (
           <div className="verify-modal-backdrop" role="dialog" aria-modal="true">

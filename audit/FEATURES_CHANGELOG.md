@@ -1,6 +1,6 @@
 # История реализации функций
 
-**Дата обновления:** 1 ноября 2025 г.  
+**Дата обновления:** 5 ноября 2025 г.  
 **Назначение:** Консолидированная история ключевых изменений и реализованных функций
 
 ---
@@ -146,6 +146,39 @@
 - `frontend/src/components/AdCarousel.tsx`
 - `frontend/src/api/adsApi.ts`
 - `frontend/src/styles/ads.css`
+
+---
+
+## Модуль: Достижения (Achievements)
+
+### Система достижений и прогресс пользователей
+**Дата:** Ноябрь 2025  
+**Связанные изменения:** predictions-phase1, 20251103_predictions_tables, 20251105-cleanup-userstab
+
+**Что реализовано:**
+- Модели Prisma: `AchievementType`, `AchievementLevel`, `UserAchievementProgress` с метриками (DAILY_LOGIN, TOTAL_PREDICTIONS, CORRECT_PREDICTIONS)
+- Backend API: `GET /api/users/me/achievements` с Redis-кешированием (TTL 5 мин), возвращает прогресс по всем достижениям с уровнями
+- Frontend API клиент: `achievementsApi.ts` с SWR паттерном (5m fresh / 15m stale), localStorage кеш, ETag support
+- UI в профиле: отдельная вкладка "Достижения" с карточками, progress bars (X/Y — Уровень Z), индикация максимального уровня
+- Админ-панель: отдельная вкладка "Достижения" (`AchievementsTab.tsx`) для CRUD типов достижений, просмотра прогресса пользователей
+- Рефакторинг: удалено 354 строки (~40%) дублирующего кода из `UsersTab.tsx` — формы создания/редактирования достижений перенесены в `AchievementsTab`
+
+**Ключевые особенности:**
+- Многоуровневые достижения с порогами (threshold) для каждого уровня
+- Автоматический трекинг прогресса пользователей по метрикам
+- Адаптивная сетка карточек в профиле (320px min)
+- Разделение ответственности: UsersTab → управление пользователями, AchievementsTab → управление достижениями
+
+**Файлы:**
+- `prisma/schema.prisma` (AchievementType, AchievementLevel, UserAchievementProgress)
+- `backend/src/routes/userRoutes.ts` (GET /users/me/achievements)
+- `frontend/src/api/achievementsApi.ts`
+- `frontend/src/Profile.tsx` (вкладка достижений)
+- `frontend/src/profile.css` (стили карточек и progress bars)
+- `admin/src/components/tabs/AchievementsTab.tsx` (NEW)
+- `admin/src/components/tabs/UsersTab.tsx` (cleanup: -354 lines)
+- `shared/types.ts` (UserAchievementsSummary, UserAchievementProgress, UserAchievementLevel)
+- `audit/changes/20251105-cleanup-userstab-achievements.md`
 
 ---
 

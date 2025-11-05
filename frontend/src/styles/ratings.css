@@ -168,6 +168,7 @@
   padding: 16px 18px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(12, 20, 36, 0.7);
+  white-space: nowrap;
 }
 
 .ratings-table tbody td {

@@ -1,7 +1,8 @@
 import { RatingLevel } from '@prisma/client'
 
-export const RATING_LEADERBOARD_TTL_SECONDS = 60
-export const RATING_LEADERBOARD_STALE_SECONDS = 120
+// Увеличены TTL под Render.com Free tier - рейтинги меняются только после финализации матчей
+export const RATING_LEADERBOARD_TTL_SECONDS = 120 // 2 минуты - свежие данные
+export const RATING_LEADERBOARD_STALE_SECONDS = 600 // 10 минут - устаревшие данные (SWR)
 export const RATING_DEFAULT_PAGE_SIZE = 25
 export const RATING_MAX_PAGE_SIZE = 100
 export const RATING_SNAPSHOT_LIMIT = 50

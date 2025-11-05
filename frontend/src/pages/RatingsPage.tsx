@@ -5,6 +5,7 @@ import type {
   RatingScopeKey,
 } from '@shared/types'
 import { fetchRatingLeaderboard } from '../api/ratingsApi'
+import { useAdaptivePolling } from '../utils/useAdaptivePolling'
 import '../styles/ratings.css'
 
 type ScopeState = {
@@ -153,9 +154,7 @@ export function RatingsPage() {
         },
       }))
 
-      const snapshot = statesRef.current[targetScope]
-      const version = !force && page === 1 ? snapshot.version : undefined
-      const response = await fetchRatingLeaderboard(targetScope, { page, pageSize: PAGE_SIZE }, version)
+      const response = await fetchRatingLeaderboard(targetScope, { page, pageSize: PAGE_SIZE, force })
 
       if (!response.ok) {
         const errorLabel = formatError(response.error)
@@ -170,19 +169,7 @@ export function RatingsPage() {
         return
       }
 
-      if ('notModified' in response && response.notModified) {
-        updateStates((prev) => ({
-          ...prev,
-          [targetScope]: {
-            ...prev[targetScope],
-            loading: false,
-            error: undefined,
-          },
-        }))
-        return
-      }
-
-      const { data, version: nextVersion } = response
+      const { data, etag: nextVersion, fromCache } = response
 
       updateStates((prev) => {
         const nextEntries = mergeEntries(prev[targetScope].entries, data.entries, data.page)
@@ -200,7 +187,7 @@ export function RatingsPage() {
           version: nextVersion ?? prev[targetScope].version,
           loading: false,
           error: undefined,
-          fetchedAt: Date.now(),
+          fetchedAt: fromCache ? prev[targetScope].fetchedAt : Date.now(),
         }
         return {
           ...prev,
@@ -223,6 +210,24 @@ export function RatingsPage() {
       return
     }
   }, [scope, loadLeaderboard])
+
+  // Адаптивный polling для автообновления рейтинга
+  // Интервалы увеличены под Render.com Free tier - данные меняются редко
+  useAdaptivePolling(
+    () => {
+      // Обновлять только если не загружается и есть данные
+      const currentState = statesRef.current[scope]
+      if (!currentState.loading && currentState.entries.length > 0) {
+        loadLeaderboard(scope, 1, false)
+      }
+    },
+    {
+      activeInterval: 60000, // 1 минута для активной вкладки
+      inactiveInterval: 300000, // 5 минут для неактивной
+      backgroundInterval: 600000, // 10 минут для фоновой
+      immediate: false, // Не запускать сразу, т.к. useEffect уже загружает
+    }
+  )
 
   const activeState = states[scope]
   const hasMore = activeState.entries.length < activeState.total

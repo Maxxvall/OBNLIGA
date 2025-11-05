@@ -1,9 +1,10 @@
 export const PREDICTION_UPCOMING_DEFAULT_DAYS = 6
 export const PREDICTION_UPCOMING_MAX_DAYS = 10
-export const PREDICTION_UPCOMING_CACHE_TTL_SECONDS = 300
-export const PREDICTION_UPCOMING_STALE_SECONDS = 120
-export const PREDICTION_USER_CACHE_TTL_SECONDS = 300
-export const PREDICTION_USER_STALE_SECONDS = 120
+// Увеличены TTL под Render.com Free tier - данные меняются редко (в основном после финализации матчей)
+export const PREDICTION_UPCOMING_CACHE_TTL_SECONDS = 60 // 1 минута - свежие данные
+export const PREDICTION_UPCOMING_STALE_SECONDS = 300 // 5 минут - устаревшие данные (SWR)
+export const PREDICTION_USER_CACHE_TTL_SECONDS = 300 // 5 минут - личные данные
+export const PREDICTION_USER_STALE_SECONDS = 900 // 15 минут - устаревшие данные (SWR)
 export const PREDICTION_MAX_SELECTION_LENGTH = 64
 export const PREDICTION_WEEKLY_LIMIT = 10
 

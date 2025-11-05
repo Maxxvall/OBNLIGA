@@ -199,6 +199,103 @@ const recordFromOptions = (options: unknown): Record<string, unknown> | null => 
   return options as Record<string, unknown>
 }
 
+// Функция для определения порядка сортировки templates
+// Порядок: Тотал-1, Основной тотал, Тотал+1, Пенальти, Красная карточка
+const getTemplateSortOrder = (template: PredictionTemplateView): number => {
+  const meta = resolveTemplateMeta(template)
+  const title = meta.title.toLowerCase()
+
+  // MATCH_OUTCOME - самый первый (но он отдельно обрабатывается)
+  if (template.marketType === 'MATCH_OUTCOME') {
+    return 0
+  }
+
+  // TOTAL_GOALS с разными линиями
+  if (template.marketType === 'TOTAL_GOALS') {
+    const options = recordFromOptions(template.options)
+    const line = typeof options?.line === 'number' ? options.line :
+                 typeof options?.formattedLine === 'string' ? parseFloat(options.formattedLine) : null
+    
+    if (line !== null && !Number.isNaN(line)) {
+      const delta = options?.delta
+      if (typeof delta === 'number') {
+        // Тотал-1
+        if (delta < 0) return 10
+        // Тотал+1
+        if (delta > 0) return 30
+      }
+      // Основной тотал (delta === 0 или отсутствует)
+      return 20
+    }
+    return 20 // дефолтный тотал
+  }
+
+  // CUSTOM_BOOLEAN - проверяем по названию
+  if (template.marketType === 'CUSTOM_BOOLEAN') {
+    // Пенальти
+    if (title.includes('пенальт') || title.includes('penalty')) {
+      return 40
+    }
+    // Красная карточка
+    if (title.includes('красн') || title.includes('red') || title.includes('карточк')) {
+      return 50
+    }
+    // Остальные спецсобытия
+    return 60
+  }
+
+  return 100 // все остальные в конец
+}
+
+// Сортировка шаблонов
+const sortTemplates = (templates: PredictionTemplateView[]): PredictionTemplateView[] => {
+  return [...templates].sort((a, b) => getTemplateSortOrder(a) - getTemplateSortOrder(b))
+}
+
+// Группировка матчей по датам
+type MatchGroup = {
+  dateKey: string
+  dateLabel: string
+  matches: ActivePredictionMatch[]
+}
+
+const formatDateGroupLabel = (date: Date): string => {
+  const dayNames = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота']
+  const dayName = dayNames[date.getDay()]
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  return `${day}.${month} — ${dayName}`
+}
+
+const groupMatchesByDate = (matches: ActivePredictionMatch[]): MatchGroup[] => {
+  const groups = new Map<string, ActivePredictionMatch[]>()
+  
+  matches.forEach(match => {
+    const date = new Date(match.matchDateTime)
+    const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    
+    if (!groups.has(dateKey)) {
+      groups.set(dateKey, [])
+    }
+    groups.get(dateKey)!.push(match)
+  })
+  
+  const result: MatchGroup[] = []
+  groups.forEach((groupMatches, dateKey) => {
+    const firstMatch = groupMatches[0]
+    const date = new Date(firstMatch.matchDateTime)
+    result.push({
+      dateKey,
+      dateLabel: formatDateGroupLabel(date),
+      matches: groupMatches.sort((a, b) => 
+        new Date(a.matchDateTime).getTime() - new Date(b.matchDateTime).getTime()
+      ),
+    })
+  })
+  
+  return result.sort((a, b) => a.dateKey.localeCompare(b.dateKey))
+}
+
 const resolveTemplateMeta = (template: PredictionTemplateView): TemplateMeta => {
   if (template.marketType === 'TOTAL_GOALS') {
     const options = recordFromOptions(template.options)
@@ -537,9 +634,15 @@ const PredictionsPage: React.FC = () => {
       return <p className="prediction-note">В ближайшие шесть дней нет доступных прогнозов.</p>
     }
 
+    const matchGroups = groupMatchesByDate(upcoming)
+
     return (
-      <ul className="prediction-match-list">
-        {upcoming.map(match => {
+      <div>
+        {matchGroups.map(group => (
+          <div key={group.dateKey} className="prediction-date-group">
+            <h3 className="prediction-date-header">{group.dateLabel}</h3>
+            <ul className="prediction-match-list">
+              {group.matches.map(match => {
           if (!match.templates.length) {
             return (
               <li key={match.matchId} className="prediction-match">
@@ -552,7 +655,8 @@ const PredictionsPage: React.FC = () => {
           const isExpanded = expandedMatches[match.matchId] === true
           
           const outcomeTemplate = match.templates.find(t => t.marketType === 'MATCH_OUTCOME')
-          const otherTemplates = match.templates.filter(t => t.marketType !== 'MATCH_OUTCOME')
+          const otherTemplatesUnsorted = match.templates.filter(t => t.marketType !== 'MATCH_OUTCOME')
+          const otherTemplates = sortTemplates(otherTemplatesUnsorted)
           
           const hasAnySelection = match.templates.some(t => selectedOptions[t.id])
           const anySubmitting = match.templates.some(t => submitting[t.id])
@@ -644,7 +748,10 @@ const PredictionsPage: React.FC = () => {
             </li>
           )
         })}
-      </ul>
+            </ul>
+          </div>
+        ))}
+      </div>
     )
   }
 

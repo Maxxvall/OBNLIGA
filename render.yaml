@@ -29,6 +29,19 @@ services:
       - key: VITE_BACKEND_URL
         value: "https://futbol-league-backend.onrender.com"
 
+  - type: static
+    name: futbol-league-admin
+    plan: free
+    region: frankfurt
+    buildCommand: npm ci --omit=dev && npm run build
+    publishPath: dist
+    autoDeploy: true
+    branch: main
+    rootDirectory: admin
+    env:
+      - key: VITE_BACKEND_URL
+        value: "https://futbol-league-backend.onrender.com"
+
 databases:
   - name: obnliga-db
     plan: free

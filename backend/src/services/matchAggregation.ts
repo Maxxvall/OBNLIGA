@@ -197,6 +197,9 @@ export async function handleMatchFinalization(
 
   const competitionId = match.season.competitionId
 
+  // Инвалидируем только те ключи, которые не будут переустановлены через set() ниже.
+  // Ключи таблицы, расписания, результатов и статистики обновляются через set(),
+  // что автоматически увеличит версию при изменении fingerprint
   const cacheKeys = [
     `season:${seasonId}:club-stats`,
     `season:${seasonId}:player-stats`,
@@ -209,21 +212,9 @@ export async function handleMatchFinalization(
     'league:player-career',
     `match:${matchId.toString()}`,
     ...Array.from(impactedClubIds).map(clubId => `club:${clubId}:player-career`),
-  ...Array.from(impactedClubIds).map(clubId => publicClubSummaryKey(clubId)),
-    PUBLIC_LEAGUE_TABLE_KEY,
-    `${PUBLIC_LEAGUE_TABLE_KEY}:${seasonId}`,
-    PUBLIC_LEAGUE_STATS_KEY,
-    `${PUBLIC_LEAGUE_STATS_KEY}:${seasonId}`,
-    PUBLIC_LEAGUE_SCORERS_KEY,
-    `${PUBLIC_LEAGUE_SCORERS_KEY}:${seasonId}`,
-    PUBLIC_LEAGUE_ASSISTS_KEY,
-    `${PUBLIC_LEAGUE_ASSISTS_KEY}:${seasonId}`,
-    PUBLIC_LEAGUE_GOAL_CONTRIBUTORS_KEY,
-    `${PUBLIC_LEAGUE_GOAL_CONTRIBUTORS_KEY}:${seasonId}`,
-    PUBLIC_LEAGUE_SCHEDULE_KEY,
-    `${PUBLIC_LEAGUE_SCHEDULE_KEY}:${seasonId}`,
-    PUBLIC_LEAGUE_RESULTS_KEY,
-    `${PUBLIC_LEAGUE_RESULTS_KEY}:${seasonId}`,
+    ...Array.from(impactedClubIds).map(clubId => publicClubSummaryKey(clubId)),
+    // НЕ инвалидируем PUBLIC_LEAGUE_TABLE_KEY, PUBLIC_LEAGUE_STATS_KEY и т.д.
+    // потому что они будут обновлены через set() ниже
   ]
   await Promise.all(cacheKeys.map(key => defaultCache.invalidate(key).catch(() => undefined)))
 

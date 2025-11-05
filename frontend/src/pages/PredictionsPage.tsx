@@ -125,7 +125,7 @@ const FALLBACK_CHOICES: Partial<Record<PredictionMarketType, PredictionChoiceOpt
 const normalizeTemplateChoices = (template: PredictionTemplateView): PredictionChoiceOption[] => {
   const seen = new Map<string, PredictionChoiceOption>()
 
-  const pushChoice = (value: string, label?: string, description?: string | null) => {
+  const pushChoice = (value: string, label?: string, description?: string | null, points?: number | null) => {
     const trimmedValue = value.trim()
     if (!trimmedValue) {
       return
@@ -138,6 +138,7 @@ const normalizeTemplateChoices = (template: PredictionTemplateView): PredictionC
       value: trimmedValue,
       label: resolvedLabel,
       description: description ?? null,
+      points: points ?? null,
     })
   }
 
@@ -151,11 +152,12 @@ const normalizeTemplateChoices = (template: PredictionTemplateView): PredictionC
       return
     }
     if (candidate && typeof candidate === 'object') {
-      const record = candidate as { value?: unknown; label?: unknown; description?: unknown }
+      const record = candidate as { value?: unknown; label?: unknown; description?: unknown; points?: unknown }
       if (typeof record.value === 'string') {
         const label = typeof record.label === 'string' ? record.label : undefined
         const description = typeof record.description === 'string' ? record.description : null
-        pushChoice(record.value, label, description)
+        const points = typeof record.points === 'number' ? record.points : null
+        pushChoice(record.value, label, description, points)
       }
     }
   }
@@ -238,8 +240,21 @@ const resolveTemplateMeta = (template: PredictionTemplateView): TemplateMeta => 
   }
 }
 
-const renderClubCompact = (
-  club: ActivePredictionMatch['homeClub'] | UserPredictionEntry['homeClub']
+const renderClubCompactWithLogo = (
+  club: ActivePredictionMatch['homeClub']
+) => (
+  <div className="prediction-club-compact">
+    {club.logoUrl ? (
+      <img src={club.logoUrl} alt={club.name} className="prediction-club-logo" />
+    ) : (
+      <div className="prediction-club-logo-placeholder" />
+    )}
+    <span className="prediction-club-name">{club.name}</span>
+  </div>
+)
+
+const renderClubCompactNoLogo = (
+  club: UserPredictionEntry['homeClub']
 ) => (
   <div className="prediction-club-compact">
     <span className="prediction-club-name">{club.name}</span>
@@ -255,9 +270,9 @@ const renderUpcomingMatchHeader = (match: ActivePredictionMatch) => (
       </span>
     </div>
     <div className="prediction-card-teams-compact">
-      {renderClubCompact(match.homeClub)}
+      {renderClubCompactWithLogo(match.homeClub)}
       <span className="prediction-vs-compact">VS</span>
-      {renderClubCompact(match.awayClub)}
+      {renderClubCompactWithLogo(match.awayClub)}
     </div>
   </header>
 )
@@ -342,9 +357,9 @@ const renderUserPrediction = (prediction: UserPredictionEntry) => (
         </span>
       </div>
       <div className="prediction-entry-teams-compact">
-        {renderClubCompact(prediction.homeClub)}
+        {renderClubCompactNoLogo(prediction.homeClub)}
         <span className="prediction-vs-compact">VS</span>
-        {renderClubCompact(prediction.awayClub)}
+        {renderClubCompactNoLogo(prediction.awayClub)}
       </div>
     </div>
     <div className="prediction-entry-body">
@@ -454,7 +469,16 @@ const PredictionsPage: React.FC = () => {
   }, [])
 
   const handleOptionSelect = useCallback((templateId: string, value: string) => {
-    setSelectedOptions(prev => ({ ...prev, [templateId]: value }))
+    setSelectedOptions(prev => {
+      // Если выбран тот же вариант - снимаем выбор
+      if (prev[templateId] === value) {
+        const updated = { ...prev }
+        delete updated[templateId]
+        return updated
+      }
+      // Иначе устанавливаем новый выбор
+      return { ...prev, [templateId]: value }
+    })
     setSubmitErrors(prev => ({ ...prev, [templateId]: undefined }))
     setSubmitSuccess(prev => ({ ...prev, [templateId]: undefined }))
   }, [])
@@ -549,20 +573,23 @@ const PredictionsPage: React.FC = () => {
               <section key={template.id} className="prediction-market-inline">
                 <div className="prediction-market-inline-header">
                   <span className="prediction-market-inline-title">{meta.title}</span>
-                  <span className="prediction-points-hint">+{expectedPoints} очков</span>
                 </div>
                 <div className="prediction-options">
-                  {choices.map(choice => (
-                    <button
-                      type="button"
-                      key={choice.value}
-                      className={`prediction-option${selected === choice.value ? ' selected' : ''}`}
-                      onClick={() => handleOptionSelect(template.id, choice.value)}
-                      disabled={anySubmitting}
-                    >
-                      <span className="prediction-option-label">{choice.label}</span>
-                    </button>
-                  ))}
+                  {choices.map(choice => {
+                    const choicePoints = choice.points ?? expectedPoints
+                    return (
+                      <button
+                        type="button"
+                        key={choice.value}
+                        className={`prediction-option${selected === choice.value ? ' selected' : ''}`}
+                        onClick={() => handleOptionSelect(template.id, choice.value)}
+                        disabled={anySubmitting}
+                      >
+                        <span className="prediction-option-label">{choice.label}</span>
+                        <span className="prediction-option-points">+{choicePoints}</span>
+                      </button>
+                    )
+                  })}
                 </div>
               </section>
             )

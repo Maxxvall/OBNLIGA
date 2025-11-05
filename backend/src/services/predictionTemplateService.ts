@@ -140,8 +140,38 @@ const buildTotalGoalsOptionsForLine = (
   suggestion: TotalGoalsSuggestion
 ): Prisma.JsonObject => {
   const formattedLine = formatTotalLine(line)
-  const overChoice = { value: `OVER_${formattedLine}`, label: 'Да' }
-  const underChoice = { value: `UNDER_${formattedLine}`, label: 'Нет' }
+  
+  // Рассчитываем вероятность OVER на основе среднего и линии
+  const avgGoals = suggestion.averageGoals
+  const diff = avgGoals - line
+  
+  // Простая эвристика: если среднее выше линии - OVER вероятнее, иначе UNDER
+  // Используем сигмоиду для расчета вероятности
+  const probabilityOver = 1 / (1 + Math.exp(-diff * 2))
+  const probabilityUnder = 1 - probabilityOver
+  
+  // Базовые очки из константы
+  const basePoints = PREDICTION_TOTAL_GOALS_BASE_POINTS
+  const difficulty = computeTotalDifficultyMultiplier(suggestion)
+  
+  // Очки обратно пропорциональны вероятности (меньше вероятность = больше очков)
+  // Минимальный коэффициент 1.2, максимальный 2.5
+  const overMultiplier = Math.max(1.2, Math.min(2.5, 1 / probabilityOver))
+  const underMultiplier = Math.max(1.2, Math.min(2.5, 1 / probabilityUnder))
+  
+  const overPoints = Math.round(basePoints * difficulty * overMultiplier)
+  const underPoints = Math.round(basePoints * difficulty * underMultiplier)
+  
+  const overChoice = { 
+    value: `OVER_${formattedLine}`, 
+    label: 'Да',
+    points: overPoints
+  }
+  const underChoice = { 
+    value: `UNDER_${formattedLine}`, 
+    label: 'Нет',
+    points: underPoints
+  }
 
   return {
     line,

@@ -369,8 +369,10 @@
 
 .prediction-option {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
   padding: 12px 14px;
   border-radius: 14px;
   border: 1px solid rgba(0, 240, 255, 0.16);
@@ -400,6 +402,17 @@
 .prediction-option-label {
   font-size: 14px;
   font-weight: 600;
+  flex: 1;
+}
+
+.prediction-option-points {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--prediction-success);
+  background: rgba(68, 230, 166, 0.12);
+  padding: 4px 8px;
+  border-radius: 8px;
+  white-space: nowrap;
 }
 
 .prediction-option-description {

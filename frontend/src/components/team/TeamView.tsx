@@ -57,11 +57,12 @@ const buildGaugeSegments = (stats: ClubSummaryResponse['statistics']): GaugeSegm
   const total = stats.wins + stats.draws + stats.losses;
   if (total <= 0) return [];
   
-  const GAP_DEGREES = 2; // Фиксированный отступ между сегментами
-  const MIN_SEGMENT_DEGREES = 3; // Минимальная ширина сегмента
-  let cursor = 0;
+  const GAP_DEGREES = 4; // Отступ между сегментами
+  const MIN_SEGMENT_DEGREES = 3;
+  let cursor = 0; // Начинаем с 0° (что при смещении +180 будет слева)
   const segments: GaugeSegment[] = [];
 
+  // Порядок: победы -> ничьи -> поражения (слева направо)
   const sources = [
     { key: 'wins', value: stats.wins },
     { key: 'draws', value: stats.draws },
@@ -76,32 +77,38 @@ const buildGaugeSegments = (stats: ClubSummaryResponse['statistics']): GaugeSegm
     let sweep = (source.value / total) * totalDegrees;
     sweep = Math.max(sweep, MIN_SEGMENT_DEGREES);
     
+    const start = cursor;
+    const end = cursor + sweep; // Идём по часовой стрелке (слева направо)
+    
     segments.push({ 
       key: source.key as GaugeSegment['key'], 
-      start: cursor, 
-      end: cursor + sweep 
+      start: start, 
+      end: end 
     });
     
-    cursor += sweep + (index < sources.length - 1 ? GAP_DEGREES : 0);
+    cursor = end + (index < sources.length - 1 ? GAP_DEGREES : 0);
   });
 
   return segments;
 };
 
 const polarToCartesian = (centerX: number, centerY: number, radius: number, angleInDegrees: number) => {
-  const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180
+  // Преобразуем: 0° = слева (9:00), 180° = справа (3:00)
+  // SVG координаты: 0° справа, +90° внизу
+  // Для полукруга слева направо: начинаем с 180° (слева) и идём к 0° (справа)
+  const angleInRadians = ((angleInDegrees + 180) * Math.PI) / 180;
   return {
     x: centerX + radius * Math.cos(angleInRadians),
     y: centerY + radius * Math.sin(angleInRadians),
-  }
+  };
 }
 
 const describeArc = (centerX: number, centerY: number, radius: number, startAngle: number, endAngle: number) => {
-  const start = polarToCartesian(centerX, centerY, radius, endAngle)
-  const end = polarToCartesian(centerX, centerY, radius, startAngle)
-  const sweep = Math.abs(endAngle - startAngle)
-  const largeArcFlag = sweep > 180 ? '1' : '0'
-  const sweepFlag = endAngle >= startAngle ? '1' : '0'
+  const start = polarToCartesian(centerX, centerY, radius, startAngle);
+  const end = polarToCartesian(centerX, centerY, radius, endAngle);
+  const sweep = endAngle - startAngle;
+  const largeArcFlag = Math.abs(sweep) >= 180 ? '1' : '0';
+  const sweepFlag = sweep >= 0 ? '1' : '0';
 
   return [
     'M',
@@ -115,10 +122,9 @@ const describeArc = (centerX: number, centerY: number, radius: number, startAngl
     sweepFlag,
     end.x.toFixed(3),
     end.y.toFixed(3),
-  ].join(' ')
-}
+  ].join(' ');
+};
 
-const toAbsoluteAngle = (value: number) => value
 
 type CompactMatch = ClubMatchesResponse['s'][number]['m'][number]
 
@@ -306,15 +312,26 @@ const renderAchievements = (summary: ClubSummaryResponse) => {
       </div>
     )
   }
+  
   return (
-    <ul className="team-achievements-list">
-      {summary.achievements.map(item => (
-        <li key={item.id} className="team-achievement">
-          <span className="team-achievement-title">{item.title}</span>
-          {item.subtitle && <span className="team-achievement-subtitle">{item.subtitle}</span>}
-        </li>
-      ))}
-    </ul>
+    <div className="team-achievements-grid">
+      {summary.achievements.map(item => {
+        // Парсим данные достижения: ожидаем формат "1 место" или "2 место" в title
+        const placeMatch = item.title.match(/^(\d+)\s*место$/i)
+        const place = placeMatch ? parseInt(placeMatch[1], 10) : null
+        const placeClass = place ? `place-${place}` : 'place-default'
+        
+        return (
+          <div key={item.id} className={`team-achievement-card ${placeClass}`}>
+            <div className="team-achievement-icon">🏆</div>
+            <div className="team-achievement-content">
+              <span className="team-achievement-place">{item.title}</span>
+              {item.subtitle && <span className="team-achievement-season">{item.subtitle}</span>}
+            </div>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 

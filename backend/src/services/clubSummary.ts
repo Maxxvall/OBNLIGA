@@ -1,6 +1,7 @@
 import { MatchEventType, MatchStatus } from '@prisma/client'
 import prisma from '../db'
 import { defaultCache } from '../cache'
+import { buildLeagueTable } from './leagueTable'
 
 export type PublishFn = (topic: string, payload: unknown) => Promise<unknown>
 
@@ -192,6 +193,147 @@ const buildFormEntry = (match: MatchRow, clubId: number): ClubSummarySnapshot['f
   }
 }
 
+type PlayoffWinners = {
+  championId: number | null
+  runnerUpId: number | null
+  thirdPlaceId: number | null
+}
+
+const detectPlayoffWinners = async (seasonId: number): Promise<PlayoffWinners> => {
+  const result: PlayoffWinners = {
+    championId: null,
+    runnerUpId: null,
+    thirdPlaceId: null,
+  }
+
+  // Получаем все серии плей-офф для этого сезона
+  const series = await prisma.matchSeries.findMany({
+    where: { seasonId },
+    include: {
+      homeClub: true,
+      awayClub: true,
+    },
+  })
+
+  if (series.length === 0) {
+    return result
+  }
+
+  // Ищем финал
+  const finalSeries = series.find((s) => {
+    const normalized = s.stageName.toLowerCase()
+    const isSemi = normalized.includes('1/2') || normalized.includes('semi') || normalized.includes('полу')
+    return !isSemi && normalized.includes('финал') && !normalized.includes('3')
+  })
+
+  if (finalSeries && finalSeries.winnerClubId) {
+    result.championId = finalSeries.winnerClubId
+    // Второе место - проигравший в финале
+    result.runnerUpId =
+      finalSeries.winnerClubId === finalSeries.homeClubId
+        ? finalSeries.awayClubId
+        : finalSeries.homeClubId
+  }
+
+  // Ищем матч за 3 место
+  const thirdPlaceSeries = series.find((s) => {
+    const normalized = s.stageName.toLowerCase()
+    return normalized.includes('3') && normalized.includes('мест')
+  })
+
+  if (thirdPlaceSeries && thirdPlaceSeries.winnerClubId) {
+    result.thirdPlaceId = thirdPlaceSeries.winnerClubId
+  }
+
+  return result
+}
+
+const buildClubAchievements = async (
+  clubId: number,
+  seasonIds: Set<number>
+): Promise<ClubSummarySnapshot['achievements']> => {
+  const achievements: ClubSummarySnapshot['achievements'] = []
+
+  // Проверяем каждый сезон
+  for (const seasonId of seasonIds) {
+    const season = await prisma.season.findUnique({
+      where: { id: seasonId },
+      include: { competition: true },
+    })
+
+    if (!season) {
+      continue
+    }
+
+    // Проверяем, что все матчи сезона завершены
+    const hasUnfinishedMatches = await prisma.match.count({
+      where: {
+        seasonId,
+        status: { not: MatchStatus.FINISHED },
+        isFriendly: false,
+      },
+    })
+
+    if (hasUnfinishedMatches > 0) {
+      continue // Пропускаем сезоны с незавершёнными матчами
+    }
+
+    // Сначала проверяем плей-офф
+    const playoffWinners = await detectPlayoffWinners(seasonId)
+    
+    let place: number | null = null
+    
+    if (playoffWinners.championId === clubId) {
+      place = 1
+    } else if (playoffWinners.runnerUpId === clubId) {
+      place = 2
+    } else if (playoffWinners.thirdPlaceId === clubId) {
+      place = 3
+    }
+
+    // Если есть место из плей-офф, добавляем достижение
+    if (place !== null) {
+      achievements.push({
+        id: `season-${seasonId}-place-${place}`,
+        title: `${place} место`,
+        subtitle: season.name,
+      })
+      continue // Переходим к следующему сезону
+    }
+
+    // Если плей-офф не определил место, используем турнирную таблицу
+    try {
+      const tableData = await buildLeagueTable(season)
+      const standings = tableData.standings
+
+      // Находим позицию клуба
+      const clubPosition = standings.findIndex((entry) => entry.clubId === clubId)
+
+      // Если клуб в топ-3
+      if (clubPosition !== -1 && clubPosition < 3) {
+        const tablePlace = clubPosition + 1
+        achievements.push({
+          id: `season-${seasonId}-place-${tablePlace}`,
+          title: `${tablePlace} место`,
+          subtitle: season.name,
+        })
+      }
+    } catch (err) {
+      // Если не удалось построить таблицу, пропускаем этот сезон
+      console.warn(`Failed to build league table for season ${seasonId}:`, err)
+    }
+  }
+
+  // Сортируем достижения: сначала по месту (1, 2, 3), потом по дате сезона
+  achievements.sort((a, b) => {
+    const placeA = parseInt(a.title.match(/(\d+)/)?.[1] || '999', 10)
+    const placeB = parseInt(b.title.match(/(\d+)/)?.[1] || '999', 10)
+    return placeA - placeB
+  })
+
+  return achievements
+}
+
 export const buildClubSummary = async (clubId: number): Promise<ClubSummarySnapshot | null> => {
   const club = await prisma.club.findUnique({
     where: { id: clubId },
@@ -326,6 +468,9 @@ export const buildClubSummary = async (clubId: number): Promise<ClubSummarySnaps
     goals: player.totalGoals,
   }))
 
+  // Генерируем достижения (топ-3 места в завершенных сезонах)
+  const achievements = await buildClubAchievements(clubId, seasonIds)
+
   const summary: ClubSummarySnapshot = {
     club: {
       id: club.id,
@@ -347,7 +492,7 @@ export const buildClubSummary = async (clubId: number): Promise<ClubSummarySnaps
     },
     form: officialMatches.slice(0, CLUB_FORM_LIMIT).map(match => buildFormEntry(match, clubId)),
     squad,
-    achievements: [],
+    achievements,
     generatedAt: new Date().toISOString(),
   }
 

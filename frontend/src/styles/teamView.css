@@ -198,14 +198,14 @@
 
 .team-stats-matches {
   position: relative;
-  min-width: 140px;
+  min-width: 160px;
 }
 
 .team-stats-gauge {
   position: relative;
-  width: 140px;
+  width: 160px;
   margin: 0 auto;
-  --team-gauge-stroke: 16px;
+  --team-gauge-stroke: 18px;
   --team-gauge-track: rgba(230, 247, 255, 0.18);
   --team-gauge-win: #7affc1;
   --team-gauge-draw: rgba(255, 255, 255, 0.52);
@@ -258,14 +258,14 @@
 }
 
 .team-stats-matches-value {
-  font-size: 56px;
+  font-size: 48px;
   font-weight: 700;
   color: rgba(230, 247, 255, 0.95);
   line-height: 1;
 }
 
 .team-stats-matches-label {
-  font-size: 13px;
+  font-size: 12px;
   letter-spacing: 0.6px;
   color: rgba(230, 247, 255, 0.72);
   text-transform: lowercase;
@@ -440,30 +440,30 @@
   bottom: -4px;
   left: 50%;
   transform: translateX(-50%);
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 11px;
   border: 2px solid rgba(12, 20, 36, 0.92);
 }
 
-.team-form-result-badge.tone-win {
-  background: #7affa6;
-  color: #0b2610;
+.team-form-result-badge.tone-wins {
+  background: #4a9d5f;
+  color: #e8f5eb;
 }
 
-.team-form-result-badge.tone-draw {
-  background: #9e9e9e;
-  color: #1a1a1a;
+.team-form-result-badge.tone-draws {
+  background: #6b7280;
+  color: #e5e7eb;
 }
 
-.team-form-result-badge.tone-loss {
-  background: #ff6298;
-  color: #2b0c17;
+.team-form-result-badge.tone-losses {
+  background: #dc2626;
+  color: #fee2e2;
 }
 
 .team-form-score-compact {
@@ -484,36 +484,83 @@
   letter-spacing: 0.6px;
 }
 
-.team-achievements-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.team-achievements-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
 }
 
-.team-achievement {
-  border-radius: 18px;
-  border: 1px solid rgba(120, 31, 143, 0.3);
-  background: rgba(120, 31, 143, 0.16);
-  padding: 18px;
+.team-achievement-card {
+  border-radius: 14px;
+  border: 2px solid rgba(120, 31, 143, 0.3);
+  background: rgba(120, 31, 143, 0.12);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: all 0.2s ease;
+}
+
+.team-achievement-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(120, 31, 143, 0.25);
+}
+
+.team-achievement-card.place-1 {
+  border-color: rgba(255, 215, 0, 0.6);
+  background: rgba(255, 215, 0, 0.08);
+}
+
+.team-achievement-card.place-2 {
+  border-color: rgba(192, 192, 192, 0.6);
+  background: rgba(192, 192, 192, 0.08);
+}
+
+.team-achievement-card.place-3 {
+  border-color: rgba(205, 127, 50, 0.6);
+  background: rgba(205, 127, 50, 0.08);
+}
+
+.team-achievement-icon {
+  font-size: 32px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.team-achievement-card.place-1 .team-achievement-icon {
+  filter: drop-shadow(0 0 8px rgba(255, 215, 0, 0.5));
+}
+
+.team-achievement-card.place-2 .team-achievement-icon {
+  filter: drop-shadow(0 0 8px rgba(192, 192, 192, 0.5));
+}
+
+.team-achievement-card.place-3 .team-achievement-icon {
+  filter: drop-shadow(0 0 8px rgba(205, 127, 50, 0.5));
+}
+
+.team-achievement-content {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  box-shadow: 0 22px 44px rgba(120, 31, 143, 0.18);
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
 }
 
-.team-achievement-title {
-  font-size: 16px;
-  letter-spacing: 0.8px;
-  font-weight: 700;
-}
-
-.team-achievement-subtitle {
-  font-size: 12px;
+.team-achievement-place {
+  font-size: 15px;
   letter-spacing: 0.6px;
-  color: rgba(230, 247, 255, 0.74);
+  font-weight: 700;
+  color: rgba(230, 247, 255, 0.96);
+}
+
+.team-achievement-season {
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  color: rgba(230, 247, 255, 0.7);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* === Таблица состава === */

@@ -231,6 +231,7 @@
 
 .team-stats-gauge-segment {
   filter: drop-shadow(0 12px 20px rgba(0, 240, 255, 0.18));
+  transition: d 0.4s ease;
 }
 
 .team-stats-gauge-segment.tone-wins {

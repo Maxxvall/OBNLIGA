@@ -54,41 +54,39 @@ type GaugeSegment = {
 }
 
 const buildGaugeSegments = (stats: ClubSummaryResponse['statistics']): GaugeSegment[] => {
-  const total = stats.wins + stats.draws + stats.losses
-  if (total <= 0) {
-    return []
-  }
-  type SegmentSource = { key: GaugeSegment['key']; value: number }
-  const sources: SegmentSource[] = [
+  const total = stats.wins + stats.draws + stats.losses;
+  if (total <= 0) return [];
+  
+  const GAP_DEGREES = 2; // Фиксированный отступ между сегментами
+  const MIN_SEGMENT_DEGREES = 3; // Минимальная ширина сегмента
+  let cursor = 0;
+  const segments: GaugeSegment[] = [];
+
+  const sources = [
     { key: 'wins', value: stats.wins },
     { key: 'draws', value: stats.draws },
     { key: 'losses', value: stats.losses },
-  ]
+  ].filter(s => s.value > 0);
 
-  const activeSources = sources.filter(source => source.value > 0)
-  if (!activeSources.length) {
-    return []
-  }
+  if (sources.length === 0) return [];
 
-  const interiorGap = activeSources.length > 1 ? SEGMENT_GAP_DEGREES : 0
-  const edgeGap = activeSources.length > 1 ? SEGMENT_GAP_DEGREES / 2 : 0
-  let cursor = edgeGap
-  const segments: GaugeSegment[] = []
+  const totalDegrees = 180 - (GAP_DEGREES * (sources.length - 1));
+  
+  sources.forEach((source, index) => {
+    let sweep = (source.value / total) * totalDegrees;
+    sweep = Math.max(sweep, MIN_SEGMENT_DEGREES);
+    
+    segments.push({ 
+      key: source.key as GaugeSegment['key'], 
+      start: cursor, 
+      end: cursor + sweep 
+    });
+    
+    cursor += sweep + (index < sources.length - 1 ? GAP_DEGREES : 0);
+  });
 
-  activeSources.forEach((source, index) => {
-    const sweep = (source.value / total) * GAUGE_SWEEP
-    const reduction = index < activeSources.length - 1 ? interiorGap : edgeGap
-    const start = cursor
-    const end = Math.max(cursor + sweep - reduction, cursor)
-    if (end - start <= 0) {
-      return
-    }
-    cursor = end + (index < activeSources.length - 1 ? interiorGap : 0)
-    segments.push({ key: source.key, start, end })
-  })
-
-  return segments
-}
+  return segments;
+};
 
 const polarToCartesian = (centerX: number, centerY: number, radius: number, angleInDegrees: number) => {
   const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180
@@ -120,7 +118,7 @@ const describeArc = (centerX: number, centerY: number, radius: number, startAngl
   ].join(' ')
 }
 
-const toAbsoluteAngle = (value: number) => GAUGE_START_ANGLE - value
+const toAbsoluteAngle = (value: number) => value
 
 type CompactMatch = ClubMatchesResponse['s'][number]['m'][number]
 
@@ -421,20 +419,13 @@ const renderOverview = (summary: ClubSummaryResponse) => {
             <div className="team-stats-gauge" aria-hidden="true">
               <svg viewBox="0 0 120 70" focusable="false">
                 <path className="team-stats-gauge-track" d={trackPath} />
-                {gaugeSegments.map(segment => {
-                  const start = toAbsoluteAngle(segment.start)
-                  const end = toAbsoluteAngle(segment.end)
-                  if (Number.isNaN(start) || Number.isNaN(end) || start === end) {
-                    return null
-                  }
-                  return (
-                    <path
-                      key={`${segment.key}-${segment.start.toFixed(3)}-${segment.end.toFixed(3)}`}
-                      className={`team-stats-gauge-segment tone-${segment.key}`}
-                      d={describeArc(GAUGE_CENTER, GAUGE_CENTER, GAUGE_RADIUS, start, end)}
-                    />
-                  )
-                })}
+                {gaugeSegments.map(segment => (
+                  <path
+                    key={`${segment.key}-${segment.start.toFixed(3)}-${segment.end.toFixed(3)}`}
+                    className={`team-stats-gauge-segment tone-${segment.key}`}
+                    d={describeArc(GAUGE_CENTER, GAUGE_CENTER, GAUGE_RADIUS, segment.start, segment.end)}
+                  />
+                ))}
               </svg>
               <div className="team-stats-gauge-value">
                 <span className="team-stats-matches-value">{stats.matchesPlayed}</span>

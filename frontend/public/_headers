@@ -1,2 +1,33 @@
+# Заголовки кэширования для статических ассетов
+
+# HTML - всегда проверять обновления
+/*.html
+  Cache-Control: no-cache, no-store, must-revalidate
+
+# JavaScript и CSS с хэшами - долгое кэширование
+/assets/*.js
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/*.css
+  Cache-Control: public, max-age=31536000, immutable
+
+# Логотип
 /logo_liga.png
   Cache-Control: public, max-age=2592000, immutable
+
+# Логотипы команд
+/teamlogos/*.png
+  Cache-Control: public, max-age=2592000, immutable
+
+/teamlogos/*.jpg
+  Cache-Control: public, max-age=2592000, immutable
+
+/teamlogos/*.svg
+  Cache-Control: public, max-age=2592000, immutable
+
+# Шрифты
+/assets/*.woff2
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/*.woff
+  Cache-Control: public, max-age=31536000, immutable

@@ -130,30 +130,23 @@ export const AchievementsTab = () => {
   }
 
   return (
-    <div className="admin-tab-content">
-      <div className="tab-content-header">
-        <h1>Достижения</h1>
-        <p className="tab-description">
-          Управление типами достижений, метриками и прогрессом пользователей.
-        </p>
-      </div>
+    <>
+      <header className="tab-header">
+        <h2>Достижения</h2>
+        <p>Управление типами достижений, метриками и прогрессом пользователей.</p>
+      </header>
 
-      {feedback ? (
-        <div className={`tab-feedback tab-feedback-${feedbackLevel}`}>
-          <p>{feedback}</p>
-          <button type="button" onClick={() => setFeedback(null)}>
-            ✕
-          </button>
-        </div>
-      ) : null}
+      {feedback ? <div className={`inline-feedback ${feedbackLevel}`}>{feedback}</div> : null}
 
-      {/* Создание нового типа достижения */}
-      <section className="admin-section">
-        <h2>Создать тип достижения</h2>
-        <form onSubmit={handleAchievementSubmit} className="admin-form">
-          <div className="form-row">
+      <section className="card-grid">
+        {/* Создание нового типа достижения */}
+        <article className="card">
+          <header>
+            <h4>Создать тип достижения</h4>
+          </header>
+          <form className="stacked" onSubmit={handleAchievementSubmit}>
             <label>
-              Название:
+              Название
               <input
                 type="text"
                 value={achievementForm.name}
@@ -161,10 +154,8 @@ export const AchievementsTab = () => {
                 placeholder="Например: Новичок в прогнозах"
               />
             </label>
-          </div>
-          <div className="form-row">
             <label>
-              Описание:
+              Описание
               <textarea
                 value={achievementForm.description}
                 onChange={e => setAchievementForm({ ...achievementForm, description: e.target.value })}
@@ -172,10 +163,8 @@ export const AchievementsTab = () => {
                 rows={2}
               />
             </label>
-          </div>
-          <div className="form-row">
             <label>
-              Метрика:
+              Метрика
               <select
                 value={achievementForm.metric}
                 onChange={e =>
@@ -193,7 +182,7 @@ export const AchievementsTab = () => {
               </select>
             </label>
             <label>
-              Требуемое значение:
+              Требуемое значение
               <input
                 type="number"
                 value={achievementForm.requiredValue}
@@ -207,20 +196,20 @@ export const AchievementsTab = () => {
                 min="1"
               />
             </label>
-          </div>
-          <button type="submit" className="primary-button" disabled={isLoading}>
-            Создать
-          </button>
-        </form>
-      </section>
+            <button type="submit" className="button-primary" disabled={isLoading}>
+              Создать
+            </button>
+          </form>
+        </article>
 
-      {/* Редактирование существующего */}
-      <section className="admin-section">
-        <h2>Редактировать тип достижения</h2>
-        <form onSubmit={handleAchievementEditSubmit} className="admin-form">
-          <div className="form-row">
+        {/* Редактирование существующего */}
+        <article className="card">
+          <header>
+            <h4>Редактировать тип достижения</h4>
+          </header>
+          <form className="stacked" onSubmit={handleAchievementEditSubmit}>
             <label>
-              Выбрать достижение:
+              Выбрать достижение
               <select
                 value={achievementEditForm.id}
                 onChange={e => {
@@ -240,12 +229,10 @@ export const AchievementsTab = () => {
                 ))}
               </select>
             </label>
-          </div>
-          {achievementEditForm.id !== '' ? (
-            <>
-              <div className="form-row">
+            {achievementEditForm.id !== '' ? (
+              <>
                 <label>
-                  Название:
+                  Название
                   <input
                     type="text"
                     value={achievementEditForm.name}
@@ -254,10 +241,8 @@ export const AchievementsTab = () => {
                     }
                   />
                 </label>
-              </div>
-              <div className="form-row">
                 <label>
-                  Описание:
+                  Описание
                   <textarea
                     value={achievementEditForm.description}
                     onChange={e =>
@@ -266,10 +251,8 @@ export const AchievementsTab = () => {
                     rows={2}
                   />
                 </label>
-              </div>
-              <div className="form-row">
                 <label>
-                  Метрика:
+                  Метрика
                   <select
                     value={achievementEditForm.metric}
                     onChange={e =>
@@ -287,7 +270,7 @@ export const AchievementsTab = () => {
                   </select>
                 </label>
                 <label>
-                  Требуемое значение:
+                  Требуемое значение
                   <input
                     type="number"
                     value={achievementEditForm.requiredValue}
@@ -300,58 +283,59 @@ export const AchievementsTab = () => {
                     min="1"
                   />
                 </label>
-              </div>
-              <div className="form-row">
-                <button type="submit" className="primary-button" disabled={isLoading}>
-                  Сохранить изменения
-                </button>
-                <button
-                  type="button"
-                  className="delete-button"
-                  onClick={() => handleDeleteAchievement(Number(achievementEditForm.id))}
-                  disabled={isLoading}
-                >
-                  Удалить
-                </button>
-              </div>
-            </>
-          ) : null}
-        </form>
+                <div className="form-actions">
+                  <button type="submit" className="button-primary" disabled={isLoading}>
+                    Сохранить изменения
+                  </button>
+                  <button
+                    type="button"
+                    className="button-danger"
+                    onClick={() => handleDeleteAchievement(Number(achievementEditForm.id))}
+                    disabled={isLoading}
+                  >
+                    Удалить
+                  </button>
+                </div>
+              </>
+            ) : null}
+          </form>
+        </article>
       </section>
 
       {/* Список достижений пользователей */}
-      <section className="admin-section">
-        <h2>Прогресс пользователей ({data.userAchievements.length})</h2>
+      <section className="card" style={{ gridColumn: '1 / -1' }}>
+        <header>
+          <h4>Прогресс пользователей</h4>
+          <p>Всего записей: {data.userAchievements.length}</p>
+        </header>
         {data.userAchievements.length > 0 ? (
-          <div className="data-table-wrapper">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>User ID</th>
-                  <th>Достижение</th>
-                  <th>Дата</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.userAchievements.map((item, index) => {
-                  const achievementType = data.achievementTypes.find(
-                    at => at.id === item.achievementTypeId
-                  )
-                  return (
-                    <tr key={`${item.userId}-${item.achievementTypeId}-${index}`}>
-                      <td>{item.userId}</td>
-                      <td>{achievementType?.name ?? `ID ${item.achievementTypeId}`}</td>
-                      <td>{new Date(item.achievedDate).toLocaleString('ru')}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>User ID</th>
+                <th>Достижение</th>
+                <th>Дата</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.userAchievements.map((item, index) => {
+                const achievementType = data.achievementTypes.find(
+                  at => at.id === item.achievementTypeId
+                )
+                return (
+                  <tr key={`${item.userId}-${item.achievementTypeId}-${index}`}>
+                    <td>{item.userId}</td>
+                    <td>{achievementType?.name ?? `ID ${item.achievementTypeId}`}</td>
+                    <td>{new Date(item.achievedDate).toLocaleString('ru')}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         ) : (
-          <p className="empty-state">Пока никто не разблокировал достижений.</p>
+          <p className="muted">Пока никто не разблокировал достижений.</p>
         )}
       </section>
-    </div>
+    </>
   )
 }

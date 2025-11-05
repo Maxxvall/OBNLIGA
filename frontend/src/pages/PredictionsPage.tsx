@@ -89,7 +89,7 @@ const translateChoiceLabel = (marketType: PredictionMarketType, rawValue: string
 
   if (marketType === 'MATCH_OUTCOME') {
     if (upper === 'ONE' || upper === '1') return 'П1'
-    if (upper === 'DRAW' || upper === 'X') return 'X'
+    if (upper === 'DRAW' || upper === 'X') return 'Х'
     if (upper === 'TWO' || upper === '2') return 'П2'
   }
 
@@ -117,7 +117,7 @@ const translateChoiceLabel = (marketType: PredictionMarketType, rawValue: string
 const FALLBACK_CHOICES: Partial<Record<PredictionMarketType, PredictionChoiceOption[]>> = {
   MATCH_OUTCOME: [
     { value: 'ONE', label: 'П1' },
-    { value: 'DRAW', label: 'X' },
+    { value: 'DRAW', label: 'Х' },
     { value: 'TWO', label: 'П2' },
   ],
 }
@@ -281,7 +281,7 @@ const formatEntrySelection = (entry: UserPredictionEntry): string => {
   if (entry.marketType === 'LEGACY_1X2') {
     const upper = entry.selection.toUpperCase()
     if (upper === 'ONE' || upper === '1') return 'П1'
-    if (upper === 'DRAW' || upper === 'X') return 'X'
+    if (upper === 'DRAW' || upper === 'X') return 'Х'
     if (upper === 'TWO' || upper === '2') return 'П2'
     return translateChoiceLabel('MATCH_OUTCOME', entry.selection)
   }

@@ -24,9 +24,9 @@ import {
 } from './predictionTotalsService'
 
 const MATCH_OUTCOME_CHOICES = [
-  { value: 'ONE', label: 'Победа хозяев' },
-  { value: 'DRAW', label: 'Ничья' },
-  { value: 'TWO', label: 'Победа гостей' },
+  { value: 'ONE', label: 'П1' },
+  { value: 'DRAW', label: 'Н' },
+  { value: 'TWO', label: 'П2' },
 ]
 
 type SpecialEventDefinition = {
@@ -46,7 +46,7 @@ const SPECIAL_EVENT_DEFINITIONS: SpecialEventDefinition[] = [
   {
     eventKey: 'penalty',
     title: 'Пенальти',
-    description: 'Будет ли назначен и реализован пенальти',
+    description: 'Будет ли назначен пенальти',
     yesValue: 'PENALTY_YES',
     noValue: 'PENALTY_NO',
     yesLabel: 'Да',

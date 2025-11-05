@@ -70,7 +70,9 @@ export default async function ratingsRoutes(server: FastifyInstance) {
         pageSize: leaderboard.pageSize,
         capturedAt: leaderboard.capturedAt.toISOString(),
         currentWindowStart: windows.currentWindowStart.toISOString(),
+        currentWindowEnd: windows.currentWindowEnd.toISOString(),
         yearlyWindowStart: windows.yearlyWindowStart.toISOString(),
+        yearlyWindowEnd: windows.yearlyWindowEnd.toISOString(),
         entries: leaderboard.entries.map(entry => ({
           userId: entry.userId,
           position: entry.position,

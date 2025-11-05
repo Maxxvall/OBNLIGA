@@ -64,7 +64,9 @@ export interface RatingLeaderboardResponse {
   pageSize: number
   capturedAt: string
   currentWindowStart: string
+  currentWindowEnd: string
   yearlyWindowStart: string
+  yearlyWindowEnd: string
   entries: RatingLeaderboardEntryView[]
 }
 

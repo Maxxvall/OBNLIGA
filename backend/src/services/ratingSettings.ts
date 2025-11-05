@@ -143,12 +143,24 @@ export const computeRatingWindows = async (
     return start.getTime() <= reference ? start : fallback
   }
 
+  const resolveSeasonEnd = (season: { endsAt: Date | null } | undefined, fallback: Date) => {
+    if (!season?.endsAt) {
+      return fallback
+    }
+    const end = new Date(season.endsAt)
+    return end.getTime() >= reference ? end : fallback
+  }
+
   const currentWindowStart = resolveSeasonStart(activeCurrentSeason, fallbackCurrentStart)
   const yearlyWindowStart = resolveSeasonStart(activeYearlySeason, fallbackYearlyStart)
+  const currentWindowEnd = resolveSeasonEnd(activeCurrentSeason, anchor)
+  const yearlyWindowEnd = resolveSeasonEnd(activeYearlySeason, anchor)
 
   return {
     anchor,
     currentWindowStart,
+    currentWindowEnd,
     yearlyWindowStart,
+    yearlyWindowEnd,
   }
 }

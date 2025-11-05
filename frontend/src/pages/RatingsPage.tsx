@@ -12,7 +12,9 @@ type ScopeState = {
   total: number
   capturedAt?: string
   currentWindowStart?: string
+  currentWindowEnd?: string
   yearlyWindowStart?: string
+  yearlyWindowEnd?: string
   page: number
   pageSize: number
   version?: string
@@ -51,7 +53,9 @@ const createInitialScopeState = (): ScopeState => ({
   total: 0,
   capturedAt: undefined,
   currentWindowStart: undefined,
+  currentWindowEnd: undefined,
   yearlyWindowStart: undefined,
+  yearlyWindowEnd: undefined,
   page: 0,
   pageSize: PAGE_SIZE,
   version: undefined,
@@ -96,21 +100,6 @@ const mergeEntries = (
   return Array.from(map.values()).sort((a, b) => a.position - b.position)
 }
 
-const formatRelativeHint = (timestamp?: number): string | null => {
-  if (!timestamp) {
-    return null
-  }
-  const secondsAgo = Math.max(0, Math.round((Date.now() - timestamp) / 1000))
-  if (secondsAgo < 5) {
-    return 'Таблица обновлена секунду назад.'
-  }
-  if (secondsAgo < 60) {
-    return `Показаны свежие данные (${secondsAgo} сек назад).`
-  }
-  const minutesAgo = Math.round(secondsAgo / 60)
-  return `Последнее обновление примерно ${minutesAgo} мин назад.`
-}
-
 export function RatingsPage() {
   const [scope, setScope] = useState<RatingScopeKey>('current')
   const [states, setStates] = useState<Record<RatingScopeKey, ScopeState>>({
@@ -118,7 +107,6 @@ export function RatingsPage() {
     yearly: createInitialScopeState(),
   })
   const statesRef = useRef(states)
-  const [hint, setHint] = useState<string | null>(null)
 
   useEffect(() => {
     statesRef.current = states
@@ -179,7 +167,6 @@ export function RatingsPage() {
             error: errorLabel,
           },
         }))
-        setHint('Не удалось обновить рейтинг. Проверьте соединение и попробуйте ещё раз.')
         return
       }
 
@@ -192,7 +179,6 @@ export function RatingsPage() {
             error: undefined,
           },
         }))
-        setHint(formatRelativeHint(snapshot.fetchedAt))
         return
       }
 
@@ -206,7 +192,9 @@ export function RatingsPage() {
           total: data.total,
           capturedAt: data.capturedAt,
           currentWindowStart: data.currentWindowStart,
+          currentWindowEnd: data.currentWindowEnd,
           yearlyWindowStart: data.yearlyWindowStart,
+          yearlyWindowEnd: data.yearlyWindowEnd,
           page: data.page,
           pageSize: data.pageSize,
           version: nextVersion ?? prev[targetScope].version,
@@ -219,7 +207,6 @@ export function RatingsPage() {
           [targetScope]: nextState,
         }
       })
-      setHint(null)
     },
     [updateStates]
   )
@@ -235,22 +222,24 @@ export function RatingsPage() {
       loadLeaderboard(scope, 1)
       return
     }
-    setHint(formatRelativeHint(currentState.fetchedAt))
   }, [scope, loadLeaderboard])
 
   const activeState = states[scope]
   const hasMore = activeState.entries.length < activeState.total
   const isLoadingInitial = activeState.loading && activeState.entries.length === 0
   const isLoadingMore = activeState.loading && activeState.entries.length > 0
-  const defaultHint = `Запросы кешируются до ${Math.round(CACHE_TTL_MS / 1000)} секунд для снижения нагрузки.`
-  const formattedCapturedAt = activeState.capturedAt
-    ? dateFormatter.format(new Date(activeState.capturedAt))
-    : null
-  const formattedCurrentWindow = activeState.currentWindowStart
+  
+  const formattedCurrentWindowStart = activeState.currentWindowStart
     ? dateFormatter.format(new Date(activeState.currentWindowStart))
     : null
-  const formattedYearlyWindow = activeState.yearlyWindowStart
+  const formattedCurrentWindowEnd = activeState.currentWindowEnd
+    ? dateFormatter.format(new Date(activeState.currentWindowEnd))
+    : null
+  const formattedYearlyWindowStart = activeState.yearlyWindowStart
     ? dateFormatter.format(new Date(activeState.yearlyWindowStart))
+    : null
+  const formattedYearlyWindowEnd = activeState.yearlyWindowEnd
+    ? dateFormatter.format(new Date(activeState.yearlyWindowEnd))
     : null
   const scopePointsLabel = scope === 'current' ? 'Очки сезона' : 'Очки года'
 
@@ -259,10 +248,6 @@ export function RatingsPage() {
       return
     }
     setScope(nextScope)
-  }
-
-  const handleRefresh = () => {
-    loadLeaderboard(scope, 1, true)
   }
 
   const handleLoadMore = () => {
@@ -278,11 +263,6 @@ export function RatingsPage() {
       <header className="ratings-header">
         <div className="ratings-title-row">
           <h1 className="ratings-title">Рейтинг игроков</h1>
-          <div className="ratings-controls">
-            <button type="button" onClick={handleRefresh} disabled={activeState.loading}>
-              Обновить
-            </button>
-          </div>
         </div>
         <div className="ratings-title-row">
           <div className="ratings-scope-switch">
@@ -298,24 +278,25 @@ export function RatingsPage() {
             ))}
           </div>
           <div className="ratings-meta">
-            <span className="ratings-meta-line">
-              {formattedCapturedAt
-                ? `Срез от ${formattedCapturedAt}`
-                : 'Срез обновляется каждые несколько минут'}
-            </span>
-            <span className="ratings-meta-line">
-              {formattedCurrentWindow
-                ? `Текущее окно: ${formattedCurrentWindow}`
-                : 'Текущее окно: —'}
-            </span>
-            <span className="ratings-meta-line">
-              {formattedYearlyWindow
-                ? `Годовой рейтинг: ${formattedYearlyWindow}`
-                : 'Годовой рейтинг: —'}
-            </span>
+            {scope === 'current' ? (
+              <>
+                {formattedCurrentWindowStart && formattedCurrentWindowEnd ? (
+                  <span className="ratings-meta-line">
+                    Срез от {formattedCurrentWindowStart} до {formattedCurrentWindowEnd}
+                  </span>
+                ) : null}
+              </>
+            ) : (
+              <>
+                {formattedYearlyWindowStart && formattedYearlyWindowEnd ? (
+                  <span className="ratings-meta-line">
+                    Годовой рейтинг от {formattedYearlyWindowStart} до {formattedYearlyWindowEnd}
+                  </span>
+                ) : null}
+              </>
+            )}
           </div>
         </div>
-        <div className="ratings-note">{hint ?? defaultHint}</div>
         {activeState.error ? <div className="ratings-error">{activeState.error}</div> : null}
       </header>
 
@@ -334,7 +315,6 @@ export function RatingsPage() {
                 <th>Прогнозы</th>
                 <th>% угаданных</th>
                 <th>Серии</th>
-                <th>Последний прогноз</th>
               </tr>
             </thead>
             <tbody>
@@ -385,11 +365,6 @@ export function RatingsPage() {
                       <span className="cell-meta">
                         Текущая: {numberFormatter.format(entry.currentStreak)}
                       </span>
-                    </td>
-                    <td className="col-date">
-                      {entry.lastPredictionAt
-                        ? dateFormatter.format(new Date(entry.lastPredictionAt))
-                        : '—'}
                     </td>
                   </tr>
                 )

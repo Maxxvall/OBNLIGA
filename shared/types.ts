@@ -120,6 +120,7 @@ export interface PredictionChoiceOption {
   value: string
   label: string
   description?: string | null
+  points?: number | null
 }
 
 export interface PredictionTemplateView {

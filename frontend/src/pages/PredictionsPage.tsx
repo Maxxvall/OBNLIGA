@@ -55,6 +55,8 @@ const translateSubmitError = (code?: string): string => {
     return 'Выбранный вариант недоступен.'
   case 'selection_required':
     return 'Выберите вариант, прежде чем отправлять прогноз.'
+  case 'weekly_limit_reached':
+    return 'Вы достигли лимита 10 прогнозов в неделю.'
   default:
     return 'Не удалось сохранить прогноз. Попробуйте чуть позже.'
   }
@@ -71,6 +73,12 @@ const formatDateTime = (iso: string): string => {
 const translateMarketType = (marketType: PredictionMarketType): string =>
   MARKET_LABELS[marketType] ?? marketType
 
+const computeExpectedPoints = (template: PredictionTemplateView): number => {
+  const base = template.basePoints
+  const multiplier = template.difficultyMultiplier ?? 1
+  return Math.round(base * multiplier)
+}
+
 const translateChoiceLabel = (marketType: PredictionMarketType, rawValue: string): string => {
   const value = rawValue.trim()
   if (!value) {
@@ -80,22 +88,22 @@ const translateChoiceLabel = (marketType: PredictionMarketType, rawValue: string
   const upper = value.toUpperCase()
 
   if (marketType === 'MATCH_OUTCOME') {
-    if (upper === 'ONE' || upper === '1') return 'Победа хозяев'
-    if (upper === 'DRAW' || upper === 'X') return 'Ничья'
-    if (upper === 'TWO' || upper === '2') return 'Победа гостей'
+    if (upper === 'ONE' || upper === '1') return 'П1'
+    if (upper === 'DRAW' || upper === 'X') return 'X'
+    if (upper === 'TWO' || upper === '2') return 'П2'
   }
 
   if (marketType === 'TOTAL_GOALS') {
     const overMatch = upper.match(/^OVER[_\s]?([0-9]+(?:\.[0-9]+)?)$/)
     if (overMatch) {
-      return `Больше ${overMatch[1]}`
+      return 'Да'
     }
     const underMatch = upper.match(/^UNDER[_\s]?([0-9]+(?:\.[0-9]+)?)$/)
     if (underMatch) {
-      return `Меньше ${underMatch[1]}`
+      return 'Нет'
     }
-    if (upper === 'OVER') return 'Тотал больше'
-    if (upper === 'UNDER') return 'Тотал меньше'
+    if (upper === 'OVER') return 'Да'
+    if (upper === 'UNDER') return 'Нет'
   }
 
   if (marketType === 'CUSTOM_BOOLEAN') {
@@ -108,16 +116,16 @@ const translateChoiceLabel = (marketType: PredictionMarketType, rawValue: string
 
 const FALLBACK_CHOICES: Partial<Record<PredictionMarketType, PredictionChoiceOption[]>> = {
   MATCH_OUTCOME: [
-    { value: 'ONE', label: 'Победа хозяев' },
-    { value: 'DRAW', label: 'Ничья' },
-    { value: 'TWO', label: 'Победа гостей' },
+    { value: 'ONE', label: 'П1' },
+    { value: 'DRAW', label: 'X' },
+    { value: 'TWO', label: 'П2' },
   ],
 }
 
 const normalizeTemplateChoices = (template: PredictionTemplateView): PredictionChoiceOption[] => {
   const seen = new Map<string, PredictionChoiceOption>()
 
-  const pushChoice = (value: string, label?: string, description?: string | null) => {
+  const pushChoice = (value: string, label?: string, description?: string | null, points?: number | null) => {
     const trimmedValue = value.trim()
     if (!trimmedValue) {
       return
@@ -130,6 +138,7 @@ const normalizeTemplateChoices = (template: PredictionTemplateView): PredictionC
       value: trimmedValue,
       label: resolvedLabel,
       description: description ?? null,
+      points: points ?? null,
     })
   }
 
@@ -143,11 +152,12 @@ const normalizeTemplateChoices = (template: PredictionTemplateView): PredictionC
       return
     }
     if (candidate && typeof candidate === 'object') {
-      const record = candidate as { value?: unknown; label?: unknown; description?: unknown }
+      const record = candidate as { value?: unknown; label?: unknown; description?: unknown; points?: unknown }
       if (typeof record.value === 'string') {
         const label = typeof record.label === 'string' ? record.label : undefined
         const description = typeof record.description === 'string' ? record.description : null
-        pushChoice(record.value, label, description)
+        const points = typeof record.points === 'number' ? record.points : null
+        pushChoice(record.value, label, description, points)
       }
     }
   }
@@ -180,7 +190,6 @@ type TemplateMeta = {
   title: string
   subtitle?: string | null
   group: 'primary' | 'special'
-  alternatives?: string[]
 }
 
 const recordFromOptions = (options: unknown): Record<string, unknown> | null => {
@@ -190,60 +199,37 @@ const recordFromOptions = (options: unknown): Record<string, unknown> | null => 
   return options as Record<string, unknown>
 }
 
-const extractTotalAlternatives = (options: Record<string, unknown> | null | undefined): string[] => {
-  if (!options) {
-    return []
-  }
-  const raw = options.alternatives
-  if (!Array.isArray(raw)) {
-    return []
-  }
-  const labels: string[] = []
-  raw.forEach(candidate => {
-    if (!candidate || typeof candidate !== 'object') {
-      return
-    }
-    const entry = candidate as Record<string, unknown>
-    const formatted = typeof entry.formattedLine === 'string' ? entry.formattedLine : null
-    const delta = typeof entry.delta === 'number' ? entry.delta : null
-    if (!formatted) {
-      return
-    }
-    if (delta && Number.isFinite(delta) && delta !== 0) {
-      const signed = delta > 0 ? `+${delta}` : String(delta)
-      labels.push(`${formatted} (${signed})`)
-    } else {
-      labels.push(formatted)
-    }
-  })
-  return labels
-}
-
 const resolveTemplateMeta = (template: PredictionTemplateView): TemplateMeta => {
   if (template.marketType === 'TOTAL_GOALS') {
     const options = recordFromOptions(template.options)
-    const formattedLine =
-      typeof options?.formattedLine === 'string'
-        ? options.formattedLine
-        : typeof options?.line === 'number'
-          ? options.line.toFixed(1)
-          : null
-    const alternatives = extractTotalAlternatives(options)
+    let formattedLine: string | null = null
+    
+    if (typeof options?.formattedLine === 'string') {
+      const parsed = parseFloat(options.formattedLine)
+      if (!Number.isNaN(parsed)) {
+        const rounded = Math.round(parsed * 2) / 2
+        formattedLine = rounded.toFixed(1)
+      } else {
+        formattedLine = options.formattedLine
+      }
+    } else if (typeof options?.line === 'number') {
+      const rounded = Math.round(options.line * 2) / 2
+      formattedLine = rounded.toFixed(1)
+    }
+    
     return {
-      title: formattedLine ? `Тотал ${formattedLine}` : translateMarketType(template.marketType),
-      subtitle: 'Голы в основное время',
+      title: formattedLine ? `Тотал голов ${formattedLine}` : 'Тотал голов',
+      subtitle: null,
       group: 'primary',
-      alternatives: alternatives.length ? alternatives : undefined,
     }
   }
 
   if (template.marketType === 'CUSTOM_BOOLEAN') {
     const options = recordFromOptions(template.options)
     const title = typeof options?.title === 'string' ? options.title : 'Спец событие'
-    const description = typeof options?.description === 'string' ? options.description : null
     return {
       title,
-      subtitle: description,
+      subtitle: null,
       group: 'special',
     }
   }
@@ -254,53 +240,72 @@ const resolveTemplateMeta = (template: PredictionTemplateView): TemplateMeta => 
   }
 }
 
-const renderClub = (
-  club: ActivePredictionMatch['homeClub'] | UserPredictionEntry['homeClub'],
-  align: 'left' | 'right'
+const renderClubCompactWithLogo = (
+  club: ActivePredictionMatch['homeClub']
 ) => (
-  <div className={`prediction-team prediction-team-${align}`}>
-    {club.logoUrl ? <img src={club.logoUrl} alt={club.name} /> : null}
-    <span>{club.name}</span>
+  <div className="prediction-club-compact">
+    {club.logoUrl ? (
+      <img src={club.logoUrl} alt={club.name} className="prediction-club-logo" />
+    ) : (
+      <div className="prediction-club-logo-placeholder" />
+    )}
+    <span className="prediction-club-name">{club.name}</span>
+  </div>
+)
+
+const renderClubCompactNoLogo = (
+  club: UserPredictionEntry['homeClub']
+) => (
+  <div className="prediction-club-compact">
+    <span className="prediction-club-name">{club.name}</span>
   </div>
 )
 
 const renderUpcomingMatchHeader = (match: ActivePredictionMatch) => (
-  <header className="prediction-card-header">
-    <div className="prediction-card-meta">
+  <header className="prediction-card-header-compact">
+    <div className="prediction-card-meta-compact">
       <span className="prediction-card-date">{formatDateTime(match.matchDateTime)}</span>
       <span className={`prediction-status status-${match.status.toLowerCase()}`}>
         {MATCH_STATUS_LABELS[match.status] ?? match.status}
       </span>
     </div>
-    <div className="prediction-card-teams">
-      {renderClub(match.homeClub, 'left')}
-      <span className="prediction-vs">vs</span>
-      {renderClub(match.awayClub, 'right')}
+    <div className="prediction-card-teams-compact">
+      {renderClubCompactWithLogo(match.homeClub)}
+      <span className="prediction-vs-compact">VS</span>
+      {renderClubCompactWithLogo(match.awayClub)}
     </div>
   </header>
 )
 
 const formatEntrySelection = (entry: UserPredictionEntry): string => {
   if (entry.marketType === 'LEGACY_1X2') {
+    const upper = entry.selection.toUpperCase()
+    if (upper === 'ONE' || upper === '1') return 'П1'
+    if (upper === 'DRAW' || upper === 'X') return 'X'
+    if (upper === 'TWO' || upper === '2') return 'П2'
     return translateChoiceLabel('MATCH_OUTCOME', entry.selection)
   }
   if (entry.marketType === 'LEGACY_TOTAL') {
     const over = entry.selection.match(/^OVER[_\s]?(.+)$/)
     if (over) {
-      return `Больше ${over[1]}`
+      const total = parseFloat(over[1])
+      const rounded = Math.round(total * 2) / 2
+      return `Да (${rounded.toFixed(1)})`
     }
     const under = entry.selection.match(/^UNDER[_\s]?(.+)$/)
     if (under) {
-      return `Меньше ${under[1]}`
+      const total = parseFloat(under[1])
+      const rounded = Math.round(total * 2) / 2
+      return `Нет (${rounded.toFixed(1)})`
     }
     return entry.selection
   }
   if (entry.marketType === 'LEGACY_EVENT') {
     if (entry.selection.startsWith('PENALTY_')) {
-      return entry.selection === 'PENALTY_YES' ? 'Пенальти было' : 'Пенальти не было'
+      return entry.selection === 'PENALTY_YES' ? 'Да' : 'Нет'
     }
     if (entry.selection.startsWith('RED_CARD_')) {
-      return entry.selection === 'RED_CARD_YES' ? 'Красная была' : 'Красной не было'
+      return entry.selection === 'RED_CARD_YES' ? 'Да' : 'Нет'
     }
     return entry.selection
   }
@@ -315,6 +320,15 @@ const formatEntrySelection = (entry: UserPredictionEntry): string => {
 }
 
 const formatEntryMarketLabel = (entry: UserPredictionEntry): string => {
+  if (entry.marketType === 'LEGACY_EVENT') {
+    if (entry.selection.startsWith('PENALTY_')) {
+      return 'Пенальти'
+    }
+    if (entry.selection.startsWith('RED_CARD_')) {
+      return 'Удаление'
+    }
+  }
+  
   switch (entry.marketType) {
   case 'MATCH_OUTCOME':
     return 'Исход матча'
@@ -323,11 +337,11 @@ const formatEntryMarketLabel = (entry: UserPredictionEntry): string => {
   case 'CUSTOM_BOOLEAN':
     return 'Спец событие'
   case 'LEGACY_1X2':
-    return 'Исход матча (legacy)'
+    return 'Исход матча'
   case 'LEGACY_TOTAL':
-    return 'Тотал (legacy)'
+    return 'Тотал голов'
   case 'LEGACY_EVENT':
-    return 'Спец событие (legacy)'
+    return 'Спец событие'
   default:
     return entry.marketType
   }
@@ -336,26 +350,22 @@ const formatEntryMarketLabel = (entry: UserPredictionEntry): string => {
 const renderUserPrediction = (prediction: UserPredictionEntry) => (
   <li key={prediction.id} className={`prediction-entry prediction-entry-${prediction.status.toLowerCase()}`}>
     <div className="prediction-entry-header">
-      <div className="prediction-entry-teams">
-        {renderClub(prediction.homeClub, 'left')}
-        <span className="prediction-vs">vs</span>
-        {renderClub(prediction.awayClub, 'right')}
-      </div>
       <div className="prediction-entry-meta">
         <span>{formatDateTime(prediction.matchDateTime)}</span>
         <span className={`prediction-status status-${prediction.status.toLowerCase()}`}>
           {STATUS_LABELS[prediction.status] ?? prediction.status}
         </span>
       </div>
+      <div className="prediction-entry-teams-compact">
+        {renderClubCompactNoLogo(prediction.homeClub)}
+        <span className="prediction-vs-compact">VS</span>
+        {renderClubCompactNoLogo(prediction.awayClub)}
+      </div>
     </div>
     <div className="prediction-entry-body">
       <div>
-        <span className="prediction-market-label">Категория</span>
-        <strong>{formatEntryMarketLabel(prediction)}</strong>
-      </div>
-      <div>
-        <span className="prediction-market-label">Выбор</span>
-        <span>{formatEntrySelection(prediction)}</span>
+        <span className="prediction-market-label">{formatEntryMarketLabel(prediction)}</span>
+        <strong>{formatEntrySelection(prediction)}</strong>
       </div>
       {typeof prediction.scoreAwarded === 'number' ? (
         <div>
@@ -366,18 +376,6 @@ const renderUserPrediction = (prediction: UserPredictionEntry) => (
     </div>
   </li>
 )
-
-const formatDifficulty = (multiplier: number | null): string | null => {
-  if (multiplier == null) {
-    return null
-  }
-  if (!Number.isFinite(multiplier) || multiplier === 1) {
-    return null
-  }
-  const precision = multiplier >= 10 ? 0 : 2
-  return `×${multiplier.toFixed(precision)}`
-}
-
 const PredictionsPage: React.FC = () => {
   const [tab, setTab] = useState<PredictionsTab>('upcoming')
   const [upcoming, setUpcoming] = useState<ActivePredictionMatch[]>([])
@@ -392,6 +390,7 @@ const PredictionsPage: React.FC = () => {
   const [submitting, setSubmitting] = useState<Record<string, boolean>>({})
   const [submitErrors, setSubmitErrors] = useState<Record<string, string | undefined>>({})
   const [submitSuccess, setSubmitSuccess] = useState<Record<string, string | undefined>>({})
+  const [expandedMatches, setExpandedMatches] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     let cancelled = false
@@ -470,9 +469,22 @@ const PredictionsPage: React.FC = () => {
   }, [])
 
   const handleOptionSelect = useCallback((templateId: string, value: string) => {
-    setSelectedOptions(prev => ({ ...prev, [templateId]: value }))
+    setSelectedOptions(prev => {
+      // Если выбран тот же вариант - снимаем выбор
+      if (prev[templateId] === value) {
+        const updated = { ...prev }
+        delete updated[templateId]
+        return updated
+      }
+      // Иначе устанавливаем новый выбор
+      return { ...prev, [templateId]: value }
+    })
     setSubmitErrors(prev => ({ ...prev, [templateId]: undefined }))
     setSubmitSuccess(prev => ({ ...prev, [templateId]: undefined }))
+  }, [])
+
+  const toggleMatchExpanded = useCallback((matchId: string) => {
+    setExpandedMatches(prev => ({ ...prev, [matchId]: !prev[matchId] }))
   }, [])
 
   const handleSubmit = useCallback(
@@ -537,109 +549,98 @@ const PredictionsPage: React.FC = () => {
             )
           }
 
-          const primary: React.ReactNode[] = []
-          const special: React.ReactNode[] = []
+          const isExpanded = expandedMatches[match.matchId] === true
+          
+          const outcomeTemplate = match.templates.find(t => t.marketType === 'MATCH_OUTCOME')
+          const otherTemplates = match.templates.filter(t => t.marketType !== 'MATCH_OUTCOME')
+          
+          const hasAnySelection = match.templates.some(t => selectedOptions[t.id])
+          const anySubmitting = match.templates.some(t => submitting[t.id])
+          const anyError = match.templates.map(t => submitErrors[t.id]).find(e => e)
+          const anySuccess = match.templates.map(t => submitSuccess[t.id]).find(e => e)
 
-          match.templates.forEach(template => {
+          const renderTemplateOptions = (template: PredictionTemplateView) => {
             const meta = resolveTemplateMeta(template)
             const choices = normalizeTemplateChoices(template)
             const selected = selectedOptions[template.id]
-            const isSubmitting = submitting[template.id] === true
-            const successMessage = submitSuccess[template.id]
-            const errorMessage = submitErrors[template.id]
-            const difficultyLabel = formatDifficulty(template.difficultyMultiplier)
+            const expectedPoints = computeExpectedPoints(template)
 
-            const section = (
-              <section
-                key={template.id}
-                className={`prediction-market${meta.group === 'special' ? ' prediction-market-special' : ''}`}
-              >
-                <div className="prediction-market-header">
-                  <div className="prediction-market-titles">
-                    <span className="prediction-market-title">{meta.title}</span>
-                    {meta.subtitle ? (
-                      <span className="prediction-market-subtitle">{meta.subtitle}</span>
-                    ) : null}
-                  </div>
-                  <div className="prediction-market-meta">
-                    <span className="prediction-market-points">+{template.basePoints} очков</span>
-                    {difficultyLabel ? (
-                      <span className="prediction-market-difficulty">{difficultyLabel}</span>
-                    ) : null}
-                    {template.isManual ? (
-                      <span className="prediction-template-chip">Ручная настройка</span>
-                    ) : null}
-                  </div>
+            if (!choices.length) {
+              return null
+            }
+
+            return (
+              <section key={template.id} className="prediction-market-inline">
+                <div className="prediction-market-inline-header">
+                  <span className="prediction-market-inline-title">{meta.title}</span>
                 </div>
-                {meta.alternatives ? (
-                  <div className="prediction-market-alternatives">
-                    {meta.alternatives.map(label => (
-                      <span key={label} className="prediction-market-chip">
-                        {label}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-                {choices.length ? (
-                  <div className="prediction-options">
-                    {choices.map(choice => (
+                <div className="prediction-options">
+                  {choices.map(choice => {
+                    const choicePoints = choice.points ?? expectedPoints
+                    return (
                       <button
                         type="button"
                         key={choice.value}
                         className={`prediction-option${selected === choice.value ? ' selected' : ''}`}
                         onClick={() => handleOptionSelect(template.id, choice.value)}
-                        disabled={isSubmitting}
+                        disabled={anySubmitting}
                       >
                         <span className="prediction-option-label">{choice.label}</span>
-                        {choice.description ? (
-                          <span className="prediction-option-description">{choice.description}</span>
-                        ) : null}
+                        <span className="prediction-option-points">+{choicePoints}</span>
                       </button>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="prediction-note compact">Настройки для этого рынка появятся позже.</p>
-                )}
-                <div className="prediction-market-footer">
-                  <div className="prediction-feedback-wrapper">
-                    {errorMessage ? (
-                      <span className="prediction-feedback error">{errorMessage}</span>
-                    ) : null}
-                    {successMessage ? (
-                      <span className="prediction-feedback success">{successMessage}</span>
-                    ) : null}
-                  </div>
-                  <button
-                    type="button"
-                    className="prediction-submit"
-                    onClick={() => handleSubmit(template)}
-                    disabled={!choices.length || !selected || isSubmitting}
-                  >
-                    {isSubmitting ? 'Отправляем...' : successMessage ? 'Обновить' : 'Отправить прогноз'}
-                  </button>
+                    )
+                  })}
                 </div>
               </section>
             )
-
-            if (meta.group === 'special') {
-              special.push(section)
-            } else {
-              primary.push(section)
-            }
-          })
+          }
 
           return (
-            <li key={match.matchId} className="prediction-match">
+            <li key={match.matchId} className="prediction-match-compact">
               {renderUpcomingMatchHeader(match)}
-              <div className="prediction-market-groups">
-                {primary.length ? <div className="prediction-market-group">{primary}</div> : null}
-                {special.length ? (
-                  <div className="prediction-market-group">
-                    <div className="prediction-group-title">Спец события</div>
-                    {special}
-                  </div>
-                ) : null}
-              </div>
+              
+              {outcomeTemplate ? renderTemplateOptions(outcomeTemplate) : null}
+              
+              {otherTemplates.length > 0 ? (
+                <button
+                  type="button"
+                  className="prediction-expand-toggle"
+                  onClick={() => toggleMatchExpanded(match.matchId)}
+                >
+                  {isExpanded ? 'Скрыть события' : 'Больше событий'}
+                </button>
+              ) : null}
+              
+              {isExpanded && otherTemplates.length > 0 ? (
+                <div className="prediction-additional-markets">
+                  {otherTemplates.map(renderTemplateOptions)}
+                </div>
+              ) : null}
+              
+              {hasAnySelection || anyError || anySuccess ? (
+                <div className="prediction-match-footer">
+                  {anyError ? (
+                    <span className="prediction-feedback error">{anyError}</span>
+                  ) : anySuccess ? (
+                    <span className="prediction-feedback success">{anySuccess}</span>
+                  ) : null}
+                  
+                  <button
+                    type="button"
+                    className="prediction-submit-main"
+                    onClick={async () => {
+                      for (const template of match.templates) {
+                        if (selectedOptions[template.id]) {
+                          await handleSubmit(template)
+                        }
+                      }
+                    }}
+                    disabled={!hasAnySelection || anySubmitting}
+                  >
+                    {anySubmitting ? 'Отправляем...' : anySuccess ? 'Обновить прогноз' : 'Отправить прогноз'}
+                  </button>
+                </div>
+              ) : null}
             </li>
           )
         })}
@@ -674,7 +675,7 @@ const PredictionsPage: React.FC = () => {
           <div>
             <h1 className="predictions-title">Прогнозы</h1>
             <p className="predictions-subtitle">
-              Выбирайте исходы матчей и зарабатывайте очки в рейтинге.
+              Выбирайте исходы матчей и зарабатывайте очки в рейтинге. Лимит: 10 прогнозов в неделю.
             </p>
           </div>
         </div>

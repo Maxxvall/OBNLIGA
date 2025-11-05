@@ -135,13 +135,16 @@ const buildSpecialEventOptions = (definition: SpecialEventDefinition): Prisma.Js
   ],
 })
 
-const buildTotalGoalsOptions = (suggestion: TotalGoalsSuggestion): Prisma.JsonObject => {
-  const formattedLine = formatTotalLine(suggestion.line)
-  const overChoice = { value: `OVER_${formattedLine}`, label: `Больше ${formattedLine}` }
-  const underChoice = { value: `UNDER_${formattedLine}`, label: `Меньше ${formattedLine}` }
+const buildTotalGoalsOptionsForLine = (
+  line: number,
+  suggestion: TotalGoalsSuggestion
+): Prisma.JsonObject => {
+  const formattedLine = formatTotalLine(line)
+  const overChoice = { value: `OVER_${formattedLine}`, label: 'Да' }
+  const underChoice = { value: `UNDER_${formattedLine}`, label: 'Нет' }
 
   return {
-    line: suggestion.line,
+    line,
     formattedLine,
     choices: [overChoice, underChoice],
     sampleSize: suggestion.sampleSize,
@@ -150,11 +153,6 @@ const buildTotalGoalsOptions = (suggestion: TotalGoalsSuggestion): Prisma.JsonOb
     confidence: Number(suggestion.confidence.toFixed(3)),
     fallback: suggestion.fallback,
     generatedAt: suggestion.generatedAt.toISOString(),
-    alternatives: suggestion.alternatives.map(variant => ({
-      line: variant.line,
-      formattedLine: variant.formattedLine,
-      delta: variant.delta,
-    })),
   }
 }
 
@@ -261,40 +259,72 @@ const ensurePredictionTemplatesForMatchRecord = async (
     }
   }
 
-  const totalTemplate = existingByMarket.get(PredictionMarketType.TOTAL_GOALS)
-  const desiredTotalOptions = buildTotalGoalsOptions(suggestion)
+  // Создаем 3 отдельных template для тоталов (используя alternatives из suggestion)
+  const totalLines = suggestion.alternatives.map(alt => alt.line)
   const desiredTotalDifficulty = computeTotalDifficultyMultiplier(suggestion)
-
-  if (!totalTemplate) {
-    await client.predictionTemplate.create({
-      data: {
-        matchId: match.id,
-        marketType: PredictionMarketType.TOTAL_GOALS,
-        options: desiredTotalOptions,
-        basePoints: PREDICTION_TOTAL_GOALS_BASE_POINTS,
-        difficultyMultiplier: desiredTotalDifficulty,
-        isManual: false,
-      },
-    })
-    createdMarkets.push(PredictionMarketType.TOTAL_GOALS)
-  } else if (totalTemplate.isManual) {
-    skippedManual.push(PredictionMarketType.TOTAL_GOALS)
-  } else {
-    const needsUpdate =
-      totalTemplate.basePoints !== PREDICTION_TOTAL_GOALS_BASE_POINTS
-        || Math.abs(totalTemplate.difficultyMultiplier.toNumber() - desiredTotalDifficulty) > 0.01
-        || !jsonEquals(totalTemplate.options, desiredTotalOptions)
-
-    if (needsUpdate) {
-      await client.predictionTemplate.update({
-        where: { id: totalTemplate.id },
+  
+  // Получаем существующие TOTAL_GOALS templates
+  const existingTotals = match.predictionTemplates.filter(
+    t => t.marketType === PredictionMarketType.TOTAL_GOALS
+  )
+  
+  // Создаем Map существующих по линии
+  const existingByLine = new Map<number, TemplateRow>()
+  for (const template of existingTotals) {
+    const options = template.options as Record<string, unknown> | null
+    if (options && typeof options.line === 'number') {
+      existingByLine.set(options.line, template)
+    }
+  }
+  
+  // Создаем или обновляем template для каждой линии
+  for (const line of totalLines) {
+    const desiredOptions = buildTotalGoalsOptionsForLine(line, suggestion)
+    const existing = existingByLine.get(line)
+    
+    if (!existing) {
+      await client.predictionTemplate.create({
         data: {
-          options: desiredTotalOptions,
+          matchId: match.id,
+          marketType: PredictionMarketType.TOTAL_GOALS,
+          options: desiredOptions,
           basePoints: PREDICTION_TOTAL_GOALS_BASE_POINTS,
           difficultyMultiplier: desiredTotalDifficulty,
+          isManual: false,
         },
       })
-      updatedMarkets.push(PredictionMarketType.TOTAL_GOALS)
+      createdMarkets.push(PredictionMarketType.TOTAL_GOALS)
+    } else if (existing.isManual) {
+      skippedManual.push(PredictionMarketType.TOTAL_GOALS)
+    } else {
+      const needsUpdate =
+        existing.basePoints !== PREDICTION_TOTAL_GOALS_BASE_POINTS
+          || Math.abs(existing.difficultyMultiplier.toNumber() - desiredTotalDifficulty) > 0.01
+          || !jsonEquals(existing.options, desiredOptions)
+
+      if (needsUpdate) {
+        await client.predictionTemplate.update({
+          where: { id: existing.id },
+          data: {
+            options: desiredOptions,
+            basePoints: PREDICTION_TOTAL_GOALS_BASE_POINTS,
+            difficultyMultiplier: desiredTotalDifficulty,
+          },
+        })
+        updatedMarkets.push(PredictionMarketType.TOTAL_GOALS)
+      }
+    }
+  }
+  
+  // Удаляем старые template с линиями, которых нет в новом списке
+  for (const template of existingTotals) {
+    if (template.isManual) continue
+    const options = template.options as Record<string, unknown> | null
+    const line = options && typeof options.line === 'number' ? options.line : null
+    if (line !== null && !totalLines.includes(line)) {
+      await client.predictionTemplate.delete({
+        where: { id: template.id },
+      })
     }
   }
 

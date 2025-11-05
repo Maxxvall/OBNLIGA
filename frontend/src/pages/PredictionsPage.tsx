@@ -55,6 +55,8 @@ const translateSubmitError = (code?: string): string => {
     return 'Выбранный вариант недоступен.'
   case 'selection_required':
     return 'Выберите вариант, прежде чем отправлять прогноз.'
+  case 'weekly_limit_reached':
+    return 'Вы достигли лимита 10 прогнозов в неделю.'
   default:
     return 'Не удалось сохранить прогноз. Попробуйте чуть позже.'
   }
@@ -70,6 +72,12 @@ const formatDateTime = (iso: string): string => {
 
 const translateMarketType = (marketType: PredictionMarketType): string =>
   MARKET_LABELS[marketType] ?? marketType
+
+const computeExpectedPoints = (template: PredictionTemplateView): number => {
+  const base = template.basePoints
+  const multiplier = template.difficultyMultiplier ?? 1
+  return Math.round(base * multiplier)
+}
 
 const translateChoiceLabel = (marketType: PredictionMarketType, rawValue: string): string => {
   const value = rawValue.trim()
@@ -234,11 +242,6 @@ const renderClubCompact = (
   club: ActivePredictionMatch['homeClub'] | UserPredictionEntry['homeClub']
 ) => (
   <div className="prediction-club-compact">
-    {club.logoUrl ? (
-      <img src={club.logoUrl} alt={club.name} className="prediction-club-logo" />
-    ) : (
-      <div className="prediction-club-logo-placeholder" />
-    )}
     <span className="prediction-club-name">{club.name}</span>
   </div>
 )
@@ -346,12 +349,8 @@ const renderUserPrediction = (prediction: UserPredictionEntry) => (
     </div>
     <div className="prediction-entry-body">
       <div>
-        <span className="prediction-market-label">Категория</span>
-        <strong>{formatEntryMarketLabel(prediction)}</strong>
-      </div>
-      <div>
-        <span className="prediction-market-label">Выбор</span>
-        <span>{formatEntrySelection(prediction)}</span>
+        <span className="prediction-market-label">{formatEntryMarketLabel(prediction)}</span>
+        <strong>{formatEntrySelection(prediction)}</strong>
       </div>
       {typeof prediction.scoreAwarded === 'number' ? (
         <div>
@@ -540,6 +539,7 @@ const PredictionsPage: React.FC = () => {
             const meta = resolveTemplateMeta(template)
             const choices = normalizeTemplateChoices(template)
             const selected = selectedOptions[template.id]
+            const expectedPoints = computeExpectedPoints(template)
 
             if (!choices.length) {
               return null
@@ -549,6 +549,7 @@ const PredictionsPage: React.FC = () => {
               <section key={template.id} className="prediction-market-inline">
                 <div className="prediction-market-inline-header">
                   <span className="prediction-market-inline-title">{meta.title}</span>
+                  <span className="prediction-points-hint">+{expectedPoints} очков</span>
                 </div>
                 <div className="prediction-options">
                   {choices.map(choice => (
@@ -647,7 +648,7 @@ const PredictionsPage: React.FC = () => {
           <div>
             <h1 className="predictions-title">Прогнозы</h1>
             <p className="predictions-subtitle">
-              Выбирайте исходы матчей и зарабатывайте очки в рейтинге.
+              Выбирайте исходы матчей и зарабатывайте очки в рейтинге. Лимит: 10 прогнозов в неделю.
             </p>
           </div>
         </div>

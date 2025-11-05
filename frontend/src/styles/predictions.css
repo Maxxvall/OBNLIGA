@@ -550,6 +550,17 @@
   color: var(--prediction-text);
 }
 
+.prediction-points-hint {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--prediction-success);
+  background: rgba(68, 230, 166, 0.12);
+  padding: 4px 10px;
+  border-radius: 8px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
 .prediction-expand-toggle {
   border: 1px solid var(--prediction-border);
   border-radius: 12px;

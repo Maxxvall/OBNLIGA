@@ -85,30 +85,34 @@ const roundToTenth = (value: number): number => {
 }
 
 export const formatTotalLine = (line: number): string => {
-  const normalized = roundToTenth(clampLine(line))
-  return normalized.toFixed(1)
+  const roundedToHalf = Math.round(line * 2) / 2
+  const clamped = clampLine(roundedToHalf)
+  return clamped.toFixed(1)
 }
 
 const buildLineAlternatives = (line: number): TotalGoalsLineAlternative[] => {
+  // Округляем динамический тотал до 0.5
+  const roundedBase = Math.round(line * 2) / 2
+  const normalizedBase = clampLine(roundedBase)
+  
   const variants: TotalGoalsLineAlternative[] = []
-  const normalizedBase = roundToTenth(clampLine(line))
-
+  
   const pushVariant = (delta: number) => {
-    const candidate = roundToTenth(clampLine(normalizedBase + delta))
-    if (candidate === normalizedBase) {
-      return
-    }
-    if (variants.some(variant => variant.line === candidate)) {
+    const candidate = Math.round((normalizedBase + delta) * 2) / 2
+    const clamped = clampLine(candidate)
+    if (variants.some(variant => variant.line === clamped)) {
       return
     }
     variants.push({
-      line: candidate,
-      formattedLine: formatTotalLine(candidate),
-      delta: roundToTenth(candidate - normalizedBase),
+      line: clamped,
+      formattedLine: clamped.toFixed(1),
+      delta: roundToTenth(clamped - normalizedBase),
     })
   }
 
+  // Создаем 3 линии: -1, базовая, +1
   pushVariant(-1)
+  pushVariant(0)  // базовая линия
   pushVariant(1)
 
   return variants

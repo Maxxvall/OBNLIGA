@@ -13,6 +13,7 @@ import {
   PREDICTION_UPCOMING_STALE_SECONDS,
   PREDICTION_USER_CACHE_TTL_SECONDS,
   PREDICTION_USER_STALE_SECONDS,
+  PREDICTION_WEEKLY_LIMIT,
   USER_PREDICTION_CACHE_KEY,
 } from '../services/predictionConstants'
 import { ensurePredictionTemplatesInRange } from '../services/predictionTemplateService'
@@ -482,6 +483,21 @@ export default async function predictionRoutes(server: FastifyInstance) {
 
   if (selection.length > PREDICTION_MAX_SELECTION_LENGTH) {
       return reply.status(400).send({ ok: false, error: 'selection_too_long' })
+    }
+
+    // Проверка недельного лимита
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    const weeklyCount = await prisma.predictionEntry.count({
+      where: {
+        userId: user.id,
+        submittedAt: {
+          gte: weekAgo,
+        },
+      },
+    })
+
+    if (weeklyCount >= PREDICTION_WEEKLY_LIMIT) {
+      return reply.status(429).send({ ok: false, error: 'weekly_limit_reached' })
     }
 
     const template = await prisma.predictionTemplate.findUnique({

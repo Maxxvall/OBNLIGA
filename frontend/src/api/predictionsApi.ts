@@ -266,16 +266,6 @@ export const fetchActivePredictions = async (
   const cache = readCache<ActivePredictionMatch[]>(cacheKey)
   const now = Date.now()
 
-  console.log('[predictionsApi] Cache check:', {
-    cacheKey,
-    hasCache: !!cache,
-    etag: cache?.etag,
-    expiresAt: cache?.expiresAt,
-    now,
-    isFresh: cache && cache.expiresAt > now,
-    isStale: cache && cache.staleUntil > now && cache.expiresAt <= now,
-  })
-
   // Проверка: данные свежие
   const isFresh = cache && cache.expiresAt > now
   // Проверка: данные устаревшие, но ещё можно показать (SWR)
@@ -283,7 +273,6 @@ export const fetchActivePredictions = async (
 
   // Если force=false и данные свежие - вернуть из кэша
   if (!options.force && isFresh) {
-    console.log('[predictionsApi] Returning FRESH cache')
     return {
       data: cache.data,
       fromCache: true,
@@ -293,7 +282,6 @@ export const fetchActivePredictions = async (
 
   // Если данные устаревшие, но показываемые - запустить фоновое обновление и вернуть старые данные
   if (!options.force && isStale) {
-    console.log('[predictionsApi] Returning STALE cache + background refresh')
     // Фоновое обновление (не блокируем)
     fetchActivePredictions({ ...options, force: true }).catch(err => {
       console.warn('predictionsApi: background refresh failed', err)
@@ -316,19 +304,10 @@ export const fetchActivePredictions = async (
   // Создаём новый запрос и сохраняем в инфлайт
   const requestPromise = (async (): Promise<ActivePredictionsResult> => {
     try {
-      // Логирование для диагностики
-      if (cache?.etag) {
-        console.log('[predictionsApi] Sending request with ETag:', cache.etag)
-      } else {
-        console.log('[predictionsApi] Sending request WITHOUT ETag (cache:', cache ? 'exists' : 'none', ')')
-      }
-
       const response = await httpRequest<ActivePredictionMatch[]>(buildActivePath(days), {
         version: cache?.etag,
         credentials: 'include',
       })
-
-      console.log('[predictionsApi] Response:', response.ok ? (('notModified' in response && response.notModified) ? '304 Not Modified' : '200 OK') : 'Error')
 
       if (!response.ok) {
         // При ошибке - вернуть кэш если есть (даже если stale)
@@ -359,8 +338,6 @@ export const fetchActivePredictions = async (
 
       const data = Array.isArray(response.data) ? response.data : []
       const etag = response.version
-
-      console.log('[predictionsApi] Saving to cache with ETag:', etag)
 
       const cacheNow = Date.now()
       writeCache(cacheKey, {

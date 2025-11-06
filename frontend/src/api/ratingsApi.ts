@@ -245,18 +245,9 @@ export async function fetchRatingLeaderboard(
         pageSize,
       })
 
-      // Логирование для диагностики
-      if (cache?.etag) {
-        console.log('[ratingsApi] Sending request with ETag:', cache.etag)
-      } else {
-        console.log('[ratingsApi] Sending request WITHOUT ETag (cache:', cache ? 'exists' : 'none', ')')
-      }
-
       const response = await httpRequest<RatingLeaderboardResponse>(`/api/ratings${query}`, { 
         version: cache?.etag,
       })
-
-      console.log('[ratingsApi] Response:', response.ok ? (('notModified' in response && response.notModified) ? '304 Not Modified' : '200 OK') : 'Error')
 
       if (!response.ok) {
         if (cache) {
@@ -297,8 +288,6 @@ export async function fetchRatingLeaderboard(
 
       const data = response.data
       const etag = response.version
-
-      console.log('[ratingsApi] Saving to cache with ETag:', etag)
 
       const cacheNow = Date.now()
       writeCache(cacheKey, {

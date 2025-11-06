@@ -225,3 +225,147 @@ if (marketType === 'TOTAL_GOALS') {
 
 - [20251103-predictions-phase1.md](./20251103-predictions-phase1.md) - Первичная реализация прогнозов
 - [CACHE_AND_PERFORMANCE.md](../CACHE_AND_PERFORMANCE.md) - Общая стратегия кэширования
+
+## Дополнительные оптимизации (6 ноября 2025, вечер)
+
+### Проблема: Ложные обновления версий кэша
+
+**Симптомы:**
+- Клиент отправляет `If-None-Match` с правильным ETag
+- Сервер возвращает 200 вместо 304
+- ETag изменился, хотя реальные данные не менялись
+
+**Причины:**
+1. **`ensurePredictionTemplatesInRange`** вызывался при каждом GET `/api/predictions/active`
+   - Пересоздавал `generatedAt` в опциях шаблонов
+   - Изменял fingerprint кэша → инкремент версии
+   
+2. **`recalculateUserRatings`** создавал новый `capturedAt` каждые 6 часов
+   - Даже если данные не изменились
+   - Изменял fingerprint → инкремент версии
+
+**Решения:**
+
+#### 1. Убрали вызов `ensurePredictionTemplatesInRange` из GET хэндлера
+
+**Файл:** `backend/src/routes/predictionRoutes.ts`
+
+**Было:**
+```typescript
+const loader = async (): Promise<ActivePredictionMatch[]> => {
+  await ensurePredictionTemplatesInRange({
+    from: now,
+    to: until,
+    excludeDaysFromCacheInvalidation: new Set([days]),
+  })
+  // ...
+}
+```
+
+**Стало:**
+```typescript
+const loader = async (): Promise<ActivePredictionMatch[]> => {
+  // НЕ вызываем ensurePredictionTemplatesInRange при каждом GET
+  // Шаблоны должны создаваться:
+  // 1. При создании матча (в adminRoutes)
+  // 2. При изменении статуса матча
+  // 3. По расписанию (background job)
+  
+  const rows = await prisma.match.findMany({ /* ... */ })
+  // ...
+}
+```
+
+**Результат:**
+- Версия кэша predictions не инкрементируется при GET
+- 304 Not Modified работает корректно
+
+#### 2. Исправили сравнение JSON-опций шаблонов
+
+**Файл:** `backend/src/services/predictionTemplateService.ts`
+
+**Проблема:** `generatedAt` создавался заново каждый раз, поэтому `jsonEquals` всегда возвращал `false`
+
+**Решение:**
+```typescript
+const jsonEquals = (left: Prisma.JsonValue, right: Prisma.JsonValue): boolean => {
+  try {
+    // Игнорируем generatedAt при сравнении
+    const normalize = (value: Prisma.JsonValue): unknown => {
+      if (!value || typeof value !== 'object') return value
+      if (Array.isArray(value)) return value.map(normalize)
+      const obj = { ...value } as Record<string, unknown>
+      delete obj.generatedAt  // ← Ключевое изменение
+      return obj
+    }
+    return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right))
+  } catch (_err) {
+    return false
+  }
+}
+```
+
+**Результат:**
+- Шаблоны обновляются только при реальном изменении коэффициентов
+- Не обновляются, если изменился только timestamp
+
+#### 3. Убрали отладочные console.log
+
+**Файлы:**
+- `frontend/src/api/httpClient.ts`
+- `frontend/src/api/predictionsApi.ts`
+- `frontend/src/api/ratingsApi.ts`
+
+**Удалено:**
+- `console.log('[predictionsApi] Cache check:', ...)`
+- `console.log('[predictionsApi] Returning FRESH cache')`
+- `console.log('[predictionsApi] Sending request with ETag:', ...)`
+- `console.log('[httpClient] Sending If-None-Match:', ...)`
+- `console.log('[httpClient] Response status:', ...)`
+- `console.log('[ratingsApi] Sending request with ETag:', ...)`
+- И т.д.
+
+**Результат:**
+- Чистая консоль в production
+- Меньше шума при отладке
+
+### Итоговые метрики после всех оптимизаций
+
+| Метрика | До оптимизаций | После дедупликации | После устранения ложных обновлений |
+|---------|----------------|--------------------|------------------------------------|
+| **Запросов при переходах** | 4 | 2 | 1-2 (с 304!) |
+| **304 Not Modified работает** | ❌ Нет | ❌ Версия менялась | ✅ **Да!** |
+| **Версия кэша инкрементируется** | При каждом GET | При каждом GET | Только при реальных изменениях |
+| **Данные берутся из кэша** | Никогда | 1 мин (TTL) | 1 мин (TTL) + 5 мин (SWR) |
+| **Лишние пересчёты** | При каждом GET | При каждом GET | ❌ Отсутствуют |
+
+### Когда теперь будет 200 OK (правильно):
+1. Создан новый матч → добавлены шаблоны прогнозов
+2. Завершён матч → пересчитан рейтинг
+3. Изменились коэффициенты (статистика команд)
+4. Rating scheduler выполнил пересчёт (раз в 6 часов)
+
+### Когда теперь будет 304 Not Modified (правильно):
+1. Повторный переход на вкладку после истечения TTL (1 мин для predictions, 2 мин для ratings)
+2. Данные не изменились с момента последнего запроса
+3. ETag совпадает
+
+### Рекомендации для production
+
+1. **Создать background job** для `ensurePredictionTemplatesInRange`:
+   ```typescript
+   // Запускать раз в час, например
+   setInterval(async () => {
+     const from = new Date()
+     const to = new Date(from.getTime() + 7 * 24 * 60 * 60 * 1000)
+     await ensurePredictionTemplatesInRange({ from, to })
+   }, 60 * 60 * 1000)
+   ```
+
+2. **Увеличить интервал rating scheduler** для production:
+   ```typescript
+   // Например, раз в 12 часов вместо 6
+   const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000
+   ```
+
+3. **Мониторить cache hit rate** - процент запросов, которые получили 304

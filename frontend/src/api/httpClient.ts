@@ -60,7 +60,6 @@ export async function httpRequest<T>(path: string, options?: HttpRequestOptions)
     : { ...jsonHeaders }
   if (version) {
     requestHeaders['If-None-Match'] = version
-    console.log('[httpClient] Sending If-None-Match:', version, 'for', path)
   }
   try {
     const response = await fetch(url, {
@@ -69,16 +68,12 @@ export async function httpRequest<T>(path: string, options?: HttpRequestOptions)
       headers: requestHeaders,
     })
 
-    console.log('[httpClient] Response status:', response.status, 'for', path)
-
     if (response.status === 304) {
-      console.log('[httpClient] 304 Not Modified received')
       return { ok: true, notModified: true }
     }
 
     const versionHeader = response.headers.get('x-resource-version') ?? undefined
     const etagHeader = response.headers.get('etag') ?? undefined
-    console.log('[httpClient] ETag from response:', etagHeader, 'x-resource-version:', versionHeader)
 
     const text = await response.text()
     let json: unknown

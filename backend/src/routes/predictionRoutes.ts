@@ -298,11 +298,17 @@ export default async function predictionRoutes(server: FastifyInstance) {
     const until = new Date(now.getTime() + days * 24 * 60 * 60 * 1000)
 
     const loader = async (): Promise<ActivePredictionMatch[]> => {
-      await ensurePredictionTemplatesInRange({
-        from: now,
-        to: until,
-        excludeDaysFromCacheInvalidation: new Set([days]),
-      })
+      // НЕ вызываем ensurePredictionTemplatesInRange при каждом GET
+      // Шаблоны должны создаваться:
+      // 1. При создании матча (в adminRoutes)
+      // 2. При изменении статуса матча
+      // 3. По расписанию (background job)
+      // 
+      // await ensurePredictionTemplatesInRange({
+      //   from: now,
+      //   to: until,
+      //   excludeDaysFromCacheInvalidation: new Set([days]),
+      // })
 
       const rows = await prisma.match.findMany({
         where: {

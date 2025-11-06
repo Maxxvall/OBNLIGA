@@ -376,7 +376,19 @@ const computeTotalDifficultyMultiplier = (suggestion: TotalGoalsSuggestion): num
 
 const jsonEquals = (left: Prisma.JsonValue, right: Prisma.JsonValue): boolean => {
   try {
-    return JSON.stringify(left) === JSON.stringify(right)
+    // Игнорируем generatedAt при сравнении
+    const normalize = (value: Prisma.JsonValue): unknown => {
+      if (!value || typeof value !== 'object') {
+        return value
+      }
+      if (Array.isArray(value)) {
+        return value.map(normalize)
+      }
+      const obj = { ...value } as Record<string, unknown>
+      delete obj.generatedAt
+      return obj
+    }
+    return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right))
   } catch (_err) {
     return false
   }

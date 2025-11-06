@@ -207,9 +207,9 @@
   margin: 0 auto;
   --team-gauge-stroke: 18px;
   --team-gauge-track: rgba(230, 247, 255, 0.18);
-  --team-gauge-win: #7affc1;
+  --team-gauge-win: #4a9d5f;
   --team-gauge-draw: rgba(255, 255, 255, 0.52);
-  --team-gauge-loss: #ff6298;
+  --team-gauge-loss: #dc2626;
 }
 
 .team-stats-gauge svg {

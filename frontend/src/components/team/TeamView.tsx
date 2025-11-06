@@ -54,61 +54,68 @@ type GaugeSegment = {
 }
 
 const buildGaugeSegments = (stats: ClubSummaryResponse['statistics']): GaugeSegment[] => {
-  const total = stats.wins + stats.draws + stats.losses;
-  if (total <= 0) return [];
-  
-  const GAP_DEGREES = 4; // Отступ между сегментами
-  const MIN_SEGMENT_DEGREES = 3;
-  let cursor = 0; // Начинаем с 0° (что при смещении +180 будет слева)
-  const segments: GaugeSegment[] = [];
+  const total = stats.wins + stats.draws + stats.losses
+  if (total <= 0) {
+    return []
+  }
 
-  // Порядок: победы -> ничьи -> поражения (слева направо)
+  const minSegmentDegrees = 3
+  let cursor = 0
+  const segments: GaugeSegment[] = []
+
   const sources = [
     { key: 'wins', value: stats.wins },
     { key: 'draws', value: stats.draws },
     { key: 'losses', value: stats.losses },
-  ].filter(s => s.value > 0);
+  ].filter(source => source.value > 0)
 
-  if (sources.length === 0) return [];
+  if (sources.length === 0) {
+    return []
+  }
 
-  const totalDegrees = 180 - (GAP_DEGREES * (sources.length - 1));
-  
+  const totalGap = SEGMENT_GAP_DEGREES * (sources.length - 1)
+  const totalDegrees = Math.max(GAUGE_SWEEP - totalGap, minSegmentDegrees * sources.length)
+
   sources.forEach((source, index) => {
-    let sweep = (source.value / total) * totalDegrees;
-    sweep = Math.max(sweep, MIN_SEGMENT_DEGREES);
-    
-    const start = cursor;
-    const end = cursor + sweep; // Идём по часовой стрелке (слева направо)
-    
-    segments.push({ 
-      key: source.key as GaugeSegment['key'], 
-      start: start, 
-      end: end 
-    });
-    
-    cursor = end + (index < sources.length - 1 ? GAP_DEGREES : 0);
-  });
+    let sweep = (source.value / total) * totalDegrees
+    sweep = Math.max(sweep, minSegmentDegrees)
 
-  return segments;
-};
+    const start = cursor
+    const end = cursor + sweep
+
+    segments.push({
+      key: source.key as GaugeSegment['key'],
+      start,
+      end,
+    })
+
+    if (index < sources.length - 1) {
+      cursor = end + SEGMENT_GAP_DEGREES
+    } else {
+      cursor = end
+    }
+  })
+
+  return segments
+}
 
 const polarToCartesian = (centerX: number, centerY: number, radius: number, angleInDegrees: number) => {
   // Преобразуем: 0° = слева (9:00), 180° = справа (3:00)
   // SVG координаты: 0° справа, +90° внизу
   // Для полукруга слева направо: начинаем с 180° (слева) и идём к 0° (справа)
-  const angleInRadians = ((angleInDegrees + 180) * Math.PI) / 180;
+  const angleInRadians = ((angleInDegrees + 180) * Math.PI) / 180
   return {
     x: centerX + radius * Math.cos(angleInRadians),
     y: centerY + radius * Math.sin(angleInRadians),
-  };
+  }
 }
 
 const describeArc = (centerX: number, centerY: number, radius: number, startAngle: number, endAngle: number) => {
-  const start = polarToCartesian(centerX, centerY, radius, startAngle);
-  const end = polarToCartesian(centerX, centerY, radius, endAngle);
-  const sweep = endAngle - startAngle;
-  const largeArcFlag = Math.abs(sweep) >= 180 ? '1' : '0';
-  const sweepFlag = sweep >= 0 ? '1' : '0';
+  const start = polarToCartesian(centerX, centerY, radius, startAngle)
+  const end = polarToCartesian(centerX, centerY, radius, endAngle)
+  const sweep = endAngle - startAngle
+  const largeArcFlag = Math.abs(sweep) >= 180 ? '1' : '0'
+  const sweepFlag = sweep >= 0 ? '1' : '0'
 
   return [
     'M',
@@ -122,8 +129,8 @@ const describeArc = (centerX: number, centerY: number, radius: number, startAngl
     sweepFlag,
     end.x.toFixed(3),
     end.y.toFixed(3),
-  ].join(' ');
-};
+  ].join(' ')
+}
 
 
 type CompactMatch = ClubMatchesResponse['s'][number]['m'][number]

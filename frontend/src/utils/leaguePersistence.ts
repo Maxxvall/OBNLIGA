@@ -13,6 +13,8 @@ type StorageKey =
   | 'tableVersions'
   | 'scheduleVersions'
   | 'resultsVersions'
+  | 'resultsRoundVersions'
+  | 'resultsRoundFetchedAt'
   | 'statsVersions'
 
 type StorageEntry<T> = {

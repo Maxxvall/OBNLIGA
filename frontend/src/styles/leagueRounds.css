@@ -57,6 +57,12 @@
   text-align: center;
 }
 
+.league-round-card.collapsible {
+  align-items: stretch;
+  text-align: left;
+  gap: 12px;
+}
+
 .league-round-card-header {
   display: flex;
   flex-direction: column;
@@ -64,6 +70,13 @@
   gap: 6px;
   text-transform: uppercase;
   letter-spacing: 0.6px;
+}
+
+.league-round-card.collapsible .league-round-card-header {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
 }
 
 .league-round-card-header h3 {
@@ -80,11 +93,74 @@
   letter-spacing: 0.8px;
 }
 
+.round-toggle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.round-toggle:focus-visible {
+  outline: 2px solid rgba(0, 240, 255, 0.55);
+  outline-offset: 2px;
+}
+
+.round-toggle-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 240, 255, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  background: rgba(0, 240, 255, 0.07);
+}
+
+.round-header-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.round-title {
+  font-size: 18px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.round-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+  color: rgba(200, 222, 255, 0.78);
+  text-transform: none;
+  letter-spacing: 0.3px;
+}
+
+.round-summary {
+  opacity: 0.85;
+}
+
 .league-round-card-body {
   width: 100%;
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.round-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 64px;
 }
 
 .league-match-card {

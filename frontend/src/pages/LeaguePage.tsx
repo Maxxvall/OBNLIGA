@@ -98,6 +98,8 @@ const LeaguePage: React.FC = () => {
   const scheduleErrors = useAppStore(state => state.errors.schedule)
   const resultsErrors = useAppStore(state => state.errors.results)
   const statsErrors = useAppStore(state => state.errors.stats)
+  const resultsRoundLoading = useAppStore(state => state.resultsRoundLoading)
+  const resultsRoundErrors = useAppStore(state => state.resultsRoundErrors)
   const leagueMenuOpen = useAppStore(state => state.leagueMenuOpen)
   const closeLeagueMenu = useAppStore(state => state.closeLeagueMenu)
   const tables = useAppStore(state => state.tables)
@@ -223,6 +225,29 @@ const LeaguePage: React.FC = () => {
   const scheduleData = selectedSeasonId ? schedules[selectedSeasonId] : undefined
   const resultsData = selectedSeasonId ? results[selectedSeasonId] : undefined
   const statsData = selectedSeasonId ? stats[selectedSeasonId] : undefined
+
+  const { roundLoadingForSeason, roundErrorsForSeason } = useMemo<{
+    roundLoadingForSeason: Record<string, boolean>
+    roundErrorsForSeason: Record<string, string | undefined>
+  }>(() => {
+    if (!selectedSeasonId) {
+      return { roundLoadingForSeason: {}, roundErrorsForSeason: {} }
+    }
+    const prefix = `${selectedSeasonId}:`
+    const loading: Record<string, boolean> = {}
+    Object.entries(resultsRoundLoading).forEach(([key, value]) => {
+      if (key.startsWith(prefix)) {
+        loading[key.slice(prefix.length)] = value
+      }
+    })
+    const errors: Record<string, string | undefined> = {}
+    Object.entries(resultsRoundErrors).forEach(([key, value]) => {
+      if (key.startsWith(prefix)) {
+        errors[key.slice(prefix.length)] = value
+      }
+    })
+    return { roundLoadingForSeason: loading, roundErrorsForSeason: errors }
+  }, [resultsRoundErrors, resultsRoundLoading, selectedSeasonId])
 
   useEffect(() => {
     setExpandedCities(prev => {
@@ -477,6 +502,13 @@ const LeaguePage: React.FC = () => {
     }
   }
 
+  const handleRoundResultsLoad = (roundKey: string, force?: boolean) => {
+    if (!selectedSeasonId) {
+      return
+    }
+    void fetchResults({ seasonId: selectedSeasonId, roundKey, force })
+  }
+
   const handleStatsReload = () => {
     if (selectedSeasonId && !isFriendlySelected) {
       void fetchStats({ seasonId: selectedSeasonId, force: true })
@@ -661,6 +693,9 @@ const LeaguePage: React.FC = () => {
             loading={loadingResults}
             error={resultsErrors}
             onRetry={handleResultsReload}
+            onLazyLoadRound={handleRoundResultsLoad}
+            roundLoading={roundLoadingForSeason}
+            roundErrors={roundErrorsForSeason}
           />
         ) : leagueSubTab === 'stats' ? (
           <LeagueStatsView

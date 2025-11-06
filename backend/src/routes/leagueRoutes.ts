@@ -21,8 +21,10 @@ import {
   type LeagueRoundCollection,
   buildFriendlyResults,
   buildFriendlySchedule,
-  buildLeagueResults,
+  buildLeagueResultsForRound,
+  buildLeagueResultsIndex,
   buildLeagueSchedule,
+  decodeRoundKey,
 } from '../services/leagueSchedule'
 import { buildLeagueStats } from '../services/leagueStats'
 import { buildWeakEtag, matchesIfNoneMatch } from '../utils/httpCaching'
@@ -180,7 +182,7 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
     const cacheOptions = await resolveCacheOptions('leagueResults')
     const { value, version } = await defaultCache.getWithMeta<LeagueRoundCollection>(
       cacheKey,
-      () => buildLeagueResults(season),
+      () => buildLeagueResultsIndex(season),
       cacheOptions
     )
     const etag = buildWeakEtag(cacheKey, version)
@@ -197,6 +199,66 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
     reply.header('X-Resource-Version', String(version))
     return reply.send({ ok: true, data: value, meta: { version } })
   })
+
+  fastify.get<{ Querystring: { seasonId?: string; roundKey?: string } }>(
+    '/api/league/results/round',
+    async (request, reply) => {
+      const seasonResolution = await resolveSeason(request.query.seasonId)
+
+      if (!seasonResolution.ok) {
+        return reply
+          .status(seasonResolution.status)
+          .send({ ok: false, error: seasonResolution.error })
+      }
+
+      const roundKey = request.query.roundKey ?? ''
+      const decoded = decodeRoundKey(roundKey)
+      if (!decoded) {
+        return reply.status(400).send({ ok: false, error: 'round_key_invalid' })
+      }
+
+      const { season, requestedSeasonId } = seasonResolution
+      const cacheKeyBase = requestedSeasonId
+        ? `${PUBLIC_LEAGUE_RESULTS_KEY}:${season.id}`
+        : PUBLIC_LEAGUE_RESULTS_KEY
+      const cacheKey = `${cacheKeyBase}:round:${roundKey}`
+      const cacheOptions = await resolveCacheOptions('leagueResults')
+
+      const fetchRound = async () => {
+        const data = await buildLeagueResultsForRound(season, decoded)
+        if (!data || data.rounds.length === 0) {
+          throw new Error('round_not_found')
+        }
+        return data
+      }
+
+      try {
+        const { value, version } = await defaultCache.getWithMeta<LeagueRoundCollection>(
+          cacheKey,
+          fetchRound,
+          cacheOptions
+        )
+        const etag = buildWeakEtag(cacheKey, version)
+
+        if (matchesIfNoneMatch(request.headers, etag)) {
+          return reply
+            .status(304)
+            .header('ETag', etag)
+            .header('X-Resource-Version', String(version))
+            .send()
+        }
+
+        reply.header('ETag', etag)
+        reply.header('X-Resource-Version', String(version))
+        return reply.send({ ok: true, data: value, meta: { version } })
+      } catch (error) {
+        if (error instanceof Error && error.message === 'round_not_found') {
+          return reply.status(404).send({ ok: false, error: 'round_not_found' })
+        }
+        throw error
+      }
+    }
+  )
 
   fastify.get('/api/league/friendlies/schedule', async (request, reply) => {
     const cacheKey = PUBLIC_FRIENDLY_SCHEDULE_KEY

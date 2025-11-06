@@ -31,8 +31,15 @@
 - TTL: 20 000 мс (20 с) на каждый сезон.
 - Поллинг: каждые 10 с, но только если активна подвкладка «Результаты».
 - Заголовок запроса: `If-None-Match: <resultsVersions[id]>`.
-- Ответ `200 OK`: данные проходят через `mergeRoundCollection` (тот же алгоритм, что и для расписания), обновляются `results[id]`, `resultsVersions[id]`, `resultsFetchedAt[id]`, возможна корректировка `activeSeasonId`.
+- Ответ `200 OK`: возвращает только индекс туров и метаданные (`roundKey`, `matchesCount`, диапазон дат). Обновляются `results[id]`, `resultsVersions[id]`, `resultsFetchedAt[id]`, возможна корректировка `activeSeasonId`.
 - Ответ `304`: обновляется только `resultsFetchedAt[id]`.
+
+### `/api/league/results/round?seasonId={id}&roundKey={key}`
+- TTL: 20 000 мс на комбинацию сезон+тур.
+- Поллинг: по требованию — при первом раскрытии тура и при ручном `force` обновлении. Индекс продолжает опрашиваться по расписанию из предыдущего пункта.
+- Заголовок запроса: `If-None-Match: <resultsRoundVersions["${seasonId}:${roundKey}"]>`.
+- Ответ `200 OK`: возвращает матчи только выбранного тура. Результат сливается в общий `results[seasonId]`, версия и время фиксируются в `resultsRoundVersions` и `resultsRoundFetchedAt`.
+- Ответ `304`: продлевается `resultsRoundFetchedAt`, спиннер скрывается, данные не меняются.
 
 ### `/api/league/stats?seasonId={id}`
 - TTL: 300 000 мс (5 мин) на каждый сезон.

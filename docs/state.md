@@ -19,7 +19,9 @@
 
 - `currentTab: UITab`: активная вкладка (`home`, `league`, `predictions`, `leaderboard`, `shop`, `profile`).
 - `leagueSubTab: 'table' | 'schedule' | 'results' | 'stats'` и `leagueMenuOpen` контролируют UI вкладки «Лига».
-- `seasons`, `tables`, `schedules`, `results`, `stats`: по одному словарю на сезон с данными, полученными от `/api/league/*`.
+- `seasons`, `tables`, `schedules`, `stats`: по одному словарю на сезон с данными, полученными от `/api/league/*`.
+- `results`: карта сезонов → `LeagueRoundCollection`. Ответ `/api/league/results` теперь содержит только метаданные туров (`roundKey`, `matchesCount`, `firstMatchAt`, `lastMatchAt`); сами матчи подгружаются лениво при раскрытии тура.
+- `resultsRoundVersions`, `resultsRoundFetchedAt`, `resultsRoundLoading`, `resultsRoundErrors`: состояние ленивых запросов туров. Ключ формируется как `<seasonId>:<roundKey>` и используется для TTL, ETag и отображения спиннеров/ошибок внутри карточки тура.
 - `selectedSeasonId`: вручную выбранный сезон; `activeSeasonId`: последний активный сезон из API.
 - `seasonsFetchedAt`, `tableFetchedAt`, `scheduleFetchedAt`, `resultsFetchedAt`, `statsFetchedAt`: отметки времени для TTL.
 - `seasonsVersion`, `tableVersions`, `scheduleVersions`, `resultsVersions`, `statsVersions`: версии/ETag с сервера.
@@ -37,7 +39,8 @@
 | `/api/league/seasons` | 55 000 мс | `seasonsVersion` | Авто-подгрузка при входе во вкладку «Лига» и при смене сезона |
 | `/api/league/table?seasonId={id}` | 30 000 мс на сезон | `tableVersions[seasonId]` | При `304` обновляется только `tableFetchedAt[seasonId]` |
 | `/api/league/schedule?seasonId={id}` | 12 000 мс | `scheduleVersions[seasonId]` | Поллинг только при активной подвкладке «Расписание» |
-| `/api/league/results?seasonId={id}` | 20 000 мс | `resultsVersions[seasonId]` | Аналогичное поведение для «Результатов» |
+| `/api/league/results?seasonId={id}` | 20 000 мс | `resultsVersions[seasonId]` | Возвращает индекс туров без матчей. Подгружается автоматически при входе на подвкладку «Результаты». |
+| `/api/league/results/round?seasonId={id}&roundKey={key}` | 20 000 мс на комбинацию сезон+тур | `resultsRoundVersions["${seasonId}:${roundKey}"]` | Ленивый запрос матчей конкретного тура. Запускается при первом раскрытии аккордеона или по кнопке «Обновить». |
 | `/api/league/stats?seasonId={id}` | 300 000 мс | `statsVersions[seasonId]` | Содержит лидерборды; поллинг включается только на подвкладке «Статистика» |
 | `/api/clubs/{id}/summary` | 45 000 мс | `teamSummaryVersions[clubId]` | Интервал активен, пока открыт Team View конкретного клуба |
 | `/api/clubs/{id}/matches` | 90 000 мс | `teamMatchesVersions[clubId]` | Возвращает все сыгранные и будущие матчи клуба по сезонам |
@@ -60,7 +63,7 @@
 ### Действия стора
 
 - `setTab`, `setLeagueSubTab`, `toggleLeagueMenu`, `tapLeagueNav`, `closeLeagueMenu`, `setSelectedSeason`: синхронные действия UI.
-- `fetchLeagueSeasons({ force? })`, `fetchLeagueTable({ seasonId?, force? })`, `fetchLeagueSchedule`, `fetchLeagueResults`, `fetchLeagueStats`: HTTP polling с `If-None-Match`, управление TTL и merge-хелперами.
+- `fetchLeagueSeasons({ force? })`, `fetchLeagueTable({ seasonId?, force? })`, `fetchLeagueSchedule`, `fetchLeagueResults`, `fetchLeagueStats`: HTTP polling с `If-None-Match`, управление TTL и merge-хелперами. `fetchLeagueResults` принимает опциональный `roundKey`: без ключа загружает только индекс туров, с ключом — подгружает матчи выбранного тура и обновляет `results` inplace.
 - `ensureLeaguePolling()` / `stopLeaguePolling()`: управление 10-секундным интервалом для активной вкладки «Лига» (интервал спит, если вкладка браузера скрыта или выбран другой таб).
 - `openTeamView(clubId)`, `closeTeamView()`, `setTeamSubTab(tab)`: управление карточкой клуба.
 - `setTeamMatchesMode(mode)`: переключатель под-вкладок «Расписание/Результаты» в карточке клуба.
@@ -70,7 +73,7 @@
 
 ### Merge и минимальные перерисовки
 
-- Таблица (`mergeLeagueTable`) и расписание/результаты (`mergeRoundCollection`) сравнивают входящие данные с предыдущими, переиспользуют объекты клубов, матчей и сезонов при отсутствии изменений.
+- Таблица (`mergeLeagueTable`) и расписание/результаты (`mergeRoundCollection`) сравнивают входящие данные с предыдущими, переиспользуют объекты клубов, матчей и сезонов при отсутствии изменений. Для результатов дополнительно учитываются `roundKey` и `matchesCount`, чтобы индекс туров обновлялся без полной перерисовки уже загруженных матчей.
 - Лидерборды (`mergeStatsResponse`) также переиспользуют неизменившиеся записи, чтобы React не перерисовывал списки без нужды.
 - После слияния `activeSeasonId` обновляется только если сервер сообщил, что сезон активен.
 
@@ -85,6 +88,7 @@
 ### Локальное кэширование
 
 - Новости: `NewsSection` хранит snapshot и `etag` в `localStorage` на 30 минут. Даже при `304` компонент продлевает TTL и переиспользует закэшированные карточки.
+- Результаты: `writeToStorage` сохраняет как индекс (`results`, `resultsVersions`), так и версии по турам (`resultsRoundVersions`, `resultsRoundFetchedAt`). Индекс доступен мгновенно, а карточки туров подтягивают матчи из store после первого успешного запроса.
 - Профиль: `Profile.tsx` складывает данные пользователя в `localStorage` на 5 минут и передаёт `If-None-Match` в `telegram-init`. Это позволяет возвращать пользователя к актуальному профилю без повторной авторизации.
 - При получении `leaguePlayerCareer` фронтенд кэширует массив как часть профиля: диапазоны лет рассчитываются на бэкенде, клиент лишь выводит таблицу и пересчитывает totals по числовым полям.
 - Публичный store не использует `localStorage` — все TTL in-memory, чтобы избежать устаревших payload после deploy.
@@ -92,6 +96,7 @@
 ### Инвалидация данных
 
 - Бэкенд (`defaultCache`) вычисляет fingerprint payload и хранит его в Redis/LRU. При изменении данных увеличивается версия ключа, что приводит к новому `ETag`.
+- Версии матчей по турам хранятся отдельно (`league:results:round:{roundKey}`), поэтому загрузка одного тура не инвалидирует остальные карточки.
 - Клиент сохраняет версии в `*Versions`. При `force: true` запрос всё равно условный, поэтому сервер вернёт `304`, если данные не менялись.
 - При сетевых сбоях TTL не продлевается — это позволяет следующему успешному запросу обновить данные сразу же после восстановления соединения.
 

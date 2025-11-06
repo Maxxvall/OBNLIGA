@@ -388,7 +388,14 @@ const mergeRoundMatches = (
     return incoming
   }
 
-  const sameMeta =
+  const incomingRoundKey = incoming.roundKey ?? (incoming.roundId !== null ? `id-${incoming.roundId}` : incoming.roundLabel)
+  const previousRoundKey = previous.roundKey ?? (previous.roundId !== null ? `id-${previous.roundId}` : previous.roundLabel)
+  const incomingMatchesCount = incoming.matchesCount ?? incoming.matches.length
+  const previousMatchesCount = previous.matchesCount ?? previous.matches.length
+  const incomingFirstMatchAt = incoming.firstMatchAt ?? previous.firstMatchAt
+  const incomingLastMatchAt = incoming.lastMatchAt ?? previous.lastMatchAt
+
+  const sameBaseMeta =
     previous.roundId === incoming.roundId &&
     previous.roundNumber === incoming.roundNumber &&
     previous.roundLabel === incoming.roundLabel &&
@@ -409,23 +416,44 @@ const mergeRoundMatches = (
     return match
   })
 
+  const metaChanged =
+    !sameBaseMeta ||
+    previousRoundKey !== incomingRoundKey ||
+    previousMatchesCount !== incomingMatchesCount ||
+    previous.firstMatchAt !== incomingFirstMatchAt ||
+    previous.lastMatchAt !== incomingLastMatchAt
+
   if (!changes) {
     const sameOrder =
       mergedMatches.length === previous.matches.length &&
       mergedMatches.every((match: LeagueMatchView, index: number) => match === previous.matches[index])
-    if (sameMeta && sameOrder) {
+    if (!metaChanged && sameOrder) {
       return previous
     }
   }
 
-  if (!changes && sameMeta) {
+  if (!changes && !metaChanged) {
     return previous
   }
 
   return {
     ...incoming,
     matches: mergedMatches,
+    matchesCount: incomingMatchesCount,
+    roundKey: incomingRoundKey,
+    firstMatchAt: incomingFirstMatchAt,
+    lastMatchAt: incomingLastMatchAt,
   }
+}
+
+const resolveRoundKey = (round: LeagueRoundMatches): string => {
+  if (round.roundKey) {
+    return round.roundKey
+  }
+  if (round.roundId !== null) {
+    return `id-${round.roundId}`
+  }
+  return round.roundLabel
 }
 
 const mergeRoundCollection = (
@@ -439,24 +467,56 @@ const mergeRoundCollection = (
   const season = reuseSeason(previous.season, incoming.season)
   const previousRounds = new Map<string, LeagueRoundMatches>()
   previous.rounds.forEach(round => {
-    const key = round.roundId !== null ? String(round.roundId) : round.roundLabel
+    const key = resolveRoundKey(round)
     previousRounds.set(key, round)
+  })
+
+  const incomingRounds = new Map<string, LeagueRoundMatches>()
+  incoming.rounds.forEach(round => {
+    const key = resolveRoundKey(round)
+    incomingRounds.set(key, round)
   })
 
   let changed = season !== previous.season || incoming.generatedAt !== previous.generatedAt
 
-  const mergedRounds = incoming.rounds.map(round => {
-    const key = round.roundId !== null ? String(round.roundId) : round.roundLabel
+  const allKeys = new Set<string>()
+  previousRounds.forEach((_, key) => allKeys.add(key))
+  incomingRounds.forEach((_, key) => allKeys.add(key))
+
+  const mergedRounds: LeagueRoundMatches[] = []
+  allKeys.forEach(key => {
     const existing = previousRounds.get(key)
+    const updated = incomingRounds.get(key)
+
+    if (!updated) {
+      if (existing) {
+        mergedRounds.push(existing)
+      }
+      return
+    }
+
     if (!existing) {
       changed = true
-      return round
+      mergedRounds.push({
+        ...updated,
+        roundKey: updated.roundKey ?? key,
+        matchesCount: updated.matchesCount ?? updated.matches.length,
+      })
+      return
     }
-    const merged = mergeRoundMatches(existing, round)
+
+    const merged = mergeRoundMatches(existing, updated)
     if (merged !== existing) {
       changed = true
     }
-    return merged
+    mergedRounds.push(merged)
+  })
+
+  mergedRounds.sort((left, right) => {
+    if (left.roundNumber !== null && right.roundNumber !== null) {
+      return left.roundNumber - right.roundNumber
+    }
+    return left.roundLabel.localeCompare(right.roundLabel)
   })
 
   if (
@@ -865,6 +925,10 @@ interface AppState {
   results: Record<number, LeagueRoundCollection>
   resultsVersions: Record<number, string | undefined>
   resultsFetchedAt: Record<number, number>
+  resultsRoundVersions: Record<string, string | undefined>
+  resultsRoundFetchedAt: Record<string, number>
+  resultsRoundLoading: Record<string, boolean>
+  resultsRoundErrors: Record<string, string | undefined>
   stats: Record<number, LeagueStatsResponse>
   statsVersions: Record<number, string | undefined>
   statsFetchedAt: Record<number, number>
@@ -900,7 +964,7 @@ interface AppState {
   fetchLeagueSeasons: (options?: { force?: boolean }) => Promise<FetchResult>
   fetchLeagueTable: (options?: { seasonId?: number; force?: boolean }) => Promise<FetchResult>
   fetchLeagueSchedule: (options?: { seasonId?: number; force?: boolean }) => Promise<FetchResult>
-  fetchLeagueResults: (options?: { seasonId?: number; force?: boolean }) => Promise<FetchResult>
+  fetchLeagueResults: (options?: { seasonId?: number; force?: boolean; roundKey?: string }) => Promise<FetchResult>
   fetchLeagueStats: (options?: { seasonId?: number; force?: boolean }) => Promise<FetchResult>
   ensureLeaguePolling: () => void
   stopLeaguePolling: () => void
@@ -1135,6 +1199,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   results: readFromStorage('results') ?? {},
   resultsVersions: readFromStorage('resultsVersions') ?? {},
   resultsFetchedAt: {},
+  resultsRoundVersions: readFromStorage('resultsRoundVersions') ?? {},
+  resultsRoundFetchedAt: readFromStorage('resultsRoundFetchedAt') ?? {},
+  resultsRoundLoading: {},
+  resultsRoundErrors: {},
   stats: readFromStorage('stats') ?? {},
   statsVersions: readFromStorage('statsVersions') ?? {},
   statsFetchedAt: {},
@@ -1461,23 +1529,101 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!seasonId) {
       return { ok: false }
     }
+
+    if (options?.roundKey) {
+      if (isFriendlySeasonId(seasonId)) {
+        return { ok: true }
+      }
+
+      const roundStateKey = `${seasonId}:${options.roundKey}`
+      if (state.resultsRoundLoading[roundStateKey] && !options.force) {
+        return { ok: true }
+      }
+
+      const now = Date.now()
+      const lastRoundFetched = state.resultsRoundFetchedAt[roundStateKey] ?? 0
+      if (!options.force && lastRoundFetched && now - lastRoundFetched < RESULTS_TTL_MS) {
+        return { ok: true }
+      }
+
+      set(prev => ({
+        resultsRoundLoading: { ...prev.resultsRoundLoading, [roundStateKey]: true },
+        resultsRoundErrors: { ...prev.resultsRoundErrors, [roundStateKey]: undefined },
+      }))
+
+      const requestVersion = options.force ? undefined : state.resultsRoundVersions[roundStateKey]
+      const response = await leagueApi.fetchResultsRound(seasonId, options.roundKey, {
+        version: requestVersion,
+      })
+
+      if (!response.ok) {
+        set(prev => ({
+          resultsRoundLoading: { ...prev.resultsRoundLoading, [roundStateKey]: false },
+          resultsRoundErrors: { ...prev.resultsRoundErrors, [roundStateKey]: response.error },
+        }))
+        return { ok: false }
+      }
+
+      if (!('data' in response)) {
+        set(prev => ({
+          resultsRoundLoading: { ...prev.resultsRoundLoading, [roundStateKey]: false },
+          resultsRoundFetchedAt: { ...prev.resultsRoundFetchedAt, [roundStateKey]: now },
+        }))
+        return { ok: true }
+      }
+
+      if (!response.data.rounds.length) {
+        set(prev => ({
+          resultsRoundLoading: { ...prev.resultsRoundLoading, [roundStateKey]: false },
+          resultsRoundErrors: { ...prev.resultsRoundErrors, [roundStateKey]: 'round_not_found' },
+        }))
+        return { ok: false }
+      }
+
+      const nextVersion = response.version ?? state.resultsRoundVersions[roundStateKey]
+      set(prev => {
+        const merged = mergeRoundCollection(prev.results[seasonId], response.data)
+        const nextResultsMap = { ...prev.results, [seasonId]: merged }
+        const nextRoundVersions = { ...prev.resultsRoundVersions, [roundStateKey]: nextVersion }
+        const nextRoundFetchedAt = { ...prev.resultsRoundFetchedAt, [roundStateKey]: now }
+
+        writeToStorage('results', nextResultsMap)
+        writeToStorage('resultsRoundVersions', nextRoundVersions)
+        writeToStorage('resultsRoundFetchedAt', nextRoundFetchedAt)
+
+        return {
+          results: nextResultsMap,
+          resultsRoundVersions: nextRoundVersions,
+          resultsRoundFetchedAt: nextRoundFetchedAt,
+          resultsRoundLoading: { ...prev.resultsRoundLoading, [roundStateKey]: false },
+          resultsRoundErrors: { ...prev.resultsRoundErrors, [roundStateKey]: undefined },
+          activeSeasonId: merged.season.isActive ? merged.season.id : prev.activeSeasonId,
+        }
+      })
+      return { ok: true }
+    }
+
     if (isFriendlySeasonId(seasonId)) {
       if (state.loading.results && !options?.force) {
         return { ok: true }
       }
+
       const now = Date.now()
       const lastFetched = state.resultsFetchedAt[FRIENDLY_SEASON_ID] ?? 0
       if (!options?.force && lastFetched && now - lastFetched < RESULTS_TTL_MS) {
         return { ok: true }
       }
+
       set(prev => ({
         loading: { ...prev.loading, results: true },
         errors: { ...prev.errors, results: undefined },
       }))
+
       const requestVersion = options?.force ? undefined : state.resultsVersions[FRIENDLY_SEASON_ID]
       const response = await leagueApi.fetchFriendlyResults({
         version: requestVersion,
       })
+
       if (!response.ok) {
         set(prev => ({
           loading: { ...prev.loading, results: false },
@@ -1485,6 +1631,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         }))
         return { ok: false }
       }
+
       if (!('data' in response)) {
         if (!state.results[FRIENDLY_SEASON_ID]) {
           set(prev => ({
@@ -1493,12 +1640,14 @@ export const useAppStore = create<AppState>((set, get) => ({
           }))
           return { ok: false }
         }
+
         set(prev => ({
           resultsFetchedAt: { ...prev.resultsFetchedAt, [FRIENDLY_SEASON_ID]: now },
           loading: { ...prev.loading, results: false },
         }))
         return { ok: true }
       }
+
       const nextVersion = response.version ?? state.resultsVersions[FRIENDLY_SEASON_ID]
       set(prev => {
         const nextResultsMap = { ...prev.results, [FRIENDLY_SEASON_ID]: response.data }
@@ -1519,22 +1668,27 @@ export const useAppStore = create<AppState>((set, get) => ({
       })
       return { ok: true }
     }
+
     if (state.loading.results && !options?.force) {
       return { ok: true }
     }
+
     const now = Date.now()
     const lastFetched = state.resultsFetchedAt[seasonId] ?? 0
     if (!options?.force && lastFetched && now - lastFetched < RESULTS_TTL_MS) {
       return { ok: true }
     }
+
     set(prev => ({
       loading: { ...prev.loading, results: true },
       errors: { ...prev.errors, results: undefined },
     }))
+
     const requestVersion = options?.force ? undefined : state.resultsVersions[seasonId]
     const response = await leagueApi.fetchResults(seasonId, {
       version: requestVersion,
     })
+
     if (!response.ok) {
       set(prev => ({
         loading: { ...prev.loading, results: false },
@@ -1542,6 +1696,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }))
       return { ok: false }
     }
+
     if (!('data' in response)) {
       if (!state.results[seasonId]) {
         set(prev => ({
@@ -1550,21 +1705,23 @@ export const useAppStore = create<AppState>((set, get) => ({
         }))
         return { ok: false }
       }
+
       set(prev => ({
         resultsFetchedAt: { ...prev.resultsFetchedAt, [seasonId]: now },
         loading: { ...prev.loading, results: false },
       }))
       return { ok: true }
     }
+
     const nextVersion = response.version ?? state.resultsVersions[seasonId]
     set(prev => {
       const nextResults = mergeRoundCollection(prev.results[seasonId], response.data)
       const nextResultsMap = { ...prev.results, [seasonId]: nextResults }
       const nextResultsVersions = { ...prev.resultsVersions, [seasonId]: nextVersion }
-      
+
       writeToStorage('results', nextResultsMap)
       writeToStorage('resultsVersions', nextResultsVersions)
-      
+
       return {
         results: nextResultsMap,
         resultsVersions: nextResultsVersions,

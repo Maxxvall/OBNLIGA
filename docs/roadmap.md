@@ -91,6 +91,7 @@ Acceptance
 ##  Фаза 5 — Фронтенд core (ветка frontend/core)
 Цель: SPA для Telegram WebApp с typed store façade (Zustand/adapter).
  storeFacade (Zustand) + модули: matchesStore, userStore, shopStore, realtimeStore. — Статус: 🟨 — Приоритет: 🔴 (реализован публичный `appStore` для вкладки «Лига», остальные модули в работе)
+    - Подвкладка «Результаты» переведена на ленивую загрузку туров (индекс + `/api/league/results/round`) с отдельными TTL и ETag. — Статус: ✅ — Приоритет: 🔵
  api/etag.ts — fetch wrapper с If-None-Match + SWR-like revalidate. — Статус: ⬜ — Приоритет: 🔴
  Подключение WS клиентa → обновления store. — Статус: ⬜ — Приоритет: 🔴
  Telegram WebApp integration: initData verification endpoint flow (server + client). — Статус: ⬜ — Приоритет: 🔴

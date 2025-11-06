@@ -23,7 +23,21 @@ const MY_RATING_TTL_MS = 300_000 // 5 минут - свежие данные
 const MY_RATING_STALE_MS = 900_000 // 15 минут - устаревшие, но показываем (SWR)
 
 // Дедупликация запросов (in-flight requests)
-const inflightRequests = new Map<string, Promise<any>>()
+type RatingLeaderboardSuccessResult = {
+  ok: true
+  data: RatingLeaderboardResponse
+  fromCache: boolean
+  etag?: string
+}
+
+type RatingLeaderboardErrorResult = {
+  ok: false
+  error?: string
+}
+
+export type RatingLeaderboardResult = RatingLeaderboardSuccessResult | RatingLeaderboardErrorResult
+
+const inflightRequests = new Map<string, Promise<RatingLeaderboardResult>>()
 
 // Лимиты кэша
 const MAX_RATING_CACHE_ENTRIES = 10 // максимум 10 различных комбинаций
@@ -197,7 +211,7 @@ const buildQueryString = (params: Record<string, string | number | undefined>): 
 export async function fetchRatingLeaderboard(
   scope: RatingScopeKey,
   options: LeaderboardOptions = {}
-) {
+): Promise<RatingLeaderboardResult> {
   const page = options.page ?? 1
   const pageSize = options.pageSize ?? 20
   const cacheKey = RATING_CACHE_KEY(scope, page, pageSize)
@@ -209,7 +223,7 @@ export async function fetchRatingLeaderboard(
 
   if (!options.force && isFresh) {
     return {
-      ok: true as const,
+      ok: true,
       data: cache.data,
       fromCache: true,
       etag: cache.etag,
@@ -220,24 +234,22 @@ export async function fetchRatingLeaderboard(
     fetchRatingLeaderboard(scope, { ...options, force: true }).catch(err => {
       console.warn('ratingsApi: background refresh failed', err)
     })
-    
+
     return {
-      ok: true as const,
+      ok: true,
       data: cache.data,
       fromCache: true,
       etag: cache.etag,
     }
   }
 
-  // Дедупликация: проверяем наличие активного запроса
   const inflightKey = `leaderboard:${scope}:${page}:${pageSize}:${options.force ? 'force' : 'auto'}`
   const existing = inflightRequests.get(inflightKey)
   if (existing) {
     return existing
   }
 
-  // Создаём новый запрос и сохраняем в инфлайт
-  const requestPromise = (async () => {
+  const requestPromise: Promise<RatingLeaderboardResult> = (async () => {
     try {
       const query = buildQueryString({
         scope,
@@ -245,21 +257,22 @@ export async function fetchRatingLeaderboard(
         pageSize,
       })
 
-      const response = await httpRequest<RatingLeaderboardResponse>(`/api/ratings${query}`, { 
+      const response = await httpRequest<RatingLeaderboardResponse>(`/api/ratings${query}`, {
         version: cache?.etag,
       })
 
       if (!response.ok) {
         if (cache) {
           return {
-            ok: true as const,
+            ok: true,
             data: cache.data,
             fromCache: true,
             etag: cache.etag,
           }
         }
+
         return {
-          ok: false as const,
+          ok: false,
           error: response.error,
         }
       }
@@ -274,14 +287,15 @@ export async function fetchRatingLeaderboard(
             lastAccess: updatedNow,
           })
           return {
-            ok: true as const,
+            ok: true,
             data: cache.data,
             fromCache: true,
             etag: cache.etag,
           }
         }
+
         return {
-          ok: false as const,
+          ok: false,
           error: 'not_modified_but_no_cache',
         }
       }
@@ -299,13 +313,12 @@ export async function fetchRatingLeaderboard(
       })
 
       return {
-        ok: true as const,
+        ok: true,
         data,
         fromCache: false,
         etag,
       }
     } finally {
-      // Удаляем запрос из инфлайт после завершения
       inflightRequests.delete(inflightKey)
     }
   })()

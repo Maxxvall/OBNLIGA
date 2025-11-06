@@ -17,6 +17,7 @@ const inflightRequests = new Map<string, Promise<ActivePredictionsResult | MyPre
 // Лимиты кэша
 const MAX_ACTIVE_CACHE_ENTRIES = 10 // максимум 10 различных days-комбинаций
 const MAX_TOTAL_CACHE_SIZE = 50 // максимум 50 записей всего
+const ACTIVE_CACHE_PREFIX = 'predictions:active:'
 
 type CacheEntry<T> = {
   data: T
@@ -104,6 +105,7 @@ const writeCache = <T>(key: string, entry: CacheEntry<T>, skipIndexUpdate = fals
       
       // Проверить лимиты и очистить старые записи
       cleanupCacheIfNeeded(index)
+      enforceActiveCacheLimit(index)
       writeCacheIndex(index)
     }
   } catch (err) {
@@ -128,6 +130,53 @@ const cleanupCacheIfNeeded = (index: CacheIndex) => {
   
   cleanupCache(index, MAX_TOTAL_CACHE_SIZE)
   index.lastCleanup = now
+}
+
+const enforceActiveCacheLimit = (index: CacheIndex) => {
+  if (typeof window === 'undefined') return
+
+  const now = Date.now()
+  const activeKeys = index.keys.filter(key => key.startsWith(ACTIVE_CACHE_PREFIX))
+  if (activeKeys.length <= MAX_ACTIVE_CACHE_ENTRIES) {
+    return
+  }
+
+  const entries: Array<{ key: string; entry: CacheEntry<unknown> | null }> = activeKeys.map(key => {
+    try {
+      const raw = window.localStorage.getItem(key)
+      if (!raw) {
+        return { key, entry: null }
+      }
+      const parsed = JSON.parse(raw) as CacheEntry<unknown>
+      return { key, entry: parsed }
+    } catch (err) {
+      window.localStorage.removeItem(key)
+      return { key, entry: null }
+    }
+  })
+
+  const validEntries = entries.filter(({ key, entry }) => {
+    if (!entry || now > entry.staleUntil) {
+      window.localStorage.removeItem(key)
+      index.keys = index.keys.filter(candidate => candidate !== key)
+      return false
+    }
+    return true
+  })
+
+  if (validEntries.length <= MAX_ACTIVE_CACHE_ENTRIES) {
+    index.totalSize = index.keys.length
+    return
+  }
+
+  validEntries.sort((a, b) => (a.entry?.lastAccess ?? 0) - (b.entry?.lastAccess ?? 0))
+  const toRemove = validEntries.slice(0, validEntries.length - MAX_ACTIVE_CACHE_ENTRIES)
+  for (const { key } of toRemove) {
+    window.localStorage.removeItem(key)
+    index.keys = index.keys.filter(candidate => candidate !== key)
+  }
+
+  index.totalSize = index.keys.length
 }
 
 const cleanupCache = (index: CacheIndex, maxSize: number) => {

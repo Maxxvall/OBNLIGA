@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { MatchStatus, RoundType, SeriesStatus } from '@prisma/client'
 import prisma from '../db'
 import {
@@ -68,6 +69,10 @@ export type LeagueRoundMatches = {
   roundLabel: string
   roundType: RoundType | null
   matches: LeagueMatchView[]
+  matchesCount: number
+  roundKey: string
+  firstMatchAt: string
+  lastMatchAt: string
 }
 
 export interface LeagueRoundCollection {
@@ -89,6 +94,50 @@ type RoundAccumulator = {
   lastMatchAt: number
   hasSeries: boolean
   stagePriority: number | null
+}
+
+const toBase64Url = (value: string): string =>
+  Buffer.from(value, 'utf8')
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/u, '')
+
+const fromBase64Url = (value: string): string => {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/')
+  const padding = normalized.length % 4 === 0 ? '' : '='.repeat(4 - (normalized.length % 4))
+  return Buffer.from(`${normalized}${padding}`, 'base64').toString('utf8')
+}
+
+const buildRoundKey = (roundId: number | null, label: string): string => {
+  if (roundId !== null && Number.isFinite(roundId)) {
+    return `id-${roundId}`
+  }
+  return `label-${toBase64Url(label)}`
+}
+
+export const decodeRoundKey = (
+  key: string
+): { roundId: number | null; label?: string } | null => {
+  if (!key) {
+    return null
+  }
+  if (key.startsWith('id-')) {
+    const raw = Number(key.slice(3))
+    if (!Number.isFinite(raw) || raw <= 0) {
+      return null
+    }
+    return { roundId: raw }
+  }
+  if (key.startsWith('label-')) {
+    try {
+      const label = fromBase64Url(key.slice(6))
+      return { roundId: null, label }
+    } catch {
+      return null
+    }
+  }
+  return null
 }
 
 const clubSelect = {
@@ -554,6 +603,10 @@ const groupMatchViewsByRound = (
     roundLabel: round.roundLabel,
     roundType: round.roundType,
     matches: round.matches.sort((a, b) => a.matchDateTime.localeCompare(b.matchDateTime)),
+    matchesCount: round.matches.length,
+    roundKey: buildRoundKey(round.roundId, round.roundLabel),
+    firstMatchAt: new Date(round.firstMatchAt).toISOString(),
+    lastMatchAt: new Date(round.lastMatchAt).toISOString(),
   }))
 }
 
@@ -626,9 +679,201 @@ export const buildLeagueSchedule = async (
   }
 }
 
-export const buildLeagueResults = async (
+type MatchSummaryRecord = {
+  id: bigint
+  matchDateTime: Date
+  round: { id: number; roundNumber: number | null; label: string; roundType: RoundType } | null
+  series: { stageName: string; seriesStatus: SeriesStatus } | null
+}
+
+export const buildLeagueResultsIndex = async (
+  season: SeasonWithCompetition
+): Promise<LeagueRoundCollection> => {
+  const matches = await prisma.match.findMany({
+    where: {
+      seasonId: season.id,
+      status: MatchStatus.FINISHED,
+    },
+    orderBy: [{ matchDateTime: 'desc' }],
+    select: {
+      id: true,
+      matchDateTime: true,
+      round: { select: roundSelect },
+      series: {
+        select: {
+          stageName: true,
+          seriesStatus: true,
+        },
+      },
+    },
+  }) as MatchSummaryRecord[]
+
+  const map = new Map<string, {
+    roundId: number | null
+    roundNumber: number | null
+    roundLabel: string
+    roundType: RoundType | null
+    matchCount: number
+    firstMatchAt: number
+    lastMatchAt: number
+    hasSeries: boolean
+    stagePriority: number | null
+  }>()
+
+  for (const match of matches) {
+    const roundInfo = match.round ?? null
+    const roundId = roundInfo?.id ?? null
+    const roundLabel = deriveRoundLabel(roundInfo)
+    const key = buildRoundKey(roundId, roundLabel)
+    const timestamp = match.matchDateTime.getTime()
+    let accumulator = map.get(key)
+    if (!accumulator) {
+      const initialPriority = match.series
+        ? deriveSeriesStagePriority(match.series.stageName)
+        : null
+      accumulator = {
+        roundId,
+        roundNumber: roundInfo?.roundNumber ?? null,
+        roundLabel,
+        roundType: roundInfo?.roundType ?? null,
+        matchCount: 0,
+        firstMatchAt: timestamp,
+        lastMatchAt: timestamp,
+        hasSeries: Boolean(match.series),
+        stagePriority: initialPriority,
+      }
+      map.set(key, accumulator)
+    }
+    accumulator.matchCount += 1
+    accumulator.firstMatchAt = Math.min(accumulator.firstMatchAt, timestamp)
+    accumulator.lastMatchAt = Math.max(accumulator.lastMatchAt, timestamp)
+    if (match.series) {
+      const priority = deriveSeriesStagePriority(match.series.stageName)
+      accumulator.hasSeries = true
+      accumulator.stagePriority =
+        accumulator.stagePriority === null
+          ? priority
+          : Math.min(accumulator.stagePriority, priority)
+    }
+  }
+
+  const rounds = Array.from(map.values()).sort((left, right) => {
+    const leftPriority = left.stagePriority ?? Number.POSITIVE_INFINITY
+    const rightPriority = right.stagePriority ?? Number.POSITIVE_INFINITY
+    if (leftPriority !== rightPriority) {
+      return leftPriority - rightPriority
+    }
+    const leftNumber = left.roundNumber ?? Number.NEGATIVE_INFINITY
+    const rightNumber = right.roundNumber ?? Number.NEGATIVE_INFINITY
+    if (leftNumber !== rightNumber) {
+      return rightNumber - leftNumber
+    }
+    if (left.lastMatchAt !== right.lastMatchAt) {
+      return right.lastMatchAt - left.lastMatchAt
+    }
+    return right.roundLabel.localeCompare(left.roundLabel, 'ru')
+  })
+
+  const summaries: LeagueRoundMatches[] = rounds.map(round => ({
+    roundId: round.roundId,
+    roundNumber: round.roundNumber,
+    roundLabel: round.roundLabel,
+    roundType: round.roundType,
+    matches: [],
+    matchesCount: round.matchCount,
+    roundKey: buildRoundKey(round.roundId, round.roundLabel),
+    firstMatchAt: new Date(round.firstMatchAt).toISOString(),
+    lastMatchAt: new Date(round.lastMatchAt).toISOString(),
+  }))
+
+  return {
+    season: ensureSeasonSummary(season),
+    rounds: summaries,
+    generatedAt: new Date().toISOString(),
+  }
+}
+
+export const buildLeagueResultsForRound = async (
   season: SeasonWithCompetition,
-  limitRounds = 4
+  context: { roundId: number | null; label?: string }
+): Promise<LeagueRoundCollection | null> => {
+  const where = {
+    seasonId: season.id,
+    status: MatchStatus.FINISHED,
+    ...(context.roundId !== null ? { roundId: context.roundId } : { roundId: null }),
+  }
+
+  const matches = await prisma.match.findMany({
+    where,
+    orderBy: [{ matchDateTime: 'desc' }],
+    include: {
+      homeClub: { select: clubSelect },
+      awayClub: { select: clubSelect },
+      stadium: { select: stadiumSelect },
+      round: { select: roundSelect },
+      series: {
+        select: {
+          id: true,
+          stageName: true,
+          seriesStatus: true,
+          homeClubId: true,
+          awayClubId: true,
+          homeClub: { select: clubSelect },
+          awayClub: { select: clubSelect },
+          matches: {
+            select: {
+              id: true,
+              seriesMatchNumber: true,
+              status: true,
+              homeTeamId: true,
+              awayTeamId: true,
+              homeScore: true,
+              awayScore: true,
+              hasPenaltyShootout: true,
+              penaltyHomeScore: true,
+              penaltyAwayScore: true,
+            },
+            orderBy: { seriesMatchNumber: 'asc' },
+          },
+        },
+      },
+    },
+  })
+
+  if (!matches.length) {
+    return null
+  }
+
+  const transformed = transformMatches(
+    matches.map(match => ({
+      ...match,
+      stadium: match.stadium
+        ? {
+            stadiumId: match.stadium.id,
+            stadiumName: match.stadium.name,
+            city: match.stadium.city,
+          }
+        : null,
+    })) as MatchRecord[],
+    'results'
+  )
+
+  const grouped = groupMatchViewsByRound(transformed, { order: 'desc' })
+  const expectedKey = buildRoundKey(context.roundId, context.label ?? grouped[0]?.roundLabel ?? 'Без тура')
+  const targetRound = grouped.find(round => round.roundKey === expectedKey) ?? grouped[0]
+  if (!targetRound) {
+    return null
+  }
+
+  return {
+    season: ensureSeasonSummary(season),
+    rounds: [targetRound],
+    generatedAt: new Date().toISOString(),
+  }
+}
+
+export const buildLeagueResultsFull = async (
+  season: SeasonWithCompetition
 ): Promise<LeagueRoundCollection> => {
   const matches = await prisma.match.findMany({
     where: {
@@ -670,6 +915,14 @@ export const buildLeagueResults = async (
     },
   })
 
+  if (!matches.length) {
+    return {
+      season: ensureSeasonSummary(season),
+      rounds: [],
+      generatedAt: new Date().toISOString(),
+    }
+  }
+
   const transformed = transformMatches(
     matches.map(match => ({
       ...match,
@@ -684,7 +937,7 @@ export const buildLeagueResults = async (
     'results'
   )
 
-  const grouped = groupMatchViewsByRound(transformed, { limit: limitRounds, order: 'desc' })
+  const grouped = groupMatchViewsByRound(transformed, { order: 'desc' })
 
   return {
     season: ensureSeasonSummary(season),
@@ -755,7 +1008,13 @@ const groupFriendlyViews = (
 
   const buckets = new Map<
     string,
-    { label: string; orderTimestamp: number; matches: LeagueMatchView[] }
+    {
+      label: string
+      orderTimestamp: number
+      firstTimestamp: number
+      lastTimestamp: number
+      matches: LeagueMatchView[]
+    }
   >()
 
   for (const entry of matches) {
@@ -766,14 +1025,20 @@ const groupFriendlyViews = (
     if (existing) {
       if (direction === 'asc') {
         existing.orderTimestamp = Math.min(existing.orderTimestamp, entry.timestamp)
+        existing.firstTimestamp = Math.min(existing.firstTimestamp, entry.timestamp)
+        existing.lastTimestamp = Math.max(existing.lastTimestamp, entry.timestamp)
       } else {
         existing.orderTimestamp = Math.max(existing.orderTimestamp, entry.timestamp)
+        existing.firstTimestamp = Math.min(existing.firstTimestamp, entry.timestamp)
+        existing.lastTimestamp = Math.max(existing.lastTimestamp, entry.timestamp)
       }
       existing.matches.push(entry.view)
     } else {
       buckets.set(key, {
         label,
         orderTimestamp: entry.timestamp,
+        firstTimestamp: entry.timestamp,
+        lastTimestamp: entry.timestamp,
         matches: [entry.view],
       })
     }
@@ -799,6 +1064,10 @@ const groupFriendlyViews = (
       direction === 'asc'
         ? [...group.matches].sort((a, b) => a.matchDateTime.localeCompare(b.matchDateTime))
         : [...group.matches].sort((a, b) => b.matchDateTime.localeCompare(a.matchDateTime)),
+    matchesCount: group.matches.length,
+    roundKey: buildRoundKey(null, group.label),
+    firstMatchAt: new Date(group.firstTimestamp).toISOString(),
+    lastMatchAt: new Date(group.lastTimestamp).toISOString(),
   }))
 }
 
@@ -960,7 +1229,7 @@ export const refreshLeagueMatchAggregates = async (
 
   const [schedule, results] = await Promise.all([
     buildLeagueSchedule(season),
-    buildLeagueResults(season),
+    buildLeagueResultsIndex(season),
   ])
 
   const [scheduleOptions, resultsOptions] = await Promise.all([
@@ -968,11 +1237,19 @@ export const refreshLeagueMatchAggregates = async (
     resolveCacheOptions('leagueResults'),
   ])
 
+  const roundCacheInvalidate = results.rounds
+    .map(round => round.roundKey)
+    .filter(Boolean)
+    .map(key =>
+      defaultCache.invalidate(`${PUBLIC_LEAGUE_RESULTS_KEY}:${seasonId}:round:${key}`).catch(() => undefined)
+    )
+
   await Promise.all([
     defaultCache.set(PUBLIC_LEAGUE_SCHEDULE_KEY, schedule, scheduleOptions),
     defaultCache.set(`${PUBLIC_LEAGUE_SCHEDULE_KEY}:${seasonId}`, schedule, scheduleOptions),
     defaultCache.set(PUBLIC_LEAGUE_RESULTS_KEY, results, resultsOptions),
     defaultCache.set(`${PUBLIC_LEAGUE_RESULTS_KEY}:${seasonId}`, results, resultsOptions),
+    ...roundCacheInvalidate,
   ])
 
   if (options?.publishTopic) {

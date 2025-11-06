@@ -350,6 +350,10 @@ export interface LeagueRoundMatches {
   roundLabel: string
   roundType: 'REGULAR' | 'PLAYOFF' | null
   matches: LeagueMatchView[]
+  matchesCount?: number
+  roundKey?: string
+  firstMatchAt?: string
+  lastMatchAt?: string
 }
 
 export interface LeagueRoundCollection {

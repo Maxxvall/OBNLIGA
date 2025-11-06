@@ -22,13 +22,6 @@ const MARKET_LABELS: Record<PredictionMarketType, string> = {
   CUSTOM_BOOLEAN: 'Спецмаркет',
 }
 
-const MATCH_STATUS_LABELS: Record<ActivePredictionMatch['status'], string> = {
-  SCHEDULED: 'Матч не начался',
-  LIVE: 'Матч идёт',
-  POSTPONED: 'Перенесён',
-  FINISHED: 'Завершён',
-}
-
 const STATUS_LABELS: Record<UserPredictionEntry['status'], string> = {
   PENDING: 'Ожидает',
   WON: 'Засчитано',
@@ -223,8 +216,13 @@ const getTemplateSortOrder = (template: PredictionTemplateView): number => {
   // TOTAL_GOALS с разными линиями
   if (template.marketType === 'TOTAL_GOALS') {
     const options = recordFromOptions(template.options)
-    const line = typeof options?.line === 'number' ? options.line :
-                 typeof options?.formattedLine === 'string' ? parseFloat(options.formattedLine) : null
+    let line: number | null = null
+    if (typeof options?.line === 'number') {
+      line = options.line
+    } else if (typeof options?.formattedLine === 'string') {
+      const parsedLine = parseFloat(options.formattedLine)
+      line = Number.isNaN(parsedLine) ? null : parsedLine
+    }
     
     if (line !== null && !Number.isNaN(line)) {
       const delta = options?.delta
@@ -428,34 +426,6 @@ const formatEntrySelection = (entry: UserPredictionEntry): string => {
   }
   
   return entry.selection
-}
-
-const formatEntryMarketLabel = (entry: UserPredictionEntry): string => {
-  if (entry.marketType === 'LEGACY_EVENT') {
-    if (entry.selection.startsWith('PENALTY_')) {
-      return 'Пенальти'
-    }
-    if (entry.selection.startsWith('RED_CARD_')) {
-      return 'Удаление'
-    }
-  }
-  
-  switch (entry.marketType) {
-  case 'MATCH_OUTCOME':
-    return 'Исход матча'
-  case 'TOTAL_GOALS':
-    return 'Тотал голов'
-  case 'CUSTOM_BOOLEAN':
-    return 'Спец событие'
-  case 'LEGACY_1X2':
-    return 'Исход матча'
-  case 'LEGACY_TOTAL':
-    return 'Тотал голов'
-  case 'LEGACY_EVENT':
-    return 'Спец событие'
-  default:
-    return entry.marketType
-  }
 }
 
 const renderUserPrediction = (prediction: UserPredictionEntry) => {
@@ -666,113 +636,112 @@ const PredictionsPage: React.FC = () => {
             <h3 className="prediction-date-header">{group.dateLabel}</h3>
             <ul className="prediction-match-list">
               {group.matches.map(match => {
-          if (!match.templates.length) {
-            return (
-              <li key={match.matchId} className="prediction-match">
-                {renderUpcomingMatchHeader(match)}
-                <p className="prediction-note compact">Настройки прогнозов появятся позже.</p>
-              </li>
-            )
-          }
+                if (!match.templates.length) {
+                  return (
+                    <li key={match.matchId} className="prediction-match">
+                      {renderUpcomingMatchHeader(match)}
+                      <p className="prediction-note compact">Настройки прогнозов появятся позже.</p>
+                    </li>
+                  )
+                }
 
-          const isExpanded = expandedMatches[match.matchId] === true
-          
-          const outcomeTemplate = match.templates.find(t => t.marketType === 'MATCH_OUTCOME')
-          const otherTemplatesUnsorted = match.templates.filter(t => t.marketType !== 'MATCH_OUTCOME')
-          const otherTemplates = sortTemplates(otherTemplatesUnsorted)
-          
-          const hasAnySelection = match.templates.some(t => selectedOptions[t.id])
-          const anySubmitting = match.templates.some(t => submitting[t.id])
-          const anyError = match.templates.map(t => submitErrors[t.id]).find(e => e)
-          const anySuccess = match.templates.map(t => submitSuccess[t.id]).find(e => e)
+                const isExpanded = expandedMatches[match.matchId] === true
+                const outcomeTemplate = match.templates.find(template => template.marketType === 'MATCH_OUTCOME')
+                const otherTemplatesUnsorted = match.templates.filter(template => template.marketType !== 'MATCH_OUTCOME')
+                const otherTemplates = sortTemplates(otherTemplatesUnsorted)
 
-          const renderTemplateOptions = (template: PredictionTemplateView) => {
-            const meta = resolveTemplateMeta(template)
-            const choices = normalizeTemplateChoices(template)
-            const selected = selectedOptions[template.id]
-            const expectedPoints = computeExpectedPoints(template)
+                const hasAnySelection = match.templates.some(template => selectedOptions[template.id])
+                const anySubmitting = match.templates.some(template => submitting[template.id])
+                const anyError = match.templates.map(template => submitErrors[template.id]).find(Boolean)
+                const anySuccess = match.templates.map(template => submitSuccess[template.id]).find(Boolean)
 
-            if (!choices.length) {
-              return null
-            }
+                const renderTemplateOptions = (template: PredictionTemplateView) => {
+                  const meta = resolveTemplateMeta(template)
+                  const choices = normalizeTemplateChoices(template)
+                  const selected = selectedOptions[template.id]
+                  const expectedPoints = computeExpectedPoints(template)
 
-            return (
-              <section key={template.id} className="prediction-market-inline">
-                <div className="prediction-market-inline-header">
-                  <span className="prediction-market-inline-title">{meta.title}</span>
-                </div>
-                <div className="prediction-options">
-                  {choices.map(choice => {
-                    const choicePoints = choice.points ?? expectedPoints
-                    return (
+                  if (!choices.length) {
+                    return null
+                  }
+
+                  return (
+                    <section key={template.id} className="prediction-market-inline">
+                      <div className="prediction-market-inline-header">
+                        <span className="prediction-market-inline-title">{meta.title}</span>
+                      </div>
+                      <div className="prediction-options">
+                        {choices.map(choice => {
+                          const choicePoints = choice.points ?? expectedPoints
+                          return (
+                            <button
+                              type="button"
+                              key={choice.value}
+                              className={`prediction-option${selected === choice.value ? ' selected' : ''}`}
+                              onClick={() => handleOptionSelect(template.id, choice.value)}
+                              disabled={anySubmitting}
+                            >
+                              <span className="prediction-option-label">{choice.label}</span>
+                              <span className="prediction-option-points">+{choicePoints}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </section>
+                  )
+                }
+
+                return (
+                  <li key={match.matchId} className="prediction-match-compact">
+                    {renderUpcomingMatchHeader(match)}
+
+                    {outcomeTemplate ? renderTemplateOptions(outcomeTemplate) : null}
+
+                    {otherTemplates.length > 0 ? (
                       <button
                         type="button"
-                        key={choice.value}
-                        className={`prediction-option${selected === choice.value ? ' selected' : ''}`}
-                        onClick={() => handleOptionSelect(template.id, choice.value)}
-                        disabled={anySubmitting}
+                        className="prediction-expand-toggle"
+                        onClick={() => toggleMatchExpanded(match.matchId)}
                       >
-                        <span className="prediction-option-label">{choice.label}</span>
-                        <span className="prediction-option-points">+{choicePoints}</span>
+                        {isExpanded ? 'Скрыть события' : 'Больше событий'}
                       </button>
-                    )
-                  })}
-                </div>
-              </section>
-            )
-          }
+                    ) : null}
 
-          return (
-            <li key={match.matchId} className="prediction-match-compact">
-              {renderUpcomingMatchHeader(match)}
-              
-              {outcomeTemplate ? renderTemplateOptions(outcomeTemplate) : null}
-              
-              {otherTemplates.length > 0 ? (
-                <button
-                  type="button"
-                  className="prediction-expand-toggle"
-                  onClick={() => toggleMatchExpanded(match.matchId)}
-                >
-                  {isExpanded ? 'Скрыть события' : 'Больше событий'}
-                </button>
-              ) : null}
-              
-              {isExpanded && otherTemplates.length > 0 ? (
-                <div className="prediction-additional-markets">
-                  {otherTemplates.map(renderTemplateOptions)}
-                </div>
-              ) : null}
-              
-              {hasAnySelection || anyError || anySuccess ? (
-                <div className="prediction-match-footer">
-                  {anyError ? (
-                    <span className="prediction-feedback error">{anyError}</span>
-                  ) : anySuccess ? (
-                    <span className="prediction-feedback success">{anySuccess}</span>
-                  ) : null}
-                  
-                  {!anySuccess && (
-                    <button
-                      type="button"
-                      className="prediction-submit-main"
-                      onClick={async () => {
-                        for (const template of match.templates) {
-                          if (selectedOptions[template.id]) {
-                            await handleSubmit(template)
-                          }
-                        }
-                      }}
-                      disabled={!hasAnySelection || anySubmitting}
-                    >
-                      {anySubmitting ? 'Отправляем...' : 'Отправить прогноз'}
-                    </button>
-                  )}
-                </div>
-              ) : null}
-            </li>
-          )
-        })}
+                    {isExpanded && otherTemplates.length > 0 ? (
+                      <div className="prediction-additional-markets">
+                        {otherTemplates.map(renderTemplateOptions)}
+                      </div>
+                    ) : null}
+
+                    {hasAnySelection || anyError || anySuccess ? (
+                      <div className="prediction-match-footer">
+                        {anyError ? (
+                          <span className="prediction-feedback error">{anyError}</span>
+                        ) : anySuccess ? (
+                          <span className="prediction-feedback success">{anySuccess}</span>
+                        ) : null}
+
+                        {!anySuccess && (
+                          <button
+                            type="button"
+                            className="prediction-submit-main"
+                            onClick={async () => {
+                              for (const template of match.templates) {
+                                if (selectedOptions[template.id]) {
+                                  await handleSubmit(template)
+                                }
+                              }
+                            }}
+                            disabled={!hasAnySelection || anySubmitting}
+                          >
+                            {anySubmitting ? 'Отправляем...' : 'Отправить прогноз'}
+                          </button>
+                        )}
+                      </div>
+                    ) : null}
+                  </li>
+                )
+              })}
             </ul>
           </div>
         ))}

@@ -2,7 +2,7 @@ import prisma from '../db'
 import { defaultCache } from '../cache'
 import {
   buildLeagueSchedule,
-  buildLeagueResults,
+  buildLeagueResultsFull,
   type LeagueRoundMatches,
 } from './leagueSchedule'
 import { ClubSummaryNotFoundError } from './clubSummary'
@@ -102,7 +102,7 @@ export const buildClubMatches = async (clubId: number): Promise<ClubMatchesSnaps
   for (const season of seasons) {
     const [schedule, results] = await Promise.all([
       buildLeagueSchedule(season, Number.MAX_SAFE_INTEGER),
-      buildLeagueResults(season, Number.MAX_SAFE_INTEGER),
+      buildLeagueResultsFull(season),
     ])
 
     const matches = new Map<string, ClubMatchCompact>()

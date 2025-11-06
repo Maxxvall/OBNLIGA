@@ -10,6 +10,9 @@ type LeagueRoundsViewProps = {
   loading: boolean
   error?: string
   onRetry: () => void
+  onLazyLoadRound?: (roundKey: string, force?: boolean) => void
+  roundLoading?: Record<string, boolean>
+  roundErrors?: Record<string, string | undefined>
 }
 
 type PlayoffPodiumSummary = {
@@ -24,6 +27,12 @@ const getEmptyMessage = (mode: 'schedule' | 'results'): string => {
   }
   return 'Результаты матчей появятся сразу после завершения игр.'
 }
+
+const ROUND_DATE_FORMAT = new Intl.DateTimeFormat('ru-RU', {
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+})
 
 const LIVE_HIGHLIGHT_DURATION = 2200
 const SCORE_HIGHLIGHT_DURATION = 1400
@@ -234,6 +243,9 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
   loading,
   error,
   onRetry,
+  onLazyLoadRound,
+  roundLoading,
+  roundErrors,
 }) => {
   const openTeamView = useAppStore(state => state.openTeamView)
   const openMatchDetails = useAppStore(state => state.openMatchDetails)
@@ -248,6 +260,22 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
     ? seasonResults.rounds.some(round => round.matches.length > 0)
     : false
   const podium = seasonTable ? seasonTable.standings.slice(0, 3) : []
+  const [expandedRounds, setExpandedRounds] = React.useState<Set<string>>(() => new Set())
+  const roundLoadingMap = roundLoading ?? {}
+  const roundErrorMap = roundErrors ?? {}
+
+  const requestRoundData = React.useCallback(
+    (roundKey: string, force?: boolean) => {
+      if (onLazyLoadRound) {
+        onLazyLoadRound(roundKey, force)
+      }
+    },
+    [onLazyLoadRound]
+  )
+
+  React.useEffect(() => {
+    setExpandedRounds(new Set())
+  }, [mode, data?.season.id])
 
   const playoffState = React.useMemo<{
     hasSeries: boolean
@@ -467,115 +495,228 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
         )
       ) : (
         <div className="league-rounds-grid">
-          {rounds.map(round => {
-            const roundKey = round.roundId ?? round.roundLabel
+          {rounds.map((round, index) => {
+            const computedKey = round.roundKey ?? (round.roundId !== null ? `id-${round.roundId}` : `${round.roundLabel}-${index}`)
+            const roundKey = computedKey || `${round.roundLabel}-${index}`
             const roundTypeLabel = round.roundType === 'PLAYOFF' ? 'Плей-офф' : null
-            return (
-              <article className="league-round-card" key={roundKey}>
-                <header className="league-round-card-header">
-                  <h3>{round.roundLabel}</h3>
-                  {roundTypeLabel && <span className="league-round-chip">{roundTypeLabel}</span>}
-                </header>
-                <div className="league-round-card-body">
-                  {round.matches.map(match => {
-                    const descriptor = buildMatchDescriptor(match, mode)
-                    const homeName = match.homeClub.name
-                    const awayName = match.awayClub.name
-                    const location = buildLocationLabel(match)
-                    const isLiveActivated = liveHighlightIds.has(match.id)
-                    const isScoreUpdated = scoreHighlightIds.has(match.id)
-                    const cardClasses = ['league-match-card']
-                    if (descriptor.modifier) {
-                      cardClasses.push(descriptor.modifier)
-                    }
-                    if (isLiveActivated) {
-                      cardClasses.push('live-activated')
-                    }
-                    const scoreClassName = `league-match-score${isScoreUpdated ? ' score-updated' : ''}`
-                    return (
-                      <div
-                        className={cardClasses.join(' ')}
-                        key={match.id}
-                        onClick={() => openMatchDetails(match.id, match, data?.season.id)}
-                        style={{ cursor: 'pointer' }}
-                      >
-                        <div className="league-match-top">
-                          <span className="match-datetime">{descriptor.dateTime}</span>
-                          {descriptor.badge && (
-                            <span className={`match-badge ${descriptor.badge.tone}`}>{descriptor.badge.label}</span>
-                          )}
-                        </div>
-                        <div className="league-match-main">
-                          <div className="league-match-team">
-                            <button
-                              type="button"
-                              className="club-logo-button"
-                              onClick={e => {
-                                e.stopPropagation()
-                                openTeamView(match.homeClub.id)
-                              }}
-                              aria-label={`Открыть страницу клуба ${match.homeClub.name}`}
-                            >
-                              {match.homeClub.logoUrl ? (
-                                <img
-                                  src={match.homeClub.logoUrl}
-                                  alt=""
-                                  aria-hidden="true"
-                                  className="club-logo"
-                                />
-                              ) : (
-                                <span className="club-logo fallback" aria-hidden="true">
-                                  {homeName.slice(0, 2).toUpperCase()}
-                                </span>
-                              )}
-                            </button>
-                            <span className="team-name">{homeName}</span>
-                          </div>
-                          <div className={scoreClassName}>
-                            <span className="score-main">{descriptor.score}</span>
-                            {descriptor.detail && (
-                              <span className="score-detail">{descriptor.detail}</span>
+            const isResultsMode = mode === 'results'
+            const isExpanded = !isResultsMode || expandedRounds.has(roundKey)
+            const matchesCount = round.matchesCount ?? round.matches.length
+            const isRoundLoading = Boolean(roundLoadingMap[roundKey])
+            const roundError = roundErrorMap[roundKey]
+            const hasStoredMatches = round.matches.length > 0
+            const shouldRequestData = matchesCount > 0 && !hasStoredMatches
+            const bodyId = `round-${encodeURIComponent(roundKey)}-body`
+
+            const firstDate = round.firstMatchAt ? new Date(round.firstMatchAt) : null
+            const lastDate = round.lastMatchAt ? new Date(round.lastMatchAt) : null
+            let summaryText: string | null = null
+            if (firstDate && !Number.isNaN(firstDate.valueOf())) {
+              if (lastDate && !Number.isNaN(lastDate.valueOf())) {
+                const sameDay = firstDate.toDateString() === lastDate.toDateString()
+                summaryText = sameDay
+                  ? ROUND_DATE_FORMAT.format(firstDate)
+                  : `${ROUND_DATE_FORMAT.format(firstDate)} - ${ROUND_DATE_FORMAT.format(lastDate)}`
+              } else {
+                summaryText = ROUND_DATE_FORMAT.format(firstDate)
+              }
+            } else if (lastDate && !Number.isNaN(lastDate.valueOf())) {
+              summaryText = ROUND_DATE_FORMAT.format(lastDate)
+            }
+
+            const toggleRound = () => {
+              if (!isResultsMode) {
+                return
+              }
+              setExpandedRounds(prev => {
+                const next = new Set(prev)
+                if (next.has(roundKey)) {
+                  next.delete(roundKey)
+                } else {
+                  next.add(roundKey)
+                  if (shouldRequestData && !isRoundLoading) {
+                    requestRoundData(roundKey)
+                  }
+                }
+                return next
+              })
+            }
+
+            const handleRetry = () => {
+              requestRoundData(roundKey, true)
+            }
+
+            const shouldShowBody = !isResultsMode || isExpanded
+
+            let bodyContent: React.ReactNode = null
+            if (shouldShowBody) {
+              if (isRoundLoading) {
+                bodyContent = (
+                  <div className="round-loading muted" role="status">
+                    Загружаем тур…
+                  </div>
+                )
+              } else if (roundError) {
+                bodyContent = (
+                  <div className="inline-feedback error" role="alert">
+                    <div>Не удалось загрузить данные тура. Код: {roundError}</div>
+                    <button type="button" className="button-secondary" onClick={handleRetry}>
+                      Повторить
+                    </button>
+                  </div>
+                )
+              } else if (!hasStoredMatches && matchesCount > 0) {
+                bodyContent = (
+                  <div className="inline-feedback info" role="status">
+                    Раскройте тур, чтобы загрузить список матчей.
+                  </div>
+                )
+              } else if (round.matches.length === 0) {
+                bodyContent = (
+                  <div className="inline-feedback info" role="status">
+                    {getEmptyMessage(mode)}
+                  </div>
+                )
+              } else {
+                bodyContent = (
+                  <div className="league-round-card-body" id={isResultsMode ? bodyId : undefined}>
+                    {round.matches.map(match => {
+                      const descriptor = buildMatchDescriptor(match, mode)
+                      const homeName = match.homeClub.name
+                      const awayName = match.awayClub.name
+                      const location = buildLocationLabel(match)
+                      const isLiveActivated = liveHighlightIds.has(match.id)
+                      const isScoreUpdated = scoreHighlightIds.has(match.id)
+                      const cardClasses = ['league-match-card']
+                      if (descriptor.modifier) {
+                        cardClasses.push(descriptor.modifier)
+                      }
+                      if (isLiveActivated) {
+                        cardClasses.push('live-activated')
+                      }
+                      const scoreClassName = `league-match-score${isScoreUpdated ? ' score-updated' : ''}`
+                      return (
+                        <div
+                          className={cardClasses.join(' ')}
+                          key={match.id}
+                          onClick={() => openMatchDetails(match.id, match, data?.season.id)}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          <div className="league-match-top">
+                            <span className="match-datetime">{descriptor.dateTime}</span>
+                            {descriptor.badge && (
+                              <span className={`match-badge ${descriptor.badge.tone}`}>{descriptor.badge.label}</span>
                             )}
                           </div>
-                          <div className="league-match-team">
-                            <button
-                              type="button"
-                              className="club-logo-button"
-                              onClick={e => {
-                                e.stopPropagation()
-                                openTeamView(match.awayClub.id)
-                              }}
-                              aria-label={`Открыть страницу клуба ${match.awayClub.name}`}
-                            >
-                              {match.awayClub.logoUrl ? (
-                                <img
-                                  src={match.awayClub.logoUrl}
-                                  alt=""
-                                  aria-hidden="true"
-                                  className="club-logo"
-                                />
-                              ) : (
-                                <span className="club-logo fallback" aria-hidden="true">
-                                  {awayName.slice(0, 2).toUpperCase()}
-                                </span>
+                          <div className="league-match-main">
+                            <div className="league-match-team">
+                              <button
+                                type="button"
+                                className="club-logo-button"
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  openTeamView(match.homeClub.id)
+                                }}
+                                aria-label={`Открыть страницу клуба ${match.homeClub.name}`}
+                              >
+                                {match.homeClub.logoUrl ? (
+                                  <img
+                                    src={match.homeClub.logoUrl}
+                                    alt=""
+                                    aria-hidden="true"
+                                    className="club-logo"
+                                  />
+                                ) : (
+                                  <span className="club-logo fallback" aria-hidden="true">
+                                    {homeName.slice(0, 2).toUpperCase()}
+                                  </span>
+                                )}
+                              </button>
+                              <span className="team-name">{homeName}</span>
+                            </div>
+                            <div className={scoreClassName}>
+                              <span className="score-main">{descriptor.score}</span>
+                              {descriptor.detail && (
+                                <span className="score-detail">{descriptor.detail}</span>
                               )}
-                            </button>
-                            <span className="team-name">{awayName}</span>
+                            </div>
+                            <div className="league-match-team">
+                              <button
+                                type="button"
+                                className="club-logo-button"
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  openTeamView(match.awayClub.id)
+                                }}
+                                aria-label={`Открыть страницу клуба ${match.awayClub.name}`}
+                              >
+                                {match.awayClub.logoUrl ? (
+                                  <img
+                                    src={match.awayClub.logoUrl}
+                                    alt=""
+                                    aria-hidden="true"
+                                    className="club-logo"
+                                  />
+                                ) : (
+                                  <span className="club-logo fallback" aria-hidden="true">
+                                    {awayName.slice(0, 2).toUpperCase()}
+                                  </span>
+                                )}
+                              </button>
+                              <span className="team-name">{awayName}</span>
+                            </div>
+                          </div>
+                          {descriptor.series ? (
+                            <div className="series-info">
+                              <span className="series-label">Счёт в серии</span>
+                              <span className="series-score">{descriptor.series.seriesScore}</span>
+                            </div>
+                          ) : null}
+                          <div className="league-match-location">
+                            <span>{location}</span>
                           </div>
                         </div>
-                        {descriptor.series ? (
-                          <div className="series-info">
-                            <span className="series-label">Счёт в серии</span>
-                            <span className="series-score">{descriptor.series.seriesScore}</span>
-                          </div>
-                        ) : null}
-                        <div className="league-match-location">
-                          <span>{location}</span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
+                      )
+                    })}
+                  </div>
+                )
+              }
+            }
+
+            return (
+              <article
+                className={`league-round-card${isResultsMode ? ' collapsible' : ''}${isExpanded ? ' expanded' : ''}`}
+                key={roundKey}
+              >
+                <header className="league-round-card-header">
+                  {isResultsMode ? (
+                    <button
+                      type="button"
+                      className="round-toggle"
+                      onClick={toggleRound}
+                      aria-expanded={isExpanded}
+                      aria-controls={bodyId}
+                    >
+                      <span className="round-toggle-icon" aria-hidden>
+                        {isExpanded ? '-' : '+'}
+                      </span>
+                      <span className="round-header-main">
+                        <span className="round-title">{round.roundLabel}</span>
+                        <span className="round-meta">
+                          <span>{`Матчей: ${matchesCount}`}</span>
+                          {summaryText && <span className="round-summary">{summaryText}</span>}
+                        </span>
+                      </span>
+                    </button>
+                  ) : (
+                    <>
+                      <h3>{round.roundLabel}</h3>
+                      {summaryText && <span className="round-summary">{summaryText}</span>}
+                    </>
+                  )}
+                  {roundTypeLabel && <span className="league-round-chip">{roundTypeLabel}</span>}
+                </header>
+                {bodyContent}
               </article>
             )
           })}

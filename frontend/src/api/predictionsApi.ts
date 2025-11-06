@@ -11,6 +11,9 @@ const ACTIVE_STALE_MS = 300_000 // 5 минут - устаревшие, но п�
 const MY_TTL_MS = 300_000 // 5 минут - свежие данные
 const MY_STALE_MS = 900_000 // 15 минут - устаревшие, но показываем (SWR)
 
+// Дедупликация запросов (in-flight requests)
+const inflightRequests = new Map<string, Promise<ActivePredictionsResult | MyPredictionsResult>>()
+
 // Лимиты кэша
 const MAX_ACTIVE_CACHE_ENTRIES = 10 // максимум 10 различных days-комбинаций
 const MAX_TOTAL_CACHE_SIZE = 50 // максимум 50 записей всего
@@ -263,6 +266,16 @@ export const fetchActivePredictions = async (
   const cache = readCache<ActivePredictionMatch[]>(cacheKey)
   const now = Date.now()
 
+  console.log('[predictionsApi] Cache check:', {
+    cacheKey,
+    hasCache: !!cache,
+    etag: cache?.etag,
+    expiresAt: cache?.expiresAt,
+    now,
+    isFresh: cache && cache.expiresAt > now,
+    isStale: cache && cache.staleUntil > now && cache.expiresAt <= now,
+  })
+
   // Проверка: данные свежие
   const isFresh = cache && cache.expiresAt > now
   // Проверка: данные устаревшие, но ещё можно показать (SWR)
@@ -270,6 +283,7 @@ export const fetchActivePredictions = async (
 
   // Если force=false и данные свежие - вернуть из кэша
   if (!options.force && isFresh) {
+    console.log('[predictionsApi] Returning FRESH cache')
     return {
       data: cache.data,
       fromCache: true,
@@ -279,6 +293,7 @@ export const fetchActivePredictions = async (
 
   // Если данные устаревшие, но показываемые - запустить фоновое обновление и вернуть старые данные
   if (!options.force && isStale) {
+    console.log('[predictionsApi] Returning STALE cache + background refresh')
     // Фоновое обновление (не блокируем)
     fetchActivePredictions({ ...options, force: true }).catch(err => {
       console.warn('predictionsApi: background refresh failed', err)
@@ -291,55 +306,84 @@ export const fetchActivePredictions = async (
     }
   }
 
-  const response = await httpRequest<ActivePredictionMatch[]>(buildActivePath(days), {
-    version: cache?.etag,
-    credentials: 'include',
-  })
-
-  if (!response.ok) {
-    // При ошибке - вернуть кэш если есть (даже если stale)
-    if (cache) {
-      return { data: cache.data, fromCache: true, etag: cache.etag }
-    }
-    return { data: [], fromCache: false }
+  // Дедупликация: проверяем наличие активного запроса
+  const inflightKey = `active:${days}:${options.force ? 'force' : 'auto'}`
+  const existing = inflightRequests.get(inflightKey)
+  if (existing) {
+    return existing as Promise<ActivePredictionsResult>
   }
 
-  if ('notModified' in response && response.notModified) {
-    // Сервер вернул 304 - данные не изменились, обновить TTL
-    if (cache) {
-      const updatedNow = Date.now()
-      writeCache(cacheKey, {
-        ...cache,
-        expiresAt: updatedNow + ACTIVE_TTL_MS,
-        staleUntil: updatedNow + ACTIVE_STALE_MS,
-        lastAccess: updatedNow,
-      })
-      return {
-        data: cache.data,
-        fromCache: true,
-        etag: cache.etag,
+  // Создаём новый запрос и сохраняем в инфлайт
+  const requestPromise = (async (): Promise<ActivePredictionsResult> => {
+    try {
+      // Логирование для диагностики
+      if (cache?.etag) {
+        console.log('[predictionsApi] Sending request with ETag:', cache.etag)
+      } else {
+        console.log('[predictionsApi] Sending request WITHOUT ETag (cache:', cache ? 'exists' : 'none', ')')
       }
+
+      const response = await httpRequest<ActivePredictionMatch[]>(buildActivePath(days), {
+        version: cache?.etag,
+        credentials: 'include',
+      })
+
+      console.log('[predictionsApi] Response:', response.ok ? (('notModified' in response && response.notModified) ? '304 Not Modified' : '200 OK') : 'Error')
+
+      if (!response.ok) {
+        // При ошибке - вернуть кэш если есть (даже если stale)
+        if (cache) {
+          return { data: cache.data, fromCache: true, etag: cache.etag }
+        }
+        return { data: [], fromCache: false }
+      }
+
+      if ('notModified' in response && response.notModified) {
+        // Сервер вернул 304 - данные не изменились, обновить TTL
+        if (cache) {
+          const updatedNow = Date.now()
+          writeCache(cacheKey, {
+            ...cache,
+            expiresAt: updatedNow + ACTIVE_TTL_MS,
+            staleUntil: updatedNow + ACTIVE_STALE_MS,
+            lastAccess: updatedNow,
+          })
+          return {
+            data: cache.data,
+            fromCache: true,
+            etag: cache.etag,
+          }
+        }
+        return { data: [], fromCache: false }
+      }
+
+      const data = Array.isArray(response.data) ? response.data : []
+      const etag = response.version
+
+      console.log('[predictionsApi] Saving to cache with ETag:', etag)
+
+      const cacheNow = Date.now()
+      writeCache(cacheKey, {
+        data,
+        etag,
+        expiresAt: cacheNow + ACTIVE_TTL_MS,
+        staleUntil: cacheNow + ACTIVE_STALE_MS,
+        lastAccess: cacheNow,
+      })
+
+      return {
+        data,
+        fromCache: false,
+        etag,
+      }
+    } finally {
+      // Удаляем запрос из инфлайт после завершения
+      inflightRequests.delete(inflightKey)
     }
-    return { data: [], fromCache: false }
-  }
+  })()
 
-  const data = Array.isArray(response.data) ? response.data : []
-  const etag = response.version
-
-  const cacheNow = Date.now()
-  writeCache(cacheKey, {
-    data,
-    etag,
-    expiresAt: cacheNow + ACTIVE_TTL_MS,
-    staleUntil: cacheNow + ACTIVE_STALE_MS,
-    lastAccess: cacheNow,
-  })
-
-  return {
-    data,
-    fromCache: false,
-    etag,
-  }
+  inflightRequests.set(inflightKey, requestPromise)
+  return requestPromise
 }
 
 export const submitPrediction = async (

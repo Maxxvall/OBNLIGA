@@ -176,6 +176,7 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   font-size: 14px;
   vertical-align: middle;
+  text-align: center;
 }
 
 .ratings-table tbody tr:last-child td {
@@ -222,6 +223,7 @@
 .col-streak,
 .col-date {
   font-variant-numeric: tabular-nums;
+  vertical-align: middle;
 }
 
 .col-date {

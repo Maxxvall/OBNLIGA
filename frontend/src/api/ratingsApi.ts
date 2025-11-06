@@ -22,6 +22,9 @@ const RATING_STALE_MS = 600_000 // 10 минут - устаревшие, но п
 const MY_RATING_TTL_MS = 300_000 // 5 минут - свежие данные
 const MY_RATING_STALE_MS = 900_000 // 15 минут - устаревшие, но показываем (SWR)
 
+// Дедупликация запросов (in-flight requests)
+const inflightRequests = new Map<string, Promise<any>>()
+
 // Лимиты кэша
 const MAX_RATING_CACHE_ENTRIES = 10 // максимум 10 различных комбинаций
 
@@ -226,68 +229,100 @@ export async function fetchRatingLeaderboard(
     }
   }
 
-  const query = buildQueryString({
-    scope,
-    page,
-    pageSize,
-  })
-
-  const response = await httpRequest<RatingLeaderboardResponse>(`/api/ratings${query}`, { 
-    version: cache?.etag,
-  })
-
-  if (!response.ok) {
-    if (cache) {
-      return {
-        ok: true as const,
-        data: cache.data,
-        fromCache: true,
-        etag: cache.etag,
-      }
-    }
-    return {
-      ok: false as const,
-      error: response.error,
-    }
+  // Дедупликация: проверяем наличие активного запроса
+  const inflightKey = `leaderboard:${scope}:${page}:${pageSize}:${options.force ? 'force' : 'auto'}`
+  const existing = inflightRequests.get(inflightKey)
+  if (existing) {
+    return existing
   }
 
-  if ('notModified' in response && response.notModified) {
-    if (cache) {
-      const updatedNow = Date.now()
-      writeCache(cacheKey, {
-        ...cache,
-        expiresAt: updatedNow + RATING_TTL_MS,
-        staleUntil: updatedNow + RATING_STALE_MS,
-        lastAccess: updatedNow,
+  // Создаём новый запрос и сохраняем в инфлайт
+  const requestPromise = (async () => {
+    try {
+      const query = buildQueryString({
+        scope,
+        page,
+        pageSize,
       })
+
+      // Логирование для диагностики
+      if (cache?.etag) {
+        console.log('[ratingsApi] Sending request with ETag:', cache.etag)
+      } else {
+        console.log('[ratingsApi] Sending request WITHOUT ETag (cache:', cache ? 'exists' : 'none', ')')
+      }
+
+      const response = await httpRequest<RatingLeaderboardResponse>(`/api/ratings${query}`, { 
+        version: cache?.etag,
+      })
+
+      console.log('[ratingsApi] Response:', response.ok ? (('notModified' in response && response.notModified) ? '304 Not Modified' : '200 OK') : 'Error')
+
+      if (!response.ok) {
+        if (cache) {
+          return {
+            ok: true as const,
+            data: cache.data,
+            fromCache: true,
+            etag: cache.etag,
+          }
+        }
+        return {
+          ok: false as const,
+          error: response.error,
+        }
+      }
+
+      if ('notModified' in response && response.notModified) {
+        if (cache) {
+          const updatedNow = Date.now()
+          writeCache(cacheKey, {
+            ...cache,
+            expiresAt: updatedNow + RATING_TTL_MS,
+            staleUntil: updatedNow + RATING_STALE_MS,
+            lastAccess: updatedNow,
+          })
+          return {
+            ok: true as const,
+            data: cache.data,
+            fromCache: true,
+            etag: cache.etag,
+          }
+        }
+        return {
+          ok: false as const,
+          error: 'not_modified_but_no_cache',
+        }
+      }
+
+      const data = response.data
+      const etag = response.version
+
+      console.log('[ratingsApi] Saving to cache with ETag:', etag)
+
+      const cacheNow = Date.now()
+      writeCache(cacheKey, {
+        data,
+        etag,
+        expiresAt: cacheNow + RATING_TTL_MS,
+        staleUntil: cacheNow + RATING_STALE_MS,
+        lastAccess: cacheNow,
+      })
+
       return {
         ok: true as const,
-        data: cache.data,
-        fromCache: true,
-        etag: cache.etag,
+        data,
+        fromCache: false,
+        etag,
       }
+    } finally {
+      // Удаляем запрос из инфлайт после завершения
+      inflightRequests.delete(inflightKey)
     }
-    return {
-      ok: false as const,
-      error: 'no_cache_for_304',
-    }
-  }
+  })()
 
-  const cacheNow = Date.now()
-  writeCache(cacheKey, {
-    data: response.data,
-    etag: response.version,
-    expiresAt: cacheNow + RATING_TTL_MS,
-    staleUntil: cacheNow + RATING_STALE_MS,
-    lastAccess: cacheNow,
-  })
-
-  return {
-    ok: true as const,
-    data: response.data,
-    fromCache: false,
-    etag: response.version,
-  }
+  inflightRequests.set(inflightKey, requestPromise)
+  return requestPromise
 }
 
 export async function fetchMyRating(options: { force?: boolean } = {}) {

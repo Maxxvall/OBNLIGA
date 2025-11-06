@@ -10,8 +10,15 @@ const RootComponent = isLineupPortal ? LineupPortal : App
 
 setupConsoleFilters()
 
-root.render(
+// Отключаем StrictMode в production для устранения дублированных запросов
+// В development оставляем для проверки компонентов
+const isDev = import.meta.env.DEV
+const AppWrapper = isDev ? (
   <React.StrictMode>
     <RootComponent />
   </React.StrictMode>
+) : (
+  <RootComponent />
 )
+
+root.render(AppWrapper)

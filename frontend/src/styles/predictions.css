@@ -491,9 +491,38 @@
 
 .prediction-entry-header {
   display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.prediction-entry-top-line {
+  display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.prediction-entry-competition {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ratings-text);
+  flex: 1;
+  min-width: 0;
+}
+
+.prediction-entry-datetime {
+  font-size: 11px;
+  color: var(--prediction-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.prediction-entry-main-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
   flex-wrap: wrap;
 }
 
@@ -501,74 +530,44 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
 }
 
-.prediction-entry-body {
+.prediction-entry-bet {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.prediction-entry-info {
-  display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 8px;
   flex: 1;
   min-width: 0;
 }
 
-.prediction-entry-datetime {
+.prediction-bet-label {
   font-size: 12px;
   color: var(--prediction-muted);
   font-weight: 500;
+  white-space: nowrap;
 }
 
-.prediction-entry-choice {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.prediction-selection {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--prediction-text);
 }
 
 .prediction-entry-score {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  padding: 8px 14px;
-  border-radius: 12px;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 10px;
   background: rgba(0, 240, 255, 0.08);
   border: 1px solid rgba(0, 240, 255, 0.2);
 }
 
-.prediction-score-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--prediction-muted);
-}
-
 .prediction-score-value {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--prediction-accent);
-}
-
-.prediction-market-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--prediction-muted);
-  font-weight: 600;
-}
-
-.prediction-selection {
   font-size: 16px;
   font-weight: 700;
-  color: var(--prediction-text);
+  color: var(--prediction-accent);
 }
 
 .prediction-match-compact {

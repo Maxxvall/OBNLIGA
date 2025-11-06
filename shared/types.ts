@@ -174,6 +174,8 @@ export interface UserPredictionEntry {
   resolvedAt?: string | null
   marketType: UserPredictionMarketType
   matchDateTime: string
+  competitionName: string | null
+  seasonName: string | null
   homeClub: {
     id: number
     name: string

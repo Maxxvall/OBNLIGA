@@ -89,6 +89,8 @@ type UserPredictionEntryView = {
   resolvedAt?: string | null
   marketType: PredictionMarketType | 'LEGACY_1X2' | 'LEGACY_TOTAL' | 'LEGACY_EVENT'
   matchDateTime: string
+  competitionName: string | null
+  seasonName: string | null
   homeClub: {
     id: number
     name: string
@@ -111,6 +113,11 @@ type EntryWithTemplate = Prisma.PredictionEntryGetPayload<{
           include: {
             homeClub: true
             awayClub: true
+            season: {
+              include: {
+                competition: true
+              }
+            }
           }
         }
       }
@@ -124,6 +131,11 @@ type LegacyPrediction = Prisma.PredictionGetPayload<{
       include: {
         homeClub: true
         awayClub: true
+        season: {
+          include: {
+            competition: true
+          }
+        }
       }
     }
   }
@@ -136,6 +148,11 @@ const ENTRY_WITH_TEMPLATE_INCLUDE = {
         include: {
           homeClub: true,
           awayClub: true,
+          season: {
+            include: {
+              competition: true,
+            },
+          },
         },
       },
     },
@@ -209,6 +226,8 @@ const serializeEntry = (entry: EntryWithTemplate): UserPredictionEntryView => ({
   resolvedAt: entry.resolvedAt ? entry.resolvedAt.toISOString() : null,
   marketType: entry.template.marketType,
   matchDateTime: entry.template.match.matchDateTime.toISOString(),
+  competitionName: entry.template.match.season?.competition?.name ?? null,
+  seasonName: entry.template.match.season?.name ?? null,
   homeClub: {
     id: entry.template.match.homeClub.id,
     name: entry.template.match.homeClub.name,
@@ -255,6 +274,8 @@ const serializeLegacyPrediction = (prediction: LegacyPrediction): UserPrediction
     resolvedAt: prediction.updatedAt.toISOString(),
     marketType,
     matchDateTime: prediction.match.matchDateTime.toISOString(),
+    competitionName: prediction.match.season?.competition?.name ?? null,
+    seasonName: prediction.match.season?.name ?? null,
     homeClub: {
       id: prediction.match.homeClub.id,
       name: prediction.match.homeClub.name,
@@ -399,6 +420,11 @@ export default async function predictionRoutes(server: FastifyInstance) {
               include: {
                 homeClub: true,
                 awayClub: true,
+                season: {
+                  include: {
+                    competition: true,
+                  },
+                },
               },
             },
           },

@@ -106,14 +106,14 @@ const translateChoiceLabel = (marketType: PredictionMarketType, rawValue: string
   if (marketType === 'TOTAL_GOALS') {
     const overMatch = upper.match(/^OVER[_\s]?([0-9]+(?:\.[0-9]+)?)$/)
     if (overMatch) {
-      return 'Да'
+      return 'Больше'
     }
     const underMatch = upper.match(/^UNDER[_\s]?([0-9]+(?:\.[0-9]+)?)$/)
     if (underMatch) {
-      return 'Нет'
+      return 'Меньше'
     }
-    if (upper === 'OVER') return 'Да'
-    if (upper === 'UNDER') return 'Нет'
+    if (upper === 'OVER') return 'Больше'
+    if (upper === 'UNDER') return 'Меньше'
   }
 
   if (marketType === 'CUSTOM_BOOLEAN') {
@@ -389,44 +389,44 @@ const renderUpcomingMatchHeader = (match: ActivePredictionMatch) => {
 }
 
 const formatEntrySelection = (entry: UserPredictionEntry): string => {
-  if (entry.marketType === 'LEGACY_1X2') {
+  if (entry.marketType === 'LEGACY_1X2' || entry.marketType === 'MATCH_OUTCOME') {
     const upper = entry.selection.toUpperCase()
     if (upper === 'ONE' || upper === '1') return 'П1'
     if (upper === 'DRAW' || upper === 'X') return 'Х'
     if (upper === 'TWO' || upper === '2') return 'П2'
     return translateChoiceLabel('MATCH_OUTCOME', entry.selection)
   }
-  if (entry.marketType === 'LEGACY_TOTAL') {
-    const over = entry.selection.match(/^OVER[_\s]?(.+)$/)
+  
+  if (entry.marketType === 'LEGACY_TOTAL' || entry.marketType === 'TOTAL_GOALS') {
+    const over = entry.selection.match(/^OVER[_\s]?(.+)$/i)
     if (over) {
       const total = parseFloat(over[1])
       const rounded = Math.round(total * 2) / 2
-      return `Да (${rounded.toFixed(1)})`
+      return `ТБ ${rounded.toFixed(1)}`
     }
-    const under = entry.selection.match(/^UNDER[_\s]?(.+)$/)
+    const under = entry.selection.match(/^UNDER[_\s]?(.+)$/i)
     if (under) {
       const total = parseFloat(under[1])
       const rounded = Math.round(total * 2) / 2
-      return `Нет (${rounded.toFixed(1)})`
+      return `ТМ ${rounded.toFixed(1)}`
     }
     return entry.selection
   }
-  if (entry.marketType === 'LEGACY_EVENT') {
-    if (entry.selection.startsWith('PENALTY_')) {
-      return entry.selection === 'PENALTY_YES' ? 'Да' : 'Нет'
+  
+  if (entry.marketType === 'LEGACY_EVENT' || entry.marketType === 'CUSTOM_BOOLEAN') {
+    const upper = entry.selection.toUpperCase()
+    if (upper.includes('PENALTY')) {
+      return upper.includes('YES') ? 'Пенальти — Да' : 'Пенальти — Нет'
     }
-    if (entry.selection.startsWith('RED_CARD_')) {
-      return entry.selection === 'RED_CARD_YES' ? 'Да' : 'Нет'
+    if (upper.includes('RED_CARD') || upper.includes('REDCARD')) {
+      return upper.includes('YES') ? 'Красная карточка — Да' : 'Красная карточка — Нет'
     }
+    // Для других CUSTOM_BOOLEAN событий
+    if (upper.includes('YES') || upper === 'TRUE') return 'Да'
+    if (upper.includes('NO') || upper === 'FALSE') return 'Нет'
     return entry.selection
   }
-  if (
-    entry.marketType === 'MATCH_OUTCOME'
-    || entry.marketType === 'TOTAL_GOALS'
-    || entry.marketType === 'CUSTOM_BOOLEAN'
-  ) {
-    return translateChoiceLabel(entry.marketType, entry.selection)
-  }
+  
   return entry.selection
 }
 
@@ -459,36 +459,39 @@ const formatEntryMarketLabel = (entry: UserPredictionEntry): string => {
 }
 
 const renderUserPrediction = (prediction: UserPredictionEntry) => {
-  // Проверяем, есть ли английские слова, которые надо перевести
   const formattedSelection = formatEntrySelection(prediction)
-  const marketLabel = formatEntryMarketLabel(prediction)
+  const competitionLabel = prediction.competitionName && prediction.seasonName
+    ? `${prediction.competitionName} • ${prediction.seasonName}`
+    : prediction.competitionName || prediction.seasonName || 'Матч'
   
   return (
     <li key={prediction.id} className={`prediction-entry prediction-entry-${prediction.status.toLowerCase()}`}>
       <div className="prediction-entry-header">
-        <div className="prediction-entry-teams-compact">
-          {renderClubCompactNoLogo(prediction.homeClub)}
-          <span className="prediction-vs-compact">VS</span>
-          {renderClubCompactNoLogo(prediction.awayClub)}
-        </div>
-        <span className={`prediction-status status-${prediction.status.toLowerCase()}`}>
-          {STATUS_LABELS[prediction.status] ?? prediction.status}
-        </span>
-      </div>
-      <div className="prediction-entry-body">
-        <div className="prediction-entry-info">
+        <div className="prediction-entry-top-line">
+          <span className="prediction-entry-competition">{competitionLabel}</span>
           <span className="prediction-entry-datetime">{formatDateTime(prediction.matchDateTime)}</span>
-          <div className="prediction-entry-choice">
-            <span className="prediction-market-label">{marketLabel}:</span>
+          <span className={`prediction-status status-${prediction.status.toLowerCase()}`}>
+            {STATUS_LABELS[prediction.status] ?? prediction.status}
+          </span>
+        </div>
+        <div className="prediction-entry-main-line">
+          <div className="prediction-entry-teams-compact">
+            {renderClubCompactNoLogo(prediction.homeClub)}
+            <span className="prediction-vs-compact">VS</span>
+            {renderClubCompactNoLogo(prediction.awayClub)}
+          </div>
+          <div className="prediction-entry-bet">
+            <span className="prediction-bet-label">Прогноз:</span>
             <strong className="prediction-selection">{formattedSelection}</strong>
           </div>
+          {typeof prediction.scoreAwarded === 'number' && (
+            <div className="prediction-entry-score">
+              <span className="prediction-score-value">
+                {prediction.scoreAwarded > 0 ? `+${prediction.scoreAwarded}` : prediction.scoreAwarded}
+              </span>
+            </div>
+          )}
         </div>
-        {typeof prediction.scoreAwarded === 'number' ? (
-          <div className="prediction-entry-score">
-            <span className="prediction-score-label">Очки:</span>
-            <span className="prediction-score-value">{prediction.scoreAwarded > 0 ? `+${prediction.scoreAwarded}` : prediction.scoreAwarded}</span>
-          </div>
-        ) : null}
       </div>
     </li>
   )

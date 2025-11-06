@@ -358,13 +358,15 @@ export function RatingsPage() {
                       className="col-points"
                       title={`Всего очков: ${numberFormatter.format(entry.totalPoints)}`}
                     >
-                      {numberFormatter.format(scopePoints)}
+                      <span className="cell-value">{numberFormatter.format(scopePoints)}</span>
                     </td>
                     <td className="col-predictions">
                       <span className="cell-value">{numberFormatter.format(entry.predictionCount)}</span>
                       <span className="cell-meta">Побед: {numberFormatter.format(entry.predictionWins)}</span>
                     </td>
-                    <td>{accuracyLabel}</td>
+                    <td>
+                      <span className="cell-value">{accuracyLabel}</span>
+                    </td>
                     <td className="col-streak">
                       <span className="cell-value">{numberFormatter.format(entry.maxStreak)}</span>
                       <span className="cell-meta">

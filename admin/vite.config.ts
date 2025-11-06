@@ -20,4 +20,15 @@ export default defineConfig({
   preview: {
     port: 4183,
   },
+  build: {
+    rollupOptions: {
+      output: {
+        entryFileNames: `assets/[name].[hash].js`,
+        chunkFileNames: `assets/[name].[hash].js`,
+        assetFileNames: `assets/[name].[hash].[ext]`
+      }
+    },
+    cssCodeSplit: false,
+    manifest: true,
+  }
 })

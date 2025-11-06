@@ -253,7 +253,6 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
   pointer-events: none;
 }
 
@@ -324,27 +323,27 @@
 .team-stats-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  gap: 6px;
 }
 
 .team-stats-card {
   border-radius: 16px;
-  padding: 18px 14px;
+  padding: 8px 4px;
   background: rgba(0, 240, 255, 0.08);
   border: 1px solid rgba(0, 240, 255, 0.16);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
 }
 
 .team-stats-card-icon {
-  font-size: 36px;
+  font-size: 30px;
   opacity: 0.9;
 }
 
 .team-stats-card-value {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 700;
   color: rgba(230, 247, 255, 0.95);
   line-height: 1;
@@ -785,12 +784,11 @@
   }
 
   .team-stats-gauge {
-    width: 120px;
     --team-gauge-stroke: 14px;
   }
 
   .team-stats-wdl {
-    align-items: center;
+    align-items: flex-start;
     text-align: center;
   }
 
@@ -847,8 +845,7 @@
   }
 
   .team-stats-gauge {
-    width: 110px;
-    --team-gauge-stroke: 12px;
+    --team-gauge-stroke: 8px;
   }
 
   .team-stats-matches-value {

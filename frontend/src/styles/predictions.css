@@ -63,7 +63,6 @@
   background: rgba(12, 20, 36, 0.85);
   border: 1px solid rgba(0, 240, 255, 0.22);
   box-shadow: 0 16px 28px rgba(3, 8, 18, 0.58);
-  align-self: flex-start;
 }
 
 .predictions-tabs button {
@@ -148,7 +147,8 @@
 
 .prediction-card-meta-compact {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
+  gap: 10px;
   align-items: center;
   font-size: 13px;
   color: var(--prediction-muted);
@@ -649,12 +649,6 @@
   .predictions-header-content {
     flex-direction: column;
     align-items: flex-start;
-  }
-
-  .predictions-tabs {
-    width: 100%;
-    grid-auto-flow: row;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   }
 
   .prediction-match,

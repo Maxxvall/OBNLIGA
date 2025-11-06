@@ -352,12 +352,6 @@
     gap: 12px;
   }
 
-  .ratings-scope-switch {
-    width: 100%;
-    grid-auto-flow: row;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  }
-
   .ratings-meta {
     text-align: left;
   }

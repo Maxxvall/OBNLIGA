@@ -617,7 +617,7 @@
   border: 1px solid var(--prediction-border);
   border-radius: 12px;
   background: rgba(0, 240, 255, 0.08);
-  color: var(--prediction-accent);
+  color: var(--prediction-text);
   font-size: 13px;
   font-weight: 600;
   text-transform: uppercase;

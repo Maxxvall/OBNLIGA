@@ -23,12 +23,6 @@ import {
   TotalGoalsSuggestion,
 } from './predictionTotalsService'
 
-const MATCH_OUTCOME_CHOICES = [
-  { value: 'ONE', label: 'П1' },
-  { value: 'DRAW', label: 'Н' },
-  { value: 'TWO', label: 'П2' },
-]
-
 type SpecialEventDefinition = {
   eventKey: 'penalty' | 'red_card'
   title: string
@@ -298,21 +292,6 @@ const buildSpecialEventOptions = async (
     choices,
   }
 }
-
-const buildSpecialEventOptionsOld = (definition: SpecialEventDefinition): Prisma.JsonObject => ({
-  kind: 'match_event_boolean',
-  version: 1,
-  eventKey: definition.eventKey,
-  title: definition.title,
-  description: definition.description,
-  yesValue: definition.yesValue,
-  noValue: definition.noValue,
-  relatedEvents: definition.relatedEvents,
-  choices: [
-    { value: definition.yesValue, label: definition.yesLabel },
-    { value: definition.noValue, label: definition.noLabel },
-  ],
-})
 
 const buildTotalGoalsOptionsForLine = (
   line: number,

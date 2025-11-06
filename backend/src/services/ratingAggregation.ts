@@ -310,7 +310,7 @@ export const recalculateUserRatings = async (
     lastDateMap.forEach((_, userId) => userIdSet.add(userId))
     maxStreakMap.forEach((_, userId) => userIdSet.add(userId))
     currentStreakMap.forEach((_, userId) => userIdSet.add(userId))
-  predictionStatMap.forEach((_, userId) => userIdSet.add(userId))
+    predictionStatMap.forEach((_, userId) => userIdSet.add(userId))
 
     if (userIds && userIds.length > 0) {
       userIds.forEach(id => userIdSet.add(id))
@@ -390,7 +390,7 @@ export const recalculateUserRatings = async (
             lastRecalculatedAt: capturedAt,
             predictionCount: entry.predictionCount,
             predictionWins: entry.predictionWins,
-          } as any,
+          },
           update: {
             totalPoints: entry.totalPoints,
             seasonalPoints: entry.seasonalPoints,
@@ -400,7 +400,7 @@ export const recalculateUserRatings = async (
             lastRecalculatedAt: capturedAt,
             predictionCount: entry.predictionCount,
             predictionWins: entry.predictionWins,
-          } as any,
+          },
         })
       )
 
@@ -566,9 +566,8 @@ export const loadRatingLeaderboard = async (
         ? `@${row.user.username.trim()}`
         : `Игрок #${row.userId}`
 
-    const ratingRow = row as any
-    const predictionCount = Number(ratingRow?.predictionCount ?? 0)
-    const predictionWins = Number(ratingRow?.predictionWins ?? 0)
+    const predictionCount = row.predictionCount ?? 0
+    const predictionWins = row.predictionWins ?? 0
     const predictionAccuracy = predictionCount > 0 ? predictionWins / predictionCount : 0
 
     return {

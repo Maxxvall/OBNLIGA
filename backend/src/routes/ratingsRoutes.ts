@@ -173,12 +173,10 @@ export default async function ratingsRoutes(server: FastifyInstance) {
         lastPredictionAt: streak?.lastPredictionAt?.toISOString() ?? null,
         lastResolvedAt: streak?.lastResolvedAt?.toISOString() ?? null,
         lastRecalculatedAt: rating.lastRecalculatedAt?.toISOString() ?? null,
-        predictionCount: (rating as any).predictionCount ?? 0,
-        predictionWins: (rating as any).predictionWins ?? 0,
+        predictionCount: rating.predictionCount,
+        predictionWins: rating.predictionWins,
         predictionAccuracy:
-          ((rating as any).predictionCount ?? 0) > 0
-            ? ((rating as any).predictionWins ?? 0) / (rating as any).predictionCount
-            : 0,
+          rating.predictionCount > 0 ? rating.predictionWins / rating.predictionCount : 0,
       }
     }
 

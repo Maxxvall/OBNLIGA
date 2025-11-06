@@ -1524,56 +1524,102 @@ const parsePositiveInteger = (value: unknown, fallback: number): number => {
   return normalized > 0 ? normalized : fallback
 }
 
-const serializeSeasonWinnerRecord = (winner: any) => ({
-  userId: Number(winner?.userId ?? 0),
-  rank: Number(winner?.rank ?? 0),
-  scopePoints: Number(winner?.scopePoints ?? 0),
-  totalPoints: Number(winner?.totalPoints ?? 0),
-  predictionCount: Number(winner?.predictionCount ?? 0),
-  predictionWins: Number(winner?.predictionWins ?? 0),
-  displayName: typeof winner?.displayName === 'string' ? winner.displayName : null,
-  username: typeof winner?.username === 'string' ? winner.username : null,
-  photoUrl: typeof winner?.photoUrl === 'string' ? winner.photoUrl : null,
-  createdAt:
-    winner?.createdAt instanceof Date
-      ? winner.createdAt.toISOString()
-      : winner?.createdAt
-        ? new Date(winner.createdAt).toISOString()
-        : null,
-})
+type SeasonSummaryRecord = Awaited<ReturnType<typeof fetchSeasonSummaries>>[number]
 
-const serializeSeasonRecord = (season: any) => ({
-  id:
-    season?.id != null
-      ? String(season.id)
-      : season?.rating_season_id != null
-        ? String(season.rating_season_id)
-        : null,
-  scope: ratingScopeKey((season?.scope ?? RatingScope.CURRENT) as RatingScope),
-  startsAt:
-    season?.startsAt instanceof Date
-      ? season.startsAt.toISOString()
-      : season?.startsAt
-        ? new Date(season.startsAt).toISOString()
-        : null,
-  endsAt:
-    season?.endsAt instanceof Date
-      ? season.endsAt.toISOString()
-      : season?.endsAt
-        ? new Date(season.endsAt).toISOString()
-        : null,
-  closedAt:
-    season?.closedAt instanceof Date
-      ? season.closedAt.toISOString()
-      : season?.closedAt
-        ? new Date(season.closedAt).toISOString()
-        : null,
-  durationDays: Number(season?.durationDays ?? 0),
-  isActive: season?.closedAt == null,
-  winners: Array.isArray(season?.winners)
-    ? season.winners.map(serializeSeasonWinnerRecord)
-    : [],
-})
+const toRecord = (value: unknown): Record<string, unknown> => {
+  if (value && typeof value === 'object') {
+    return value as Record<string, unknown>
+  }
+  return {}
+}
+
+const coerceNumber = (value: unknown, fallback = 0): number => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : fallback
+  }
+  if (typeof value === 'bigint') {
+    return Number(value)
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : fallback
+  }
+  return fallback
+}
+
+const coerceNullableString = (value: unknown): string | null =>
+  typeof value === 'string' ? value : null
+
+const coerceIsoString = (value: unknown): string | null => {
+  if (value instanceof Date) {
+    return value.toISOString()
+  }
+  if (typeof value === 'string') {
+    const timestamp = Date.parse(value)
+    if (!Number.isNaN(timestamp)) {
+      return new Date(timestamp).toISOString()
+    }
+  }
+  return null
+}
+
+const pickValue = (record: Record<string, unknown>, keys: string[]): unknown => {
+  for (const key of keys) {
+    if (key in record) {
+      const candidate = record[key]
+      if (candidate !== undefined && candidate !== null) {
+        return candidate
+      }
+    }
+  }
+  return undefined
+}
+
+const serializeSeasonWinnerRecord = (winner: unknown) => {
+  const record = toRecord(winner)
+  return {
+    userId: coerceNumber(pickValue(record, ['userId', 'user_id'])),
+    rank: coerceNumber(pickValue(record, ['rank'])),
+    scopePoints: coerceNumber(pickValue(record, ['scopePoints', 'scope_points'])),
+    totalPoints: coerceNumber(pickValue(record, ['totalPoints', 'total_points'])),
+    predictionCount: coerceNumber(pickValue(record, ['predictionCount', 'prediction_count'])),
+    predictionWins: coerceNumber(pickValue(record, ['predictionWins', 'prediction_wins'])),
+    displayName: coerceNullableString(pickValue(record, ['displayName', 'display_name'])),
+    username: coerceNullableString(pickValue(record, ['username'])),
+    photoUrl: coerceNullableString(pickValue(record, ['photoUrl', 'photo_url'])),
+    createdAt: coerceIsoString(pickValue(record, ['createdAt', 'created_at'])),
+  }
+}
+
+const serializeSeasonRecord = (season: unknown) => {
+  const record = toRecord(season)
+  const idValue = pickValue(record, ['id', 'rating_season_id'])
+  const scopeRaw = pickValue(record, ['scope'])
+  const scope =
+    typeof scopeRaw === 'string' && (Object.values(RatingScope) as string[]).includes(scopeRaw)
+      ? (scopeRaw as RatingScope)
+      : RatingScope.CURRENT
+
+  const startsAt = coerceIsoString(pickValue(record, ['startsAt', 'starts_at']))
+  const endsAt = coerceIsoString(pickValue(record, ['endsAt', 'ends_at']))
+  const closedAt = coerceIsoString(pickValue(record, ['closedAt', 'closed_at']))
+
+  const winnersValue = pickValue(record, ['winners'])
+  const winners = Array.isArray(winnersValue)
+    ? winnersValue.map(serializeSeasonWinnerRecord)
+    : []
+
+  return {
+    id: idValue != null ? String(idValue) : null,
+    scope: ratingScopeKey(scope),
+    startsAt,
+    endsAt,
+    closedAt,
+    durationDays: coerceNumber(pickValue(record, ['durationDays', 'duration_days'])),
+    isActive: closedAt === null,
+    winners,
+  }
+}
 
 export default async function (server: FastifyInstance) {
   server.post('/api/admin/login', async (request, reply) => {
@@ -1812,9 +1858,9 @@ export default async function (server: FastifyInstance) {
       })
 
       admin.get('/ratings/seasons', async (request, reply) => {
-        let seasons: any[] = []
+        let seasons: SeasonSummaryRecord[] = []
         try {
-          seasons = (await fetchSeasonSummaries(undefined, { limit: 24 })) as any[]
+          seasons = await fetchSeasonSummaries(undefined, { limit: 24 })
         } catch (err) {
           request.server.log.error({ err }, 'admin ratings: failed to load seasons')
         }
@@ -1824,14 +1870,14 @@ export default async function (server: FastifyInstance) {
           [RatingScope.YEARLY]: { active: null, history: [] },
         }
 
-        for (const season of seasons as any[]) {
+        for (const season of seasons) {
           const serialized = serializeSeasonRecord(season)
-          const scopeKey = (season?.scope ?? RatingScope.CURRENT) as RatingScope
+          const scopeKey = season.scope ?? RatingScope.CURRENT
           const bucket = grouped[scopeKey]
           if (!bucket) {
             continue
           }
-          if (season?.closedAt == null && !bucket.active) {
+          if (season.closedAt == null && !bucket.active) {
             bucket.active = serialized
           } else {
             bucket.history.push(serialized)

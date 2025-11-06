@@ -17,17 +17,7 @@ import {
   SeriesStatus,
 } from '@prisma/client'
 import prisma from '../db'
-import {
-  defaultCache,
-  resolveCacheOptions,
-  PUBLIC_LEAGUE_ASSISTS_KEY,
-  PUBLIC_LEAGUE_GOAL_CONTRIBUTORS_KEY,
-  PUBLIC_LEAGUE_RESULTS_KEY,
-  PUBLIC_LEAGUE_SCORERS_KEY,
-  PUBLIC_LEAGUE_SCHEDULE_KEY,
-  PUBLIC_LEAGUE_STATS_KEY,
-  PUBLIC_LEAGUE_TABLE_KEY,
-} from '../cache'
+import { defaultCache, resolveCacheOptions, PUBLIC_LEAGUE_TABLE_KEY } from '../cache'
 import { buildLeagueTable } from './leagueTable'
 import { refreshLeagueMatchAggregates } from './leagueSchedule'
 import { refreshLeagueStats } from './leagueStats'

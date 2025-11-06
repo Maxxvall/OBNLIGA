@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { adminDelete, adminPost, adminPut } from '../../api/adminClient'
+import { adminPost, adminPut } from '../../api/adminClient'
 import { useAdminStore } from '../../store/adminStore'
 import { AppUser, LeaguePlayerStatus, Person, Prediction } from '../../types'
 

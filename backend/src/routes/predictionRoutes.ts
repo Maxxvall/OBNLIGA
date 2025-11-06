@@ -16,7 +16,6 @@ import {
   PREDICTION_WEEKLY_LIMIT,
   USER_PREDICTION_CACHE_KEY,
 } from '../services/predictionConstants'
-import { ensurePredictionTemplatesInRange } from '../services/predictionTemplateService'
 
 const toNumber = (value: unknown): number | null => {
   if (value == null) {

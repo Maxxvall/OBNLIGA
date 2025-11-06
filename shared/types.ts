@@ -140,6 +140,8 @@ export interface ActivePredictionMatch {
   matchId: string
   matchDateTime: string
   status: MatchStatus
+  competitionName: string | null
+  seasonName: string | null
   homeClub: {
     id: number
     name: string

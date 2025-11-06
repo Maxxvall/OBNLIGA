@@ -154,6 +154,7 @@
   color: var(--prediction-muted);
 }
 
+
 .prediction-card-teams-compact {
   display: flex;
   justify-content: space-between;
@@ -476,61 +477,98 @@
   border-radius: 18px;
   border: 1px solid var(--prediction-border);
   background: var(--prediction-bg);
-  padding: 16px 18px;
+  padding: 18px 20px;
   box-shadow: var(--prediction-shadow);
   display: flex;
   flex-direction: column;
   gap: 14px;
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.prediction-entry:hover {
+  border-color: var(--prediction-border-strong);
 }
 
 .prediction-entry-header {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.prediction-entry-meta {
-  display: flex;
   justify-content: space-between;
-  gap: 12px;
-  font-size: 13px;
-  color: var(--prediction-muted);
+  align-items: center;
+  gap: 14px;
   flex-wrap: wrap;
 }
 
 .prediction-entry-teams-compact {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: 12px;
+  flex: 1;
+  min-width: 0;
 }
-
 
 .prediction-entry-body {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
-.prediction-entry-body span,
-.prediction-entry-body strong {
-  display: block;
+.prediction-entry-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
 }
 
-.prediction-market-label {
+.prediction-entry-datetime {
   font-size: 12px;
+  color: var(--prediction-muted);
+  font-weight: 500;
+}
+
+.prediction-entry-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.prediction-entry-score {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: rgba(0, 240, 255, 0.08);
+  border: 1px solid rgba(0, 240, 255, 0.2);
+}
+
+.prediction-score-label {
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--prediction-muted);
-  margin-bottom: 4px;
+}
+
+.prediction-score-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--prediction-accent);
 }
 
 .prediction-market-label {
-  font-size: 12px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--prediction-muted);
-  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.prediction-selection {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--prediction-text);
 }
 
 .prediction-match-compact {
@@ -664,7 +702,7 @@
 
 @media (max-width: 520px) {
   .predictions-page {
-    padding: 20px 10px 48px;
+    padding: 20px 10px 68px;
   }
 
   .predictions-header {
@@ -703,10 +741,6 @@
 
   .prediction-club-name {
     font-size: 13px;
-  }
-
-  .prediction-card-meta-compact {
-    font-size: 12px;
   }
 
   .prediction-vs-compact {

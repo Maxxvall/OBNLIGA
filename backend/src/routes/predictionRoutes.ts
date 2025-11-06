@@ -61,6 +61,8 @@ type ActivePredictionMatch = {
   matchId: string
   matchDateTime: string
   status: MatchStatus
+  competitionName: string | null
+  seasonName: string | null
   homeClub: {
     id: number
     name: string
@@ -294,6 +296,11 @@ export default async function predictionRoutes(server: FastifyInstance) {
           homeClub: true,
           awayClub: true,
           predictionTemplates: true,
+          season: {
+            include: {
+              competition: true,
+            },
+          },
         },
       })
 
@@ -301,6 +308,8 @@ export default async function predictionRoutes(server: FastifyInstance) {
         matchId: match.id.toString(),
         matchDateTime: match.matchDateTime.toISOString(),
         status: match.status,
+        competitionName: match.season?.competition?.name ?? null,
+        seasonName: match.season?.name ?? null,
         homeClub: {
           id: match.homeClub.id,
           name: match.homeClub.name,

@@ -9,9 +9,7 @@ import type {
 import { fetchActivePredictions, fetchMyPredictions, submitPrediction } from '../api/predictionsApi'
 import '../styles/predictions.css'
 
-const DATE_FORMATTER = new Intl.DateTimeFormat('ru-RU', {
-  day: '2-digit',
-  month: 'short',
+const TIME_FORMATTER = new Intl.DateTimeFormat('ru-RU', {
   hour: '2-digit',
   minute: '2-digit',
 })
@@ -62,12 +60,24 @@ const translateSubmitError = (code?: string): string => {
   }
 }
 
+const formatMatchTime = (iso: string): string => {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) {
+    return iso
+  }
+  return TIME_FORMATTER.format(date)
+}
+
 const formatDateTime = (iso: string): string => {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) {
     return iso
   }
-  return DATE_FORMATTER.format(date)
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${day}.${month} ${hours}:${minutes}`
 }
 
 const translateMarketType = (marketType: PredictionMarketType): string =>
@@ -358,21 +368,25 @@ const renderClubCompactNoLogo = (
   </div>
 )
 
-const renderUpcomingMatchHeader = (match: ActivePredictionMatch) => (
-  <header className="prediction-card-header-compact">
-    <div className="prediction-card-meta-compact">
-      <span className="prediction-card-date">{formatDateTime(match.matchDateTime)}</span>
-      <span className={`prediction-status status-${match.status.toLowerCase()}`}>
-        {MATCH_STATUS_LABELS[match.status] ?? match.status}
-      </span>
-    </div>
-    <div className="prediction-card-teams-compact">
-      {renderClubCompactWithLogo(match.homeClub)}
-      <span className="prediction-vs-compact">VS</span>
-      {renderClubCompactWithLogo(match.awayClub)}
-    </div>
-  </header>
-)
+const renderUpcomingMatchHeader = (match: ActivePredictionMatch) => {
+  const competitionLabel = match.competitionName && match.seasonName
+    ? `${match.competitionName} • ${match.seasonName}`
+    : match.competitionName || match.seasonName || 'Матч'
+  
+  return (
+    <header className="prediction-card-header-compact">
+      <div className="prediction-card-meta-compact">
+        <span className="prediction-card-competition">{competitionLabel}</span>
+        <span className="prediction-card-time">{formatMatchTime(match.matchDateTime)}</span>
+      </div>
+      <div className="prediction-card-teams-compact">
+        {renderClubCompactWithLogo(match.homeClub)}
+        <span className="prediction-vs-compact">VS</span>
+        {renderClubCompactWithLogo(match.awayClub)}
+      </div>
+    </header>
+  )
+}
 
 const formatEntrySelection = (entry: UserPredictionEntry): string => {
   if (entry.marketType === 'LEGACY_1X2') {
@@ -444,35 +458,41 @@ const formatEntryMarketLabel = (entry: UserPredictionEntry): string => {
   }
 }
 
-const renderUserPrediction = (prediction: UserPredictionEntry) => (
-  <li key={prediction.id} className={`prediction-entry prediction-entry-${prediction.status.toLowerCase()}`}>
-    <div className="prediction-entry-header">
-      <div className="prediction-entry-meta">
-        <span>{formatDateTime(prediction.matchDateTime)}</span>
+const renderUserPrediction = (prediction: UserPredictionEntry) => {
+  // Проверяем, есть ли английские слова, которые надо перевести
+  const formattedSelection = formatEntrySelection(prediction)
+  const marketLabel = formatEntryMarketLabel(prediction)
+  
+  return (
+    <li key={prediction.id} className={`prediction-entry prediction-entry-${prediction.status.toLowerCase()}`}>
+      <div className="prediction-entry-header">
+        <div className="prediction-entry-teams-compact">
+          {renderClubCompactNoLogo(prediction.homeClub)}
+          <span className="prediction-vs-compact">VS</span>
+          {renderClubCompactNoLogo(prediction.awayClub)}
+        </div>
         <span className={`prediction-status status-${prediction.status.toLowerCase()}`}>
           {STATUS_LABELS[prediction.status] ?? prediction.status}
         </span>
       </div>
-      <div className="prediction-entry-teams-compact">
-        {renderClubCompactNoLogo(prediction.homeClub)}
-        <span className="prediction-vs-compact">VS</span>
-        {renderClubCompactNoLogo(prediction.awayClub)}
-      </div>
-    </div>
-    <div className="prediction-entry-body">
-      <div>
-        <span className="prediction-market-label">{formatEntryMarketLabel(prediction)}</span>
-        <strong>{formatEntrySelection(prediction)}</strong>
-      </div>
-      {typeof prediction.scoreAwarded === 'number' ? (
-        <div>
-          <span className="prediction-market-label">Очки</span>
-          <span>{prediction.scoreAwarded}</span>
+      <div className="prediction-entry-body">
+        <div className="prediction-entry-info">
+          <span className="prediction-entry-datetime">{formatDateTime(prediction.matchDateTime)}</span>
+          <div className="prediction-entry-choice">
+            <span className="prediction-market-label">{marketLabel}:</span>
+            <strong className="prediction-selection">{formattedSelection}</strong>
+          </div>
         </div>
-      ) : null}
-    </div>
-  </li>
-)
+        {typeof prediction.scoreAwarded === 'number' ? (
+          <div className="prediction-entry-score">
+            <span className="prediction-score-label">Очки:</span>
+            <span className="prediction-score-value">{prediction.scoreAwarded > 0 ? `+${prediction.scoreAwarded}` : prediction.scoreAwarded}</span>
+          </div>
+        ) : null}
+      </div>
+    </li>
+  )
+}
 const PredictionsPage: React.FC = () => {
   const [tab, setTab] = useState<PredictionsTab>('upcoming')
   const [upcoming, setUpcoming] = useState<ActivePredictionMatch[]>([])
@@ -729,20 +749,22 @@ const PredictionsPage: React.FC = () => {
                     <span className="prediction-feedback success">{anySuccess}</span>
                   ) : null}
                   
-                  <button
-                    type="button"
-                    className="prediction-submit-main"
-                    onClick={async () => {
-                      for (const template of match.templates) {
-                        if (selectedOptions[template.id]) {
-                          await handleSubmit(template)
+                  {!anySuccess && (
+                    <button
+                      type="button"
+                      className="prediction-submit-main"
+                      onClick={async () => {
+                        for (const template of match.templates) {
+                          if (selectedOptions[template.id]) {
+                            await handleSubmit(template)
+                          }
                         }
-                      }
-                    }}
-                    disabled={!hasAnySelection || anySubmitting}
-                  >
-                    {anySubmitting ? 'Отправляем...' : anySuccess ? 'Обновить прогноз' : 'Отправить прогноз'}
-                  </button>
+                      }}
+                      disabled={!hasAnySelection || anySubmitting}
+                    >
+                      {anySubmitting ? 'Отправляем...' : 'Отправить прогноз'}
+                    </button>
+                  )}
                 </div>
               ) : null}
             </li>

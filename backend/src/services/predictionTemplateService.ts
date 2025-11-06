@@ -115,12 +115,191 @@ export type PredictionTemplateRangeSummary = {
   totalSuggestions: number
 }
 
-const buildMatchOutcomeOptions = (): Prisma.JsonObject => ({
-  choices: MATCH_OUTCOME_CHOICES,
-  valueType: 'enumeration',
-})
+/**
+ * Рассчитывает динамические очки для вариантов исхода матча на основе статистики команд
+ */
+const calculateMatchOutcomePoints = async (
+  match: MatchWithTemplates,
+  client: PrismaClient | Prisma.TransactionClient
+): Promise<{ value: string; label: string; points: number }[]> => {
+  // Получаем статистику команд за последние 5 матчей
+  const recentMatchesCount = 5
+  const homeStats = await client.match.findMany({
+    where: {
+      OR: [
+        { homeTeamId: match.homeTeamId },
+        { awayTeamId: match.homeTeamId },
+      ],
+      status: MatchStatus.FINISHED,
+      isFriendly: false,
+    },
+    orderBy: { matchDateTime: 'desc' },
+    take: recentMatchesCount,
+  })
 
-const buildSpecialEventOptions = (definition: SpecialEventDefinition): Prisma.JsonObject => ({
+  const awayStats = await client.match.findMany({
+    where: {
+      OR: [
+        { homeTeamId: match.awayTeamId },
+        { awayTeamId: match.awayTeamId },
+      ],
+      status: MatchStatus.FINISHED,
+      isFriendly: false,
+    },
+    orderBy: { matchDateTime: 'desc' },
+    take: recentMatchesCount,
+  })
+
+  // Подсчитываем победы за последние матчи
+  const homeWins = homeStats.filter(m => 
+    (m.homeTeamId === match.homeTeamId && m.homeScore > m.awayScore) ||
+    (m.awayTeamId === match.homeTeamId && m.awayScore > m.homeScore)
+  ).length
+
+  const awayWins = awayStats.filter(m => 
+    (m.homeTeamId === match.awayTeamId && m.homeScore > m.awayScore) ||
+    (m.awayTeamId === match.awayTeamId && m.awayScore > m.homeScore)
+  ).length
+
+  // Рассчитываем базовую силу команд (процент побед)
+  const homeStrength = homeStats.length > 0 ? homeWins / homeStats.length : 0.33
+  const awayStrength = awayStats.length > 0 ? awayWins / awayStats.length : 0.33
+
+  // Добавляем бонус домашней арене (+10%)
+  const adjustedHomeStrength = Math.min(0.9, homeStrength * 1.1)
+  
+  // Нормализуем вероятности (упрощенная модель)
+  const totalStrength = adjustedHomeStrength + awayStrength + 0.3 // 0.3 для ничьей
+  const probHome = adjustedHomeStrength / totalStrength
+  const probAway = awayStrength / totalStrength
+  const probDraw = 0.3 / totalStrength
+
+  // Базовые очки
+  const basePoints = PREDICTION_MATCH_OUTCOME_BASE_POINTS
+
+  // Очки обратно пропорциональны вероятности
+  // Чем меньше вероятность - тем больше очков
+  const calculatePoints = (probability: number): number => {
+    const multiplier = Math.max(1.1, Math.min(3.0, 1 / (probability * 1.5)))
+    return Math.round(basePoints * multiplier)
+  }
+
+  return [
+    { value: 'ONE', label: 'П1', points: calculatePoints(probHome) },
+    { value: 'DRAW', label: 'Н', points: calculatePoints(probDraw) },
+    { value: 'TWO', label: 'П2', points: calculatePoints(probAway) },
+  ]
+}
+
+const buildMatchOutcomeOptions = async (
+  match: MatchWithTemplates,
+  client: PrismaClient | Prisma.TransactionClient
+): Promise<Prisma.JsonObject> => {
+  const choices = await calculateMatchOutcomePoints(match, client)
+  return {
+    choices,
+    valueType: 'enumeration',
+  }
+}
+
+/**
+ * Рассчитывает динамические очки для событий пенальти/красных карточек
+ */
+const calculateSpecialEventPoints = async (
+  match: MatchWithTemplates,
+  definition: SpecialEventDefinition,
+  client: PrismaClient | Prisma.TransactionClient
+): Promise<{ value: string; label: string; points: number }[]> => {
+  // Получаем статистику событий за последние матчи команд
+  const recentMatchesCount = 10
+  const homeMatchIds = await client.match.findMany({
+    where: {
+      OR: [
+        { homeTeamId: match.homeTeamId },
+        { awayTeamId: match.homeTeamId },
+      ],
+      status: MatchStatus.FINISHED,
+      isFriendly: false,
+    },
+    select: { id: true },
+    orderBy: { matchDateTime: 'desc' },
+    take: recentMatchesCount,
+  })
+
+  const awayMatchIds = await client.match.findMany({
+    where: {
+      OR: [
+        { homeTeamId: match.awayTeamId },
+        { awayTeamId: match.awayTeamId },
+      ],
+      status: MatchStatus.FINISHED,
+      isFriendly: false,
+    },
+    select: { id: true },
+    orderBy: { matchDateTime: 'desc' },
+    take: recentMatchesCount,
+  })
+
+  const allMatchIds = [...new Set([...homeMatchIds.map(m => m.id), ...awayMatchIds.map(m => m.id)])]
+
+  if (allMatchIds.length === 0) {
+    // Нет статистики - используем дефолтные значения
+    const basePoints = definition.basePoints
+    const difficulty = definition.difficultyMultiplier
+    return [
+      { value: definition.yesValue, label: definition.yesLabel, points: Math.round(basePoints * difficulty * 1.2) },
+      { value: definition.noValue, label: definition.noLabel, points: Math.round(basePoints * difficulty) },
+    ]
+  }
+
+  // Считаем количество матчей с данным событием
+  const eventsCount = await client.matchEvent.count({
+    where: {
+      matchId: { in: allMatchIds },
+      eventType: { in: definition.relatedEvents },
+    },
+  })
+
+  // Вероятность события
+  const probabilityYes = eventsCount / allMatchIds.length
+  const probabilityNo = 1 - probabilityYes
+
+  // Базовые очки
+  const basePoints = definition.basePoints
+  const difficulty = definition.difficultyMultiplier
+
+  // Очки обратно пропорциональны вероятности
+  const calculatePoints = (probability: number): number => {
+    const multiplier = Math.max(1.1, Math.min(2.5, 1 / (probability + 0.1)))
+    return Math.round(basePoints * difficulty * multiplier)
+  }
+
+  return [
+    { value: definition.yesValue, label: definition.yesLabel, points: calculatePoints(probabilityYes) },
+    { value: definition.noValue, label: definition.noLabel, points: calculatePoints(probabilityNo) },
+  ]
+}
+
+const buildSpecialEventOptions = async (
+  match: MatchWithTemplates,
+  definition: SpecialEventDefinition,
+  client: PrismaClient | Prisma.TransactionClient
+): Promise<Prisma.JsonObject> => {
+  const choices = await calculateSpecialEventPoints(match, definition, client)
+  return {
+    kind: 'match_event_boolean',
+    version: 1,
+    eventKey: definition.eventKey,
+    title: definition.title,
+    description: definition.description,
+    yesValue: definition.yesValue,
+    noValue: definition.noValue,
+    relatedEvents: definition.relatedEvents,
+    choices,
+  }
+}
+
+const buildSpecialEventOptionsOld = (definition: SpecialEventDefinition): Prisma.JsonObject => ({
   kind: 'match_event_boolean',
   version: 1,
   eventKey: definition.eventKey,
@@ -243,7 +422,7 @@ const ensurePredictionTemplatesForMatchRecord = async (
   const updatedMarkets: PredictionMarketType[] = []
   const skippedManual: PredictionMarketType[] = []
 
-  const desiredOutcomeOptions = buildMatchOutcomeOptions()
+  const desiredOutcomeOptions = await buildMatchOutcomeOptions(match, client)
   const outcomeTemplate = existingByMarket.get(PredictionMarketType.MATCH_OUTCOME)
   if (!outcomeTemplate) {
     await client.predictionTemplate.create({
@@ -359,7 +538,7 @@ const ensurePredictionTemplatesForMatchRecord = async (
   }
 
   for (const definition of SPECIAL_EVENT_DEFINITIONS) {
-    const desiredOptions = buildSpecialEventOptions(definition)
+    const desiredOptions = await buildSpecialEventOptions(match, definition, client)
     const existing = existingSpecialByEvent.get(definition.eventKey)
 
     if (!existing) {

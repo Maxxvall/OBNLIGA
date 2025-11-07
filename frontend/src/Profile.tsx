@@ -650,18 +650,47 @@ export default function Profile() {
             showShareAlert(telegramFallbackNotice)
           }
         } else {
-          const blobUrl = URL.createObjectURL(blob)
+          // Попробуем сначала скопировать изображение в буфер обмена (если поддерживается).
+          // Это удобно: пользователь может вставить изображение прямо в чат Telegram.
+          let didClipboard = false
           try {
-            const link = document.createElement('a')
-            link.href = blobUrl
-            link.download = fileName
-            link.style.display = 'none'
-            document.body.appendChild(link)
-            link.click()
-            document.body.removeChild(link)
-            showShareAlert('Снимок сохранён. Отправьте его в Telegram вручную.')
-          } finally {
-            window.setTimeout(() => URL.revokeObjectURL(blobUrl), 5000)
+            const nav = navigator as Navigator & {
+              clipboard?: typeof navigator.clipboard
+            }
+            // Clipboard API с поддержкой бинарных данных (ClipboardItem)
+            if (nav.clipboard && typeof (window as any).ClipboardItem === 'function') {
+              // @ts-ignore ClipboardItem exists in newer TS lib.dom
+              const item = new (window as any).ClipboardItem({ 'image/png': blob })
+              // some browsers require permission prompt; await may reject
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+              await nav.clipboard.write([item])
+              didClipboard = true
+              showShareAlert('Снимок скопирован в буфер обмена. Откройте Telegram и вставьте в чат (Ctrl+V / Вставить).')
+            }
+          } catch (copyErr) {
+            // ignore clipboard errors and продолжим к сохранению файла
+            console.warn('[Profile] clipboard write failed:', copyErr)
+          }
+
+          if (!didClipboard) {
+            const blobUrl = URL.createObjectURL(blob)
+            try {
+              const link = document.createElement('a')
+              link.href = blobUrl
+              link.download = fileName
+              link.style.display = 'none'
+              document.body.appendChild(link)
+              link.click()
+              document.body.removeChild(link)
+              // Подсказка пользователю, где искать файл и как отправить в Telegram
+              const saveHint =
+                typeof window !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+                  ? 'Файл сохранён в папке загрузок устройства (обычно «Загрузки»). Откройте Telegram → прикрепление → файл, чтобы отправить.'
+                  : 'Файл сохранён в папке загрузок вашего устройства. Откройте Telegram и отправьте файл вручную.'
+              showShareAlert(saveHint)
+            } finally {
+              window.setTimeout(() => URL.revokeObjectURL(blobUrl), 5000)
+            }
           }
         }
       } catch (error) {

@@ -599,28 +599,9 @@ export default function Profile() {
         let telegramFallbackNotice: string | null = null
         const telegram = (window as TelegramWindow).Telegram?.WebApp
 
-        if (telegram && typeof telegram.shareToTelegram === 'function') {
-          try {
-            const photoDataUrl = await blobToDataUrl(blob)
-            await telegram.shareToTelegram({
-              message: shareText,
-              media: [{ type: 'photo', media: photoDataUrl }],
-            })
-            delivered = true
-          } catch (error) {
-            console.error('[Profile] shareToTelegram failed:', error)
-            try {
-              await telegram.shareToTelegram({ message: shareText })
-              telegramFallbackNotice =
-                'Телеграм не поддержал отправку изображения, текст уже открыт для пересылки.'
-              delivered = true
-            } catch (fallbackError) {
-              console.error('[Profile] shareToTelegram text fallback failed:', fallbackError)
-            }
-          }
-        }
-
-        if (!delivered && typeof navigator !== 'undefined' && 'share' in navigator) {
+        // 1) Попробуем Web Share API с файлами — если он доступен, система откроет нативный
+        // шэр-лист (в котором может быть Telegram с авто-прикреплённым файлом).
+        if (typeof navigator !== 'undefined' && 'share' in navigator) {
           const navigatorShare = navigator as Navigator & {
             share?: (data: ShareData) => Promise<void>
             canShare?: (data?: ShareData) => boolean
@@ -632,15 +613,29 @@ export default function Profile() {
                 : false
             if (canShareFiles) {
               try {
-                await navigatorShare.share({
-                  files: [shareFile],
-                  text: shareText,
-                  title: 'OBNLIGA',
-                })
+                await navigatorShare.share({ files: [shareFile], text: shareText, title: 'OBNLIGA' })
                 delivered = true
               } catch (error) {
                 console.error('[Profile] navigator.share failed:', error)
               }
+            }
+          }
+        }
+
+        // 2) Попробуем Telegram WebApp API (если доступен) — он может принимать media as data URL.
+        if (!delivered && telegram && typeof telegram.shareToTelegram === 'function') {
+          try {
+            const photoDataUrl = await blobToDataUrl(blob)
+            await telegram.shareToTelegram({ message: shareText, media: [{ type: 'photo', media: photoDataUrl }] })
+            delivered = true
+          } catch (error) {
+            console.error('[Profile] shareToTelegram failed:', error)
+            try {
+              await telegram.shareToTelegram({ message: shareText })
+              telegramFallbackNotice = 'Телеграм не поддержал отправку изображения, текст уже открыт для пересылки.'
+              delivered = true
+            } catch (fallbackError) {
+              console.error('[Profile] shareToTelegram text fallback failed:', fallbackError)
             }
           }
         }
@@ -668,7 +663,9 @@ export default function Profile() {
               // Оповестим пользователя и попытаемся открыть окно выбора контакта в Telegram
               showShareAlert('Снимок скопирован в буфер обмена. Откроется окно выбора контакта в Telegram — выберите собеседника и вставьте изображение (Вставить/Long-press → Вставить).')
               try {
-                const shareUrl = `https://t.me/share/url?text=${encodeURIComponent(shareText)}`
+                // Небольшая пауза, чтобы clipboard успел закрепиться в системе.
+                await new Promise(resolve => setTimeout(resolve, 250))
+                const shareUrl = `https://t.me/share/url`
                 // попытка открыть Telegram share (в большинстве мобильных случаев это переключит в приложение Telegram)
                 const opened = window.open(shareUrl, '_blank')
                 if (!opened) {
@@ -687,7 +684,7 @@ export default function Profile() {
           // Откроем окно выбора контакта в Telegram вне зависимости от результата копирования в буфер.
           // Даже если копирование не удалось, пользователь попадёт в выбор контакта и сможет прикрепить файл вручную.
           try {
-            const shareUrl = `https://t.me/share/url?text=${encodeURIComponent(shareText)}`
+            const shareUrl = `https://t.me/share/url`
             const opened = window.open(shareUrl, '_blank')
             if (!opened) {
               window.location.href = shareUrl

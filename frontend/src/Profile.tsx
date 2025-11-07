@@ -665,11 +665,35 @@ export default function Profile() {
               // eslint-disable-next-line @typescript-eslint/no-unsafe-call
               await nav.clipboard.write([item])
               didClipboard = true
-              showShareAlert('Снимок скопирован в буфер обмена. Откройте Telegram и вставьте в чат (Ctrl+V / Вставить).')
+              // Оповестим пользователя и попытаемся открыть окно выбора контакта в Telegram
+              showShareAlert('Снимок скопирован в буфер обмена. Откроется окно выбора контакта в Telegram — выберите собеседника и вставьте изображение (Вставить/Long-press → Вставить).')
+              try {
+                const shareUrl = `https://t.me/share/url?text=${encodeURIComponent(shareText)}`
+                // попытка открыть Telegram share (в большинстве мобильных случаев это переключит в приложение Telegram)
+                const opened = window.open(shareUrl, '_blank')
+                if (!opened) {
+                  // если блокируется, перенаправим текущую страницу
+                  window.location.href = shareUrl
+                }
+              } catch (openErr) {
+                console.warn('[Profile] open share url failed:', openErr)
+              }
             }
           } catch (copyErr) {
             // ignore clipboard errors and продолжим к сохранению файла
             console.warn('[Profile] clipboard write failed:', copyErr)
+          }
+
+          // Откроем окно выбора контакта в Telegram вне зависимости от результата копирования в буфер.
+          // Даже если копирование не удалось, пользователь попадёт в выбор контакта и сможет прикрепить файл вручную.
+          try {
+            const shareUrl = `https://t.me/share/url?text=${encodeURIComponent(shareText)}`
+            const opened = window.open(shareUrl, '_blank')
+            if (!opened) {
+              window.location.href = shareUrl
+            }
+          } catch (_err) {
+            /* ignore */
           }
 
           if (!didClipboard) {

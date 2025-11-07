@@ -112,6 +112,24 @@ const MOVE_CANCEL_THRESHOLD_PX = 18
 const SHARE_PIXEL_RATIO_LIMIT = 2.5
 const MIN_SHARE_PIXEL_RATIO = 1.6
 
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      const result = reader.result
+      if (typeof result === 'string') {
+        resolve(result)
+      } else {
+        reject(new Error('data-url-invalid'))
+      }
+    }
+    reader.onerror = () => {
+      reject(reader.error ?? new Error('data-url-read-error'))
+    }
+    reader.readAsDataURL(blob)
+  })
+}
+
 function isAscii(value: string): boolean {
   for (let index = 0; index < value.length; index += 1) {
     if (value.charCodeAt(index) > 0x7f) {
@@ -551,8 +569,22 @@ export default function Profile() {
           cacheBust: true,
           pixelRatio,
           backgroundColor,
-          filter: node =>
-            !(node instanceof HTMLElement && node.classList.contains('profile-share-overlay')),
+          // исключаем подсказки/оверлеи шаринга по классам, чтобы в итоговом изображении
+          // не было текста "Нажмите и удерживайте строку, чтобы поделиться блоком в Telegram."
+          filter: node => {
+            if (!(node instanceof HTMLElement)) return true
+            // явно скрываем оверлей и подсказку
+            if (node.classList.contains('profile-share-overlay')) return false
+            if (node.classList.contains('profile-share-hint')) return false
+            // скрываем любые элементы с классом, начинающимся на 'profile-share'
+            for (let i = 0; i < node.classList.length; i += 1) {
+              const cls = node.classList.item(i)
+              if (cls && cls.startsWith('profile-share')) {
+                return false
+              }
+            }
+            return true
+          },
         })
 
         if (!blob) {
@@ -564,17 +596,27 @@ export default function Profile() {
         const shareFile = new File([blob], fileName, { type: 'image/png' })
 
         let delivered = false
+        let telegramFallbackNotice: string | null = null
         const telegram = (window as TelegramWindow).Telegram?.WebApp
 
         if (telegram && typeof telegram.shareToTelegram === 'function') {
           try {
+            const photoDataUrl = await blobToDataUrl(blob)
             await telegram.shareToTelegram({
-              text: shareText,
-              media: [{ type: 'photo', media: shareFile }],
+              message: shareText,
+              media: [{ type: 'photo', media: photoDataUrl }],
             })
             delivered = true
           } catch (error) {
             console.error('[Profile] shareToTelegram failed:', error)
+            try {
+              await telegram.shareToTelegram({ message: shareText })
+              telegramFallbackNotice =
+                'Телеграм не поддержал отправку изображения, текст уже открыт для пересылки.'
+              delivered = true
+            } catch (fallbackError) {
+              console.error('[Profile] shareToTelegram text fallback failed:', fallbackError)
+            }
           }
         }
 
@@ -603,7 +645,11 @@ export default function Profile() {
           }
         }
 
-        if (!delivered) {
+        if (delivered) {
+          if (telegramFallbackNotice) {
+            showShareAlert(telegramFallbackNotice)
+          }
+        } else {
           const blobUrl = URL.createObjectURL(blob)
           try {
             const link = document.createElement('a')

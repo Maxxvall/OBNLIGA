@@ -69,11 +69,28 @@ interface TelegramUserPayload {
   language_code?: string
 }
 
+interface TelegramShareMediaAttachment {
+  type: 'photo'
+  media: File | string
+  caption?: string
+}
+
+type TelegramShareContent =
+  | string
+  | {
+      text?: string
+      message?: string
+      url?: string
+      media?: TelegramShareMediaAttachment[]
+    }
+
 interface TelegramWebApp {
   initData?: string
   initDataUnsafe?: {
     user?: TelegramUserPayload
   }
+  shareToTelegram?: (content: TelegramShareContent) => Promise<void>
+  showAlert?: (message: string) => void
 }
 
 interface TelegramWindow extends Window {
@@ -89,6 +106,11 @@ type DevTelegramUserConfig = {
   username?: string
   photoUrl?: string
 }
+
+const LONG_PRESS_DELAY_MS = 650
+const MOVE_CANCEL_THRESHOLD_PX = 18
+const SHARE_PIXEL_RATIO_LIMIT = 2.5
+const MIN_SHARE_PIXEL_RATIO = 1.6
 
 function isAscii(value: string): boolean {
   for (let index = 0; index < value.length; index += 1) {
@@ -122,6 +144,13 @@ export default function Profile() {
   })
   const isFetchingRef = useRef(false)
   const userRef = useRef<Nullable<ProfileUser>>(null)
+  const careerCardRef = useRef<HTMLDivElement | null>(null)
+  const [activeShareRowKey, setActiveShareRowKey] = useState<string | null>(null)
+  const [isShareBusy, setIsShareBusy] = useState(false)
+  const longPressTimeoutRef = useRef<number | null>(null)
+  const pointerStartRef = useRef<{ x: number; y: number; pointerId: number } | null>(null)
+  const pressEntryRef = useRef<LeaguePlayerCareerEntry | null>(null)
+  const shareInProgressRef = useRef(false)
 
   useEffect(() => {
     userRef.current = user
@@ -458,63 +487,239 @@ export default function Profile() {
     return `${entry.fromYear}-${entry.toYear}`
   }, [])
 
-  const careerBlock = useMemo(() => {
-    if (!isVerified) {
-      return null
-    }
+  const getCareerRowKey = useCallback((entry: LeaguePlayerCareerEntry) => {
+    const start = entry.fromYear ?? 'start'
+    const end = entry.toYear ?? 'current'
+    return `${entry.clubId}-${start}-${end}-${entry.matches}-${entry.assists}-${entry.goals}-${entry.yellowCards}-${entry.redCards}`
+  }, [])
 
-    return (
-      <section className="profile-section">
-        <div className="profile-card">
-          <header className="profile-card-header">
-            <h2>Карьера игрока</h2>
-          </header>
-          <div className="profile-table-wrapper">
-            {careerRows.length ? (
-              <div className="profile-career-scroll">
-                <div className="profile-career-grid" role="table" aria-label="Карьера игрока">
-                  <div className="profile-career-row head" role="row">
-                    <div className="col-year" role="columnheader">Год</div>
-                    <div className="col-club" role="columnheader">Лого</div>
-                    <div className="col-stat" role="columnheader">М</div>
-                    <div className="col-stat" role="columnheader">ЖК</div>
-                    <div className="col-stat" role="columnheader">КК</div>
-                    <div className="col-stat" role="columnheader">П</div>
-                    <div className="col-stat" role="columnheader">Г</div>
-                  </div>
-                  {careerRows.map(entry => (
-                    <div
-                      className="profile-career-row"
-                      role="row"
-                      key={`${entry.clubId}-${entry.fromYear ?? 'start'}-${entry.toYear ?? 'current'}-${entry.matches}`}
-                    >
-                      <div className="col-year" role="cell">{renderCareerRange(entry)}</div>
-                      <div className="col-club" role="cell">
-                        {entry.clubLogoUrl ? (
-                          <span className="career-club-logo" style={{ backgroundImage: `url(${entry.clubLogoUrl})` }} aria-hidden="true" />
-                        ) : (
-                          <span className="career-club-logo placeholder" aria-hidden="true">⚽</span>
-                        )}
-                      </div>
-                      <div className="col-stat" role="cell">{entry.matches}</div>
-                      <div className="col-stat" role="cell">{entry.yellowCards}</div>
-                      <div className="col-stat" role="cell">{entry.redCards}</div>
-                      <div className="col-stat" role="cell">{entry.assists}</div>
-                      <div className="col-stat" role="cell">{entry.goals}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="profile-table-placeholder">
-                <p>Записи карьеры появятся после первых сыгранных матчей в подтверждённом статусе игрока.</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-    )
-  }, [careerRows, isVerified, renderCareerRange])
+  const showShareAlert = useCallback((message: string) => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    const telegram = (window as TelegramWindow).Telegram?.WebApp
+    if (telegram?.showAlert) {
+      telegram.showAlert(message)
+    } else {
+      window.alert(message)
+    }
+  }, [])
+
+  const clearLongPress = useCallback(
+    (options?: { preserveActive?: boolean }) => {
+      if (longPressTimeoutRef.current !== null) {
+        window.clearTimeout(longPressTimeoutRef.current)
+        longPressTimeoutRef.current = null
+      }
+      pointerStartRef.current = null
+      pressEntryRef.current = null
+      if (!options?.preserveActive) {
+        setActiveShareRowKey(null)
+      }
+    },
+    []
+  )
+
+  const shareCareerSnapshot = useCallback(
+    async (entry: LeaguePlayerCareerEntry, rowKey: string) => {
+      if (!careerCardRef.current || shareInProgressRef.current) {
+        return
+      }
+
+      shareInProgressRef.current = true
+      setIsShareBusy(true)
+      setActiveShareRowKey(rowKey)
+
+      try {
+        const { toBlob } = await import('html-to-image')
+        const container = careerCardRef.current
+        if (!container) {
+          throw new Error('capture-container-missing')
+        }
+
+        const deviceRatio = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
+        const pixelRatio = Math.min(
+          SHARE_PIXEL_RATIO_LIMIT,
+          Math.max(MIN_SHARE_PIXEL_RATIO, deviceRatio)
+        )
+        const backgroundColor =
+          typeof window !== 'undefined'
+            ? getComputedStyle(document.body).backgroundColor || '#040914'
+            : '#040914'
+
+        const blob = await toBlob(container, {
+          cacheBust: true,
+          pixelRatio,
+          backgroundColor,
+          filter: node =>
+            !(node instanceof HTMLElement && node.classList.contains('profile-share-overlay')),
+        })
+
+        if (!blob) {
+          throw new Error('capture-blob-empty')
+        }
+
+        const fileName = `obnliga-career-${Date.now()}.png`
+        const shareText = `${displayName} — ${renderCareerRange(entry)} ${entry.clubShortName}. Матчи: ${entry.matches}, Голы: ${entry.goals}, Передачи: ${entry.assists}.`
+        const shareFile = new File([blob], fileName, { type: 'image/png' })
+
+        let delivered = false
+        const telegram = (window as TelegramWindow).Telegram?.WebApp
+
+        if (telegram && typeof telegram.shareToTelegram === 'function') {
+          try {
+            await telegram.shareToTelegram({
+              text: shareText,
+              media: [{ type: 'photo', media: shareFile }],
+            })
+            delivered = true
+          } catch (error) {
+            console.error('[Profile] shareToTelegram failed:', error)
+          }
+        }
+
+        if (!delivered && typeof navigator !== 'undefined' && 'share' in navigator) {
+          const navigatorShare = navigator as Navigator & {
+            share?: (data: ShareData) => Promise<void>
+            canShare?: (data?: ShareData) => boolean
+          }
+          if (typeof navigatorShare.share === 'function') {
+            const canShareFiles =
+              typeof navigatorShare.canShare === 'function'
+                ? navigatorShare.canShare({ files: [shareFile] })
+                : false
+            if (canShareFiles) {
+              try {
+                await navigatorShare.share({
+                  files: [shareFile],
+                  text: shareText,
+                  title: 'OBNLIGA',
+                })
+                delivered = true
+              } catch (error) {
+                console.error('[Profile] navigator.share failed:', error)
+              }
+            }
+          }
+        }
+
+        if (!delivered) {
+          const blobUrl = URL.createObjectURL(blob)
+          try {
+            const link = document.createElement('a')
+            link.href = blobUrl
+            link.download = fileName
+            link.style.display = 'none'
+            document.body.appendChild(link)
+            link.click()
+            document.body.removeChild(link)
+            showShareAlert('Снимок сохранён. Отправьте его в Telegram вручную.')
+          } finally {
+            window.setTimeout(() => URL.revokeObjectURL(blobUrl), 5000)
+          }
+        }
+      } catch (error) {
+        console.error('[Profile] shareCareerSnapshot error:', error)
+        showShareAlert('Не удалось подготовить снимок. Попробуйте ещё раз.')
+      } finally {
+        shareInProgressRef.current = false
+        setIsShareBusy(false)
+        setActiveShareRowKey(current => (current === rowKey ? null : current))
+      }
+    },
+    [displayName, renderCareerRange, showShareAlert]
+  )
+
+  const handleCareerRowPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>, entry: LeaguePlayerCareerEntry) => {
+      if (!isVerified || isShareBusy || shareInProgressRef.current) {
+        return
+      }
+      if (event.pointerType === 'mouse' && event.button !== 0) {
+        return
+      }
+
+      const rowKey = getCareerRowKey(entry)
+      pressEntryRef.current = entry
+      pointerStartRef.current = {
+        x: event.clientX,
+        y: event.clientY,
+        pointerId: event.pointerId,
+      }
+      setActiveShareRowKey(rowKey)
+
+      if (longPressTimeoutRef.current !== null) {
+        window.clearTimeout(longPressTimeoutRef.current)
+      }
+
+      longPressTimeoutRef.current = window.setTimeout(() => {
+        if (!pressEntryRef.current) {
+          return
+        }
+        clearLongPress({ preserveActive: true })
+        void shareCareerSnapshot(entry, rowKey)
+      }, LONG_PRESS_DELAY_MS)
+    },
+    [clearLongPress, getCareerRowKey, isShareBusy, isVerified, shareCareerSnapshot]
+  )
+
+  const handleCareerRowPointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const start = pointerStartRef.current
+      if (!start || start.pointerId !== event.pointerId) {
+        return
+      }
+
+      const deltaX = event.clientX - start.x
+      const deltaY = event.clientY - start.y
+      if (Math.hypot(deltaX, deltaY) >= MOVE_CANCEL_THRESHOLD_PX) {
+        clearLongPress()
+      }
+    },
+    [clearLongPress]
+  )
+
+  const handleCareerRowPointerUp = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const start = pointerStartRef.current
+      if (!start || start.pointerId !== event.pointerId) {
+        return
+      }
+      clearLongPress()
+    },
+    [clearLongPress]
+  )
+
+  const handleCareerRowPointerLeave = useCallback(() => {
+    clearLongPress()
+  }, [clearLongPress])
+
+  const handleCareerRowPointerCancel = useCallback(() => {
+    clearLongPress()
+  }, [clearLongPress])
+
+  const handleCareerRowKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>, entry: LeaguePlayerCareerEntry) => {
+      if (!isVerified || isShareBusy || shareInProgressRef.current) {
+        return
+      }
+      if (event.key !== 'Enter' && event.key !== ' ') {
+        return
+      }
+
+      event.preventDefault()
+      const rowKey = getCareerRowKey(entry)
+      setActiveShareRowKey(rowKey)
+      void shareCareerSnapshot(entry, rowKey)
+    },
+    [getCareerRowKey, isShareBusy, isVerified, shareCareerSnapshot]
+  )
+
+  useEffect(() => {
+    return () => {
+      clearLongPress()
+    }
+  }, [clearLongPress])
 
   const achievementsBlock = useMemo(() => {
     if (!achievements) {
@@ -583,6 +788,9 @@ export default function Profile() {
       </section>
     )
   }, [achievements])
+
+  const shouldShowCareerSection = isVerified && (!isCompactLayout || activeSection === 'stats')
+  const shouldShowAchievements = !isCompactLayout || activeSection === 'achievements'
 
   const statusMessage = (() => {
     if (status === 'PENDING') {
@@ -759,8 +967,85 @@ export default function Profile() {
           </div>
         ) : null}
 
-        {(!isCompactLayout || activeSection === 'stats') && careerBlock}
-        {(!isCompactLayout || activeSection === 'achievements') && achievementsBlock}
+        {shouldShowCareerSection ? (
+          <section className="profile-section">
+            <div className="profile-card" ref={careerCardRef} aria-busy={isShareBusy}>
+              {isShareBusy ? (
+                <div className="profile-share-overlay" role="status" aria-live="polite">
+                  Готовим изображение…
+                </div>
+              ) : null}
+              <header className="profile-card-header">
+                <h2>Карьера игрока</h2>
+              </header>
+              <div className="profile-table-wrapper">
+                {careerRows.length ? (
+                  <>
+                    <div className="profile-career-scroll">
+                      <div className="profile-career-grid" role="table" aria-label="Карьера игрока">
+                        <div className="profile-career-row head" role="row">
+                          <div className="col-year" role="columnheader">Год</div>
+                          <div className="col-club" role="columnheader">Лого</div>
+                          <div className="col-stat" role="columnheader">М</div>
+                          <div className="col-stat" role="columnheader">ЖК</div>
+                          <div className="col-stat" role="columnheader">КК</div>
+                          <div className="col-stat" role="columnheader">П</div>
+                          <div className="col-stat" role="columnheader">Г</div>
+                        </div>
+                        {careerRows.map(entry => {
+                          const rowKey = getCareerRowKey(entry)
+                          const rowClassName = `profile-career-row${activeShareRowKey === rowKey ? ' share-hold' : ''}`
+                          return (
+                            <div
+                              key={rowKey}
+                              className={rowClassName}
+                              role="row"
+                              tabIndex={0}
+                              aria-label={`Строка ${renderCareerRange(entry)} ${entry.clubShortName}. Удерживайте, чтобы поделиться.`}
+                              onPointerDown={event => handleCareerRowPointerDown(event, entry)}
+                              onPointerUp={handleCareerRowPointerUp}
+                              onPointerLeave={handleCareerRowPointerLeave}
+                              onPointerCancel={handleCareerRowPointerCancel}
+                              onPointerMove={handleCareerRowPointerMove}
+                              onKeyDown={event => handleCareerRowKeyDown(event, entry)}
+                              onContextMenu={event => event.preventDefault()}
+                            >
+                              <div className="col-year" role="cell">{renderCareerRange(entry)}</div>
+                              <div className="col-club" role="cell">
+                                {entry.clubLogoUrl ? (
+                                  <span
+                                    className="career-club-logo"
+                                    style={{ backgroundImage: `url(${entry.clubLogoUrl})` }}
+                                    aria-hidden="true"
+                                  />
+                                ) : (
+                                  <span className="career-club-logo placeholder" aria-hidden="true">⚽</span>
+                                )}
+                              </div>
+                              <div className="col-stat" role="cell">{entry.matches}</div>
+                              <div className="col-stat" role="cell">{entry.yellowCards}</div>
+                              <div className="col-stat" role="cell">{entry.redCards}</div>
+                              <div className="col-stat" role="cell">{entry.assists}</div>
+                              <div className="col-stat" role="cell">{entry.goals}</div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                    <div className="profile-share-hint">
+                      Нажмите и удерживайте строку, чтобы поделиться блоком в Telegram.
+                    </div>
+                  </>
+                ) : (
+                  <div className="profile-table-placeholder">
+                    <p>Записи карьеры появятся после первых сыгранных матчей в подтверждённом статусе игрока.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+        ) : null}
+        {shouldShowAchievements && achievementsBlock}
 
         {showVerifyModal ? (
           <div className="verify-modal-backdrop" role="dialog" aria-modal="true">

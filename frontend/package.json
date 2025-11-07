@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",
+    "html-to-image": "^1.11.11",
     "futbol-league-frontend": "file:",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",

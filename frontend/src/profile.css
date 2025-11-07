@@ -336,6 +336,19 @@
   background: rgba(10, 24, 42, 0.92);
 }
 
+.profile-career-row.share-hold {
+  border-color: rgba(0, 240, 255, 0.42);
+  box-shadow:
+    0 0 0 1px rgba(0, 240, 255, 0.22),
+    0 20px 38px rgba(0, 18, 40, 0.48);
+  background: rgba(10, 26, 46, 0.98);
+  transform: scale(0.997);
+}
+
+.profile-career-row.share-hold .col-year {
+  color: #ffffff;
+}
+
 .profile-career-row .col-year {
   font-weight: 600;
   color: #f0fbff;
@@ -375,6 +388,28 @@
 .profile-career-row .col-stat {
   text-align: center;
   font-variant-numeric: tabular-nums;
+}
+
+.profile-share-hint {
+  margin-top: 12px;
+  text-align: center;
+  font-size: 12px;
+  color: rgba(200, 249, 255, 0.7);
+}
+
+.profile-share-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(4, 9, 20, 0.82);
+  backdrop-filter: blur(3px);
+  color: rgba(200, 249, 255, 0.94);
+  font-weight: 600;
+  text-align: center;
 }
 
 @media (max-width: 720px) {

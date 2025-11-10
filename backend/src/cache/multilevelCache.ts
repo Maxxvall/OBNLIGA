@@ -101,16 +101,30 @@ export class MultiLevelCache {
 
   async invalidate(key: string) {
     this.lru.delete(key)
-    this.versions.delete(key)
     this.localLocks.delete(this.lockKey(key))
+    let nextVersion = (this.versions.get(key) ?? 0) + 1
     if (this.redis) {
       try {
         const versionKey = this.versionKey(key)
-        await this.redis.del(key, versionKey)
+        const results = await this.redis
+          .multi()
+          .del(key)
+          .incr(versionKey)
+          .exec()
+        const incrResult = results?.[1]?.[1]
+        if (typeof incrResult === 'number') {
+          nextVersion = incrResult
+        } else if (typeof incrResult === 'string') {
+          const parsed = Number(incrResult)
+          if (!Number.isNaN(parsed)) {
+            nextVersion = parsed
+          }
+        }
       } catch (err) {
         // ignore redis errors on invalidate
       }
     }
+    this.versions.set(key, nextVersion)
   }
 
   async getWithMeta<T>(

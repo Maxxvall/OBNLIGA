@@ -252,8 +252,17 @@ const getTemplateSortOrder = (template: PredictionTemplateView): number => {
     }
     
     if (line !== null && !Number.isNaN(line)) {
-      const delta = options?.delta
-      if (typeof delta === 'number') {
+      let delta: number | null = null
+      const rawDelta = options?.delta
+      if (typeof rawDelta === 'number' && Number.isFinite(rawDelta)) {
+        delta = rawDelta
+      } else if (typeof rawDelta === 'string') {
+        const parsedDelta = Number(rawDelta.replace(',', '.'))
+        if (Number.isFinite(parsedDelta)) {
+          delta = parsedDelta
+        }
+      }
+      if (delta !== null) {
         // Тотал-1
         if (delta < 0) return 10
         // Тотал+1

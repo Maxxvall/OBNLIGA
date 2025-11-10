@@ -295,9 +295,18 @@ const buildSpecialEventOptions = async (
 
 const buildTotalGoalsOptionsForLine = (
   line: number,
-  suggestion: TotalGoalsSuggestion
+  suggestion: TotalGoalsSuggestion,
+  deltaOverride?: number
 ): Prisma.JsonObject => {
   const formattedLine = formatTotalLine(line)
+  const normalizedBase = Number(formatTotalLine(suggestion.line))
+  const resolvedDelta = (() => {
+    if (typeof deltaOverride === 'number' && Number.isFinite(deltaOverride)) {
+      return Number((Math.round(deltaOverride * 10) / 10).toFixed(1))
+    }
+    const diff = line - normalizedBase
+    return Number((Math.round(diff * 10) / 10).toFixed(1))
+  })()
   
   // Рассчитываем вероятность OVER на основе среднего и линии
   const avgGoals = suggestion.averageGoals
@@ -334,6 +343,7 @@ const buildTotalGoalsOptionsForLine = (
   return {
     line,
     formattedLine,
+    delta: resolvedDelta,
     choices: [overChoice, underChoice],
     sampleSize: suggestion.sampleSize,
     averageGoals: Number(suggestion.averageGoals.toFixed(3)),
@@ -493,7 +503,19 @@ const ensurePredictionTemplatesForMatchRecord = async (
   }
 
   // Создаем 3 отдельных template для тоталов (используя alternatives из suggestion)
-  const totalLines = suggestion.alternatives.map(alt => Number(formatTotalLine(alt.line)))
+  const totalAlternatives: { line: number; delta: number }[] = []
+  const seenLines = new Set<number>()
+  for (const alternative of suggestion.alternatives) {
+    const normalizedLine = Number(formatTotalLine(alternative.line))
+    if (seenLines.has(normalizedLine)) {
+      continue
+    }
+    seenLines.add(normalizedLine)
+    const normalizedDelta = Number(
+      (Math.round((alternative.delta ?? 0) * 10) / 10).toFixed(1)
+    )
+    totalAlternatives.push({ line: normalizedLine, delta: normalizedDelta })
+  }
   const desiredTotalDifficulty = computeTotalDifficultyMultiplier(suggestion)
   
   // Получаем существующие TOTAL_GOALS templates
@@ -512,8 +534,8 @@ const ensurePredictionTemplatesForMatchRecord = async (
   }
   
   // Создаем или обновляем template для каждой линии
-  for (const line of totalLines) {
-    const desiredOptions = buildTotalGoalsOptionsForLine(line, suggestion)
+  for (const { line, delta } of totalAlternatives) {
+    const desiredOptions = buildTotalGoalsOptionsForLine(line, suggestion, delta)
     const existing = existingByLine.get(line)
     
     if (!existing) {
@@ -551,11 +573,13 @@ const ensurePredictionTemplatesForMatchRecord = async (
   }
   
   // Удаляем старые template с линиями, которых нет в новом списке
+  const activeLines = new Set(totalAlternatives.map(item => item.line))
+
   for (const template of existingTotals) {
     if (template.isManual) continue
     const options = template.options as Record<string, unknown> | null
     const parsedLine = parseLineOption(options)
-    if (parsedLine !== null && !totalLines.includes(parsedLine)) {
+    if (parsedLine !== null && !activeLines.has(parsedLine)) {
       await client.predictionTemplate.delete({
         where: { id: template.id },
       })

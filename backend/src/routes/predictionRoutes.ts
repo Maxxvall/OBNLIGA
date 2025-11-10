@@ -16,6 +16,7 @@ import {
   PREDICTION_WEEKLY_LIMIT,
   USER_PREDICTION_CACHE_KEY,
 } from '../services/predictionConstants'
+import { ensurePredictionTemplatesInRange } from '../services/predictionTemplateService'
 
 const toNumber = (value: unknown): number | null => {
   if (value == null) {
@@ -296,19 +297,19 @@ export default async function predictionRoutes(server: FastifyInstance) {
     const now = new Date()
     const until = new Date(now.getTime() + days * 24 * 60 * 60 * 1000)
 
-    const loader = async (): Promise<ActivePredictionMatch[]> => {
-      // НЕ вызываем ensurePredictionTemplatesInRange при каждом GET
-      // Шаблоны должны создаваться:
-      // 1. При создании матча (в adminRoutes)
-      // 2. При изменении статуса матча
-      // 3. По расписанию (background job)
-      // 
-      // await ensurePredictionTemplatesInRange({
-      //   from: now,
-      //   to: until,
-      //   excludeDaysFromCacheInvalidation: new Set([days]),
-      // })
+    try {
+      await ensurePredictionTemplatesInRange({
+        from: now,
+        to: until,
+      })
+    } catch (err) {
+      request.server.log.warn(
+        { err, days },
+        'predictions: failed to ensure templates for active list'
+      )
+    }
 
+    const loader = async (): Promise<ActivePredictionMatch[]> => {
       const rows = await prisma.match.findMany({
         where: {
           status: MatchStatus.SCHEDULED,

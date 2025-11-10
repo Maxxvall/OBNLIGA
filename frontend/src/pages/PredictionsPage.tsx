@@ -136,7 +136,34 @@ const normalizeTemplateChoices = (template: PredictionTemplateView): PredictionC
     if (seen.has(trimmedValue)) {
       return
     }
-    const resolvedLabel = label && label.trim().length > 0 ? label.trim() : translateChoiceLabel(template.marketType, trimmedValue)
+    const fallbackLabel = translateChoiceLabel(template.marketType, trimmedValue)
+    const candidateLabel = label && label.trim().length > 0 ? label.trim() : undefined
+
+    let resolvedLabel = candidateLabel ?? fallbackLabel
+
+    if (template.marketType === 'TOTAL_GOALS') {
+      const normalizedCandidate = (candidateLabel ?? '').toLowerCase()
+      if (
+        !candidateLabel ||
+        normalizedCandidate === trimmedValue.toLowerCase() ||
+        normalizedCandidate === 'да' ||
+        normalizedCandidate === 'нет' ||
+        normalizedCandidate === 'yes' ||
+        normalizedCandidate === 'no' ||
+        normalizedCandidate === 'true' ||
+        normalizedCandidate === 'false' ||
+        normalizedCandidate.startsWith('over') ||
+        normalizedCandidate.startsWith('under')
+      ) {
+        resolvedLabel = fallbackLabel
+      }
+    } else if (template.marketType === 'CUSTOM_BOOLEAN') {
+      const normalizedCandidate = (candidateLabel ?? '').toUpperCase()
+      if (normalizedCandidate === 'YES' || normalizedCandidate === 'NO') {
+        resolvedLabel = translateChoiceLabel(template.marketType, trimmedValue)
+      }
+    }
+
     seen.set(trimmedValue, {
       value: trimmedValue,
       label: resolvedLabel,

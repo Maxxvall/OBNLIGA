@@ -111,15 +111,46 @@ const buildLineAlternatives = (line: number): TotalGoalsLineAlternative[] => {
   const variants: TotalGoalsLineAlternative[] = []
   
   const pushVariant = (delta: number) => {
-    const candidate = Math.round((normalizedBase + delta) * 2) / 2
-    const clamped = clampLine(candidate)
-    if (variants.some(variant => variant.line === clamped)) {
+    const resolveCandidate = (desiredDelta: number): number | null => {
+      const rounded = Math.round((normalizedBase + desiredDelta) * 2) / 2
+      let clamped = clampLine(rounded)
+
+      if (desiredDelta !== 0 && clamped === normalizedBase) {
+        const direction = Math.sign(desiredDelta)
+        if (!direction) {
+          return null
+        }
+
+        // Ищем ближайшую допустимую линию в указанном направлении с шагом 0.5
+        const maxSteps = 8
+        for (let step = 1; step <= maxSteps; step += 1) {
+          const offset = step * 0.5 * direction
+          const candidate = clampLine(normalizedBase + offset)
+          if (candidate !== normalizedBase) {
+            clamped = candidate
+            break
+          }
+        }
+
+        if (clamped === normalizedBase) {
+          return null
+        }
+      }
+
+      return clamped
+    }
+
+    const resolved = resolveCandidate(delta)
+    if (resolved === null) {
+      return
+    }
+    if (variants.some(variant => variant.line === resolved)) {
       return
     }
     variants.push({
-      line: clamped,
-      formattedLine: clamped.toFixed(1),
-      delta: roundToTenth(clamped - normalizedBase),
+      line: resolved,
+      formattedLine: resolved.toFixed(1),
+      delta: roundToTenth(resolved - normalizedBase),
     })
   }
 

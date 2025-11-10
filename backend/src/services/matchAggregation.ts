@@ -22,7 +22,7 @@ import { buildLeagueTable } from './leagueTable'
 import { refreshLeagueMatchAggregates } from './leagueSchedule'
 import { refreshLeagueStats } from './leagueStats'
 import { publicClubSummaryKey, refreshClubSummary } from './clubSummary'
-import { USER_PREDICTION_CACHE_KEY } from './predictionConstants'
+import { USER_PREDICTION_CACHE_KEY, PREDICTION_UPCOMING_MAX_DAYS } from './predictionConstants'
 import {
   addDays,
   applyTimeToDate,
@@ -35,6 +35,7 @@ import {
   ratingPublicCacheKey,
 } from './ratingAggregation'
 import { RATING_DEFAULT_PAGE_SIZE } from './ratingConstants'
+import { ensurePredictionTemplatesForMatch } from './predictionTemplateService'
 
 const YELLOW_CARD_LIMIT = 4
 const RED_CARD_BAN_MATCHES = 2
@@ -236,6 +237,49 @@ export async function handleMatchFinalization(
     }
   } catch (err) {
     logger.warn({ err, matchId: matchId.toString() }, 'failed to refresh league table cache')
+  }
+
+  try {
+    const relatedClubIds = Array.from(new Set([match.homeTeamId, match.awayTeamId]))
+    if (relatedClubIds.length) {
+      const nowUtc = new Date()
+      const horizon = new Date(
+        nowUtc.getTime() + PREDICTION_UPCOMING_MAX_DAYS * 24 * 60 * 60 * 1000
+      )
+      const clubConditions = relatedClubIds.flatMap(clubId => [
+        { homeTeamId: clubId },
+        { awayTeamId: clubId },
+      ])
+
+      const upcomingMatches = await prisma.match.findMany({
+        where: {
+          status: MatchStatus.SCHEDULED,
+          matchDateTime: {
+            gte: nowUtc,
+            lte: horizon,
+          },
+          OR: clubConditions,
+        },
+        select: { id: true },
+      })
+
+      const uniqueUpcomingIds = new Set<bigint>(upcomingMatches.map(entry => entry.id))
+      for (const upcomingId of uniqueUpcomingIds) {
+        try {
+          await ensurePredictionTemplatesForMatch(upcomingId, prisma)
+        } catch (err) {
+          logger.warn(
+            { err, matchId: upcomingId.toString() },
+            'failed to update prediction templates for upcoming match'
+          )
+        }
+      }
+    }
+  } catch (err) {
+    logger.warn(
+      { err, matchId: matchId.toString() },
+      'failed to refresh upcoming prediction templates after finalization'
+    )
   }
 
   if (impactedClubIds.size) {

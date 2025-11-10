@@ -1,9 +1,0 @@
--- AlterTable
-ALTER TABLE "ad_banner" ALTER COLUMN "starts_at" SET DATA TYPE TIMESTAMP(3),
-ALTER COLUMN "ends_at" SET DATA TYPE TIMESTAMP(3),
-ALTER COLUMN "created_at" SET DATA TYPE TIMESTAMP(3),
-ALTER COLUMN "updated_at" DROP DEFAULT,
-ALTER COLUMN "updated_at" SET DATA TYPE TIMESTAMP(3);
-
--- AlterTable
-ALTER TABLE "match" ADD COLUMN     "broadcast_url" TEXT;

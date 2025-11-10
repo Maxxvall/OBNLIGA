@@ -322,12 +322,12 @@ const buildTotalGoalsOptionsForLine = (
   
   const overChoice = { 
     value: `OVER_${formattedLine}`, 
-    label: 'Да',
+    label: 'Больше',
     points: overPoints
   }
   const underChoice = { 
     value: `UNDER_${formattedLine}`, 
-    label: 'Нет',
+    label: 'Меньше',
     points: underPoints
   }
 
@@ -371,6 +371,39 @@ const jsonEquals = (left: Prisma.JsonValue, right: Prisma.JsonValue): boolean =>
   } catch (_err) {
     return false
   }
+}
+
+const parseLineOption = (options: Record<string, unknown> | null): number | null => {
+  if (!options) {
+    return null
+  }
+
+  const normalizeNumeric = (value: unknown): number | null => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value
+    }
+    if (typeof value === 'string') {
+      const numeric = Number(value.replace(',', '.'))
+      if (Number.isFinite(numeric)) {
+        return numeric
+      }
+    }
+    return null
+  }
+
+  const record = options as { line?: unknown; formattedLine?: unknown }
+
+  const direct = normalizeNumeric(record.line)
+  if (direct !== null) {
+    return Number(formatTotalLine(direct))
+  }
+
+  const formatted = normalizeNumeric(record.formattedLine)
+  if (formatted !== null) {
+    return Number(formatTotalLine(formatted))
+  }
+
+  return null
 }
 
 const extractEventKey = (options: Prisma.JsonValue): string | undefined => {
@@ -460,7 +493,7 @@ const ensurePredictionTemplatesForMatchRecord = async (
   }
 
   // Создаем 3 отдельных template для тоталов (используя alternatives из suggestion)
-  const totalLines = suggestion.alternatives.map(alt => alt.line)
+  const totalLines = suggestion.alternatives.map(alt => Number(formatTotalLine(alt.line)))
   const desiredTotalDifficulty = computeTotalDifficultyMultiplier(suggestion)
   
   // Получаем существующие TOTAL_GOALS templates
@@ -472,8 +505,9 @@ const ensurePredictionTemplatesForMatchRecord = async (
   const existingByLine = new Map<number, TemplateRow>()
   for (const template of existingTotals) {
     const options = template.options as Record<string, unknown> | null
-    if (options && typeof options.line === 'number') {
-      existingByLine.set(options.line, template)
+    const parsedLine = parseLineOption(options)
+    if (parsedLine !== null) {
+      existingByLine.set(parsedLine, template)
     }
   }
   
@@ -520,8 +554,8 @@ const ensurePredictionTemplatesForMatchRecord = async (
   for (const template of existingTotals) {
     if (template.isManual) continue
     const options = template.options as Record<string, unknown> | null
-    const line = options && typeof options.line === 'number' ? options.line : null
-    if (line !== null && !totalLines.includes(line)) {
+    const parsedLine = parseLineOption(options)
+    if (parsedLine !== null && !totalLines.includes(parsedLine)) {
       await client.predictionTemplate.delete({
         where: { id: template.id },
       })

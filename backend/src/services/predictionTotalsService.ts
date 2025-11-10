@@ -5,7 +5,6 @@ import {
   PREDICTION_TOTAL_LOOKBACK_MATCHES,
   PREDICTION_TOTAL_MIN_LINE,
   PREDICTION_TOTAL_MAX_LINE,
-  PREDICTION_TOTAL_MIN_SAMPLE_SIZE,
 } from './predictionConstants'
 
 export type PredictionMatchContext = {
@@ -62,6 +61,23 @@ const clampLine = (value: number): number => {
   return value
 }
 
+const toHalfStepLine = (value: number): number => {
+  const clamped = clampLine(value)
+  let rounded = Math.round(clamped * 2) / 2
+
+  if (Number.isInteger(rounded)) {
+    const lower = Math.max(PREDICTION_TOTAL_MIN_LINE, rounded - 0.5)
+    const upper = Math.min(PREDICTION_TOTAL_MAX_LINE, rounded + 0.5)
+    const distanceToLower = Math.abs(clamped - lower)
+    const distanceToUpper = Math.abs(clamped - upper)
+    rounded = distanceToUpper <= distanceToLower ? upper : lower
+  }
+
+  // Финальное ограничение и защита от накопления погрешности
+  const normalized = clampLine(rounded)
+  return Number((Math.round(normalized * 2) / 2).toFixed(1))
+}
+
 const normalizeMatchContext = (
   row: {
     id: bigint
@@ -85,15 +101,12 @@ const roundToTenth = (value: number): number => {
 }
 
 export const formatTotalLine = (line: number): string => {
-  const roundedToHalf = Math.round(line * 2) / 2
-  const clamped = clampLine(roundedToHalf)
-  return clamped.toFixed(1)
+  return toHalfStepLine(line).toFixed(1)
 }
 
 const buildLineAlternatives = (line: number): TotalGoalsLineAlternative[] => {
   // Округляем динамический тотал до 0.5
-  const roundedBase = Math.round(line * 2) / 2
-  const normalizedBase = clampLine(roundedBase)
+  const normalizedBase = toHalfStepLine(line)
   
   const variants: TotalGoalsLineAlternative[] = []
   
@@ -265,16 +278,17 @@ export const suggestTotalGoalsLineForMatch = async (
   const sampleSize = samples.length
 
   if (!sampleSize) {
+    const defaultLine = toHalfStepLine(PREDICTION_DEFAULT_TOTAL_LINE)
     return {
-      line: PREDICTION_DEFAULT_TOTAL_LINE,
+      line: defaultLine,
       fallback: true,
       sampleSize: 0,
-      averageGoals: PREDICTION_DEFAULT_TOTAL_LINE,
+      averageGoals: defaultLine,
       standardDeviation: 0,
       confidence: 0,
       samples: [],
       generatedAt: new Date(),
-      alternatives: buildLineAlternatives(PREDICTION_DEFAULT_TOTAL_LINE),
+      alternatives: buildLineAlternatives(defaultLine),
     }
   }
 
@@ -285,11 +299,10 @@ export const suggestTotalGoalsLineForMatch = async (
   const standardDeviation = computeStandardDeviation(samples, averageGoals)
   const confidence = Math.min(1, sampleSize / MAX_SAMPLES)
 
-  const fallback = sampleSize < PREDICTION_TOTAL_MIN_SAMPLE_SIZE
-  const rawLine = fallback
-    ? PREDICTION_DEFAULT_TOTAL_LINE
-    : roundToTenth(clampLine(averageGoals))
-  const line = roundToTenth(clampLine(rawLine))
+  const hasSamples = sampleSize > 0
+  const fallback = !hasSamples
+  const baseLine = hasSamples ? toHalfStepLine(averageGoals) : toHalfStepLine(PREDICTION_DEFAULT_TOTAL_LINE)
+  const line = baseLine
   const alternatives = buildLineAlternatives(line)
 
   return {

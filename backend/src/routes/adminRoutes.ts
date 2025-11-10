@@ -586,8 +586,8 @@ const buildManualTotalGoalsOptions = (line: number): Prisma.JsonObject => {
     manual: true,
     updatedAt: new Date().toISOString(),
     choices: [
-      { value: `OVER_${formattedLine}`, label: `Больше ${formattedLine}` },
-      { value: `UNDER_${formattedLine}`, label: `Меньше ${formattedLine}` },
+      { value: `OVER_${formattedLine}`, label: 'Больше' },
+      { value: `UNDER_${formattedLine}`, label: 'Меньше' },
     ],
     alternatives: alternatives.map(variant => ({
       line: variant.line,
@@ -4234,6 +4234,15 @@ export default async function (server: FastifyInstance) {
           }
         }
 
+        try {
+          await ensurePredictionTemplatesForMatch(match.id, prisma)
+        } catch (err) {
+          admin.log.warn(
+            { err, matchId: match.id.toString() },
+            'failed to ensure prediction templates after match create'
+          )
+        }
+
         return sendSerialized(reply, match)
       })
 
@@ -4321,6 +4330,15 @@ export default async function (server: FastifyInstance) {
           await refreshFriendlyAggregates({ publishTopic })
         } catch (err) {
           admin.log.warn({ err }, 'failed to refresh friendlies after create')
+        }
+
+        try {
+          await ensurePredictionTemplatesForMatch(friendlyMatch.id, prisma)
+        } catch (err) {
+          admin.log.warn(
+            { err, matchId: friendlyMatch.id.toString() },
+            'failed to ensure prediction templates after friendly match create'
+          )
         }
 
         return sendSerialized(reply, friendlyMatch)
@@ -4535,6 +4553,17 @@ export default async function (server: FastifyInstance) {
 
         if (body.status === MatchStatus.FINISHED && existing.status !== MatchStatus.FINISHED) {
           await handleMatchFinalization(matchId, request.server.log, { publishTopic })
+        }
+
+        if (nextStatus === MatchStatus.SCHEDULED) {
+          try {
+            await ensurePredictionTemplatesForMatch(matchId, prisma)
+          } catch (err) {
+            request.server.log.warn(
+              { err, matchId: matchId.toString() },
+              'failed to ensure prediction templates after match update'
+            )
+          }
         }
 
         return sendSerialized(reply, updated)
@@ -5222,8 +5251,44 @@ export default async function (server: FastifyInstance) {
           return reply.send({ ok: true, data: [] })
         }
 
+        const summaries = new Map<string, MatchTemplateEnsureSummary>()
+        const changedMatchIds = new Set<bigint>()
+
+        for (const match of matches) {
+          try {
+            const summary = await ensurePredictionTemplatesForMatch(match.id, prisma)
+            if (summary) {
+              summaries.set(match.id.toString(), summary)
+              if (summary.changed) {
+                changedMatchIds.add(match.id)
+              }
+            }
+          } catch (err) {
+            request.server.log.warn(
+              { err, matchId: match.id.toString() },
+              'failed to ensure prediction templates for admin listing'
+            )
+          }
+        }
+
+        let normalizedMatches = matches
+        if (changedMatchIds.size) {
+          const refreshed = await prisma.match.findMany({
+            where: { id: { in: Array.from(changedMatchIds) } },
+            select: ADMIN_PREDICTION_MATCH_SELECT,
+          })
+          const refreshedById = new Map(refreshed.map(row => [row.id.toString(), row]))
+          normalizedMatches = matches.map(match => refreshedById.get(match.id.toString()) ?? match)
+        }
+
         const views = await Promise.all(
-          matches.map(async match => {
+          normalizedMatches.map(async match => {
+            const summary = summaries.get(match.id.toString())
+            if (summary?.totalSuggestion) {
+              const suggestion = serializeTotalGoalsSuggestion(summary.totalSuggestion)
+              return serializePredictionMatchForAdmin(match, suggestion)
+            }
+
             const matchContext: PredictionMatchContext = {
               id: match.id,
               matchDateTime: match.matchDateTime ?? new Date(),

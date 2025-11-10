@@ -78,6 +78,10 @@ type ProbabilityEntry = {
   probability: number
 }
 
+const RECENT_MATCH_WEIGHTS = [1.5, 1.3, 1.1, 0.9, 0.5]
+const DEFAULT_DRAW_RATE = 0.22
+const MIN_STRENGTH_VALUE = 0.05
+
 const clampProbability = (value: number | null | undefined): number => {
   if (!Number.isFinite(value)) {
     return MIN_PROBABILITY
@@ -138,7 +142,7 @@ const distributeInverseProbabilityPoints = (
   }
 
   const points: number[] = normalized.map(() => 1)
-  let remainingPoints = totalPoints - normalized.length
+  const remainingPoints = totalPoints - normalized.length
   if (remainingPoints <= 0) {
     normalized.forEach((entry, index) => allocation.set(entry.key, points[index]))
     return allocation
@@ -155,8 +159,8 @@ const distributeInverseProbabilityPoints = (
     }
   })
 
-  let assigned = points.reduce((sum, value) => sum + value, 0)
-  let deficit = totalPoints - assigned
+  const assigned = points.reduce((sum, value) => sum + value, 0)
+  const deficit = totalPoints - assigned
   if (deficit > 0) {
     distributions.sort((left, right) => {
       if (right.remainder === left.remainder) {
@@ -177,17 +181,147 @@ const distributeInverseProbabilityPoints = (
   return allocation
 }
 
+type MatchRow = {
+  id: bigint
+  homeTeamId: number
+  awayTeamId: number
+  homeScore: number
+  awayScore: number
+}
+
+const getMatchPointsForTeam = (match: MatchRow, teamId: number): number => {
+  const homeGoals = Number(match.homeScore)
+  const awayGoals = Number(match.awayScore)
+  if (!Number.isFinite(homeGoals) || !Number.isFinite(awayGoals)) {
+    return 0
+  }
+  if (match.homeTeamId === teamId) {
+    if (homeGoals > awayGoals) return 3
+    if (homeGoals === awayGoals) return 1
+    return 0
+  }
+  if (match.awayTeamId === teamId) {
+    if (awayGoals > homeGoals) return 3
+    if (homeGoals === awayGoals) return 1
+    return 0
+  }
+  return 0
+}
+
+const computeWeightedTeamStrength = (matches: MatchRow[], teamId: number): number => {
+  if (!matches.length) {
+    return 1 / 3
+  }
+
+  let weightedPoints = 0
+  let totalWeight = 0
+
+  for (let index = 0; index < matches.length; index += 1) {
+    const match = matches[index]
+    const weight = RECENT_MATCH_WEIGHTS[index] ?? RECENT_MATCH_WEIGHTS[RECENT_MATCH_WEIGHTS.length - 1]
+    const points = getMatchPointsForTeam(match, teamId)
+    weightedPoints += points * weight
+    totalWeight += weight
+  }
+
+  if (totalWeight === 0) {
+    return 1 / 3
+  }
+
+  const normalized = weightedPoints / (3 * totalWeight)
+  return Math.max(MIN_STRENGTH_VALUE, Math.min(1, normalized))
+}
+
+const computeDrawRateForMatch = async (
+  match: MatchWithTemplates,
+  client: PrismaClient | Prisma.TransactionClient,
+  recentMatches: MatchRow[]
+): Promise<number> => {
+  if (match.seasonId) {
+    const seasonMatches = await client.match.findMany({
+      where: {
+        seasonId: match.seasonId,
+        status: MatchStatus.FINISHED,
+        isFriendly: false,
+      },
+      select: {
+        homeScore: true,
+        awayScore: true,
+      },
+    })
+
+    const totalSeasonMatches = seasonMatches.length
+    if (totalSeasonMatches > 0) {
+      const draws = seasonMatches.filter(row => Number(row.homeScore) === Number(row.awayScore)).length
+      const rate = draws / totalSeasonMatches
+      if (rate > 0) {
+        return clampProbability(rate)
+      }
+    }
+  }
+
+  if (recentMatches.length > 0) {
+    const draws = recentMatches.filter(row => Number(row.homeScore) === Number(row.awayScore)).length
+    const rate = draws / recentMatches.length
+    if (rate > 0) {
+      return clampProbability(rate)
+    }
+  }
+
+  return clampProbability(DEFAULT_DRAW_RATE)
+}
+
+const erf = (x: number): number => {
+  const sign = Math.sign(x)
+  const absX = Math.abs(x)
+  const a1 = 0.254829592
+  const a2 = -0.284496736
+  const a3 = 1.421413741
+  const a4 = -1.453152027
+  const a5 = 1.061405429
+  const p = 0.3275911
+  const t = 1 / (1 + p * absX)
+  const y = 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-absX * absX)
+  return sign * y
+}
+
+const normalCdf = (value: number, mean: number, std: number): number => {
+  if (!Number.isFinite(value) || !Number.isFinite(mean) || !Number.isFinite(std) || std <= 0) {
+    return 0.5
+  }
+  const z = (value - mean) / (std * Math.SQRT2)
+  return 0.5 * (1 + erf(z))
+}
+
 const computeTotalChoiceProbabilities = (
   line: number,
   suggestion: TotalGoalsSuggestion
 ): { over: number; under: number } => {
-  const avgGoals = suggestion.averageGoals
-  const diff = avgGoals - line
-  const probabilityOver = 1 / (1 + Math.exp(-diff * 2))
-  const probabilityUnder = 1 - probabilityOver
+  const meanGoals = Number.isFinite(suggestion.averageGoals) ? suggestion.averageGoals : line
+  const stdGoals = Math.max(Number.isFinite(suggestion.standardDeviation) ? suggestion.standardDeviation : 0.5, 0.2)
+
+  const rawUnder = normalCdf(line, meanGoals, stdGoals)
+  const rawOver = 1 - rawUnder
+
+  const sampleWeight = Math.max(0, Math.min(1, suggestion.sampleSize / 8))
+  const blendedOver = rawOver * sampleWeight + 0.5 * (1 - sampleWeight)
+  const blendedUnder = rawUnder * sampleWeight + 0.5 * (1 - sampleWeight)
+
+  let over = Math.min(Math.max(blendedOver, MIN_PROBABILITY), MAX_PROBABILITY)
+  let under = Math.min(Math.max(blendedUnder, MIN_PROBABILITY), MAX_PROBABILITY)
+
+  const normalization = over + under
+  if (normalization > 0) {
+    over /= normalization
+    under /= normalization
+  } else {
+    over = 0.5
+    under = 0.5
+  }
+
   return {
-    over: clampProbability(probabilityOver),
-    under: clampProbability(probabilityUnder),
+    over,
+    under,
   }
 }
 
@@ -212,6 +346,7 @@ type TemplateRow = {
 
 type MatchWithTemplates = {
   id: bigint
+  seasonId: number | null
   matchDateTime: Date | null
   homeTeamId: number
   awayTeamId: number
@@ -272,29 +407,31 @@ const calculateMatchOutcomePoints = async (
     take: recentMatchesCount,
   })
 
-  // Подсчитываем победы за последние матчи
-  const homeWins = homeStats.filter(m => 
-    (m.homeTeamId === match.homeTeamId && m.homeScore > m.awayScore) ||
-    (m.awayTeamId === match.homeTeamId && m.awayScore > m.homeScore)
-  ).length
+  const combinedRecentMatchesMap = new Map<bigint, MatchRow>()
+  for (const row of homeStats) {
+    combinedRecentMatchesMap.set(row.id, row)
+  }
+  for (const row of awayStats) {
+    if (!combinedRecentMatchesMap.has(row.id)) {
+      combinedRecentMatchesMap.set(row.id, row)
+    }
+  }
+  const combinedRecentMatches = Array.from(combinedRecentMatchesMap.values())
 
-  const awayWins = awayStats.filter(m => 
-    (m.homeTeamId === match.awayTeamId && m.homeScore > m.awayScore) ||
-    (m.awayTeamId === match.awayTeamId && m.awayScore > m.homeScore)
-  ).length
+  const homeStrength = computeWeightedTeamStrength(homeStats, match.homeTeamId)
+  const awayStrength = computeWeightedTeamStrength(awayStats, match.awayTeamId)
+  const drawRate = await computeDrawRateForMatch(match, client, combinedRecentMatches)
 
-  // Рассчитываем базовую силу команд (процент побед)
-  const homeStrength = homeStats.length > 0 ? homeWins / homeStats.length : 0.33
-  const awayStrength = awayStats.length > 0 ? awayWins / awayStats.length : 0.33
+  const adjustedHomeStrength = Math.max(MIN_STRENGTH_VALUE, homeStrength * 1.1)
+  const adjustedAwayStrength = Math.max(MIN_STRENGTH_VALUE, awayStrength)
 
-  // Добавляем бонус домашней арене (+10%)
-  const adjustedHomeStrength = Math.min(0.9, homeStrength * 1.1)
-  
-  // Нормализуем вероятности (упрощенная модель)
-  const totalStrength = adjustedHomeStrength + awayStrength + 0.3 // 0.3 для ничьей
+  const rawTotalStrength = adjustedHomeStrength + adjustedAwayStrength + drawRate
+  const fallbackTotal = adjustedHomeStrength + adjustedAwayStrength + clampProbability(DEFAULT_DRAW_RATE)
+  const totalStrength = Number.isFinite(rawTotalStrength) && rawTotalStrength > 0 ? rawTotalStrength : fallbackTotal
+
   const probHome = adjustedHomeStrength / totalStrength
-  const probAway = awayStrength / totalStrength
-  const probDraw = 0.3 / totalStrength
+  const probAway = adjustedAwayStrength / totalStrength
+  const probDraw = drawRate / totalStrength
 
   const distribution = [
     { key: 'ONE', label: 'П1', probability: clampProbability(probHome) },
@@ -366,27 +503,60 @@ const computeSpecialEventProbability = async (
 
   const allMatchIds = [...new Set([...homeMatchIds.map(m => m.id), ...awayMatchIds.map(m => m.id)])]
 
-  if (allMatchIds.length === 0) {
-    const defaultRate = definition.eventKey === 'penalty'
-      ? PREDICTION_PENALTY_DEFAULT_RATE
-      : PREDICTION_RED_CARD_DEFAULT_RATE
-    const yes = clampProbability(defaultRate)
-    return {
-      yes,
-      no: clampProbability(1 - yes),
-      sampleSize: 0,
+  const defaultRate = definition.eventKey === 'penalty'
+    ? PREDICTION_PENALTY_DEFAULT_RATE
+    : PREDICTION_RED_CARD_DEFAULT_RATE
+
+  let clubRate: number | null = null
+  if (allMatchIds.length > 0) {
+    const eventsCount = await client.matchEvent.count({
+      where: {
+        matchId: { in: allMatchIds },
+        eventType: { in: definition.relatedEvents },
+      },
+    })
+    clubRate = eventsCount / allMatchIds.length
+  }
+
+  let seasonRate: number | null = null
+  if (match.seasonId) {
+    const seasonMatchCount = await client.match.count({
+      where: {
+        seasonId: match.seasonId,
+        status: MatchStatus.FINISHED,
+        isFriendly: false,
+      },
+    })
+    if (seasonMatchCount > 0) {
+      const seasonEventsCount = await client.matchEvent.count({
+        where: {
+          eventType: { in: definition.relatedEvents },
+          match: {
+            seasonId: match.seasonId,
+            status: MatchStatus.FINISHED,
+            isFriendly: false,
+          },
+        },
+      })
+      seasonRate = seasonEventsCount / seasonMatchCount
     }
   }
 
-  // Считаем количество матчей с данным событием
-  const eventsCount = await client.matchEvent.count({
-    where: {
-      matchId: { in: allMatchIds },
-      eventType: { in: definition.relatedEvents },
-    },
-  })
+  let finalRate: number
+  if (clubRate !== null && seasonRate !== null) {
+    const clubRatio = Math.min(1, allMatchIds.length / recentMatchesCount)
+    const clubWeight = 0.7 * clubRatio
+    const seasonWeight = 1 - clubWeight
+    finalRate = clubWeight * clubRate + seasonWeight * seasonRate
+  } else if (clubRate !== null) {
+    finalRate = clubRate
+  } else if (seasonRate !== null) {
+    finalRate = seasonRate
+  } else {
+    finalRate = defaultRate
+  }
 
-  const yesProbability = clampProbability(eventsCount / allMatchIds.length)
+  const yesProbability = clampProbability(finalRate)
   return {
     yes: yesProbability,
     no: clampProbability(1 - yesProbability),
@@ -835,6 +1005,7 @@ export const ensurePredictionTemplatesForMatch = async (
     where: { id: matchId },
     select: {
       id: true,
+      seasonId: true,
       matchDateTime: true,
       homeTeamId: true,
       awayTeamId: true,
@@ -888,6 +1059,7 @@ export const ensurePredictionTemplatesInRange = async (
     orderBy: { matchDateTime: 'asc' },
     select: {
       id: true,
+      seasonId: true,
       matchDateTime: true,
       homeTeamId: true,
       awayTeamId: true,

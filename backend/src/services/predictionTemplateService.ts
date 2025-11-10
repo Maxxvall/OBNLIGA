@@ -14,6 +14,12 @@ import {
   PREDICTION_RED_CARD_EVENT_BASE_POINTS,
   PREDICTION_SPECIAL_EVENT_BASE_DIFFICULTY,
   PREDICTION_TOTAL_GOALS_BASE_POINTS,
+  PREDICTION_POINTS_BUDGET_MATCH_OUTCOME,
+  PREDICTION_POINTS_BUDGET_TOTAL_GOALS,
+  PREDICTION_POINTS_BUDGET_PENALTY,
+  PREDICTION_POINTS_BUDGET_RED_CARD,
+  PREDICTION_PENALTY_DEFAULT_RATE,
+  PREDICTION_RED_CARD_DEFAULT_RATE,
   PREDICTION_UPCOMING_MAX_DAYS,
 } from './predictionConstants'
 import {
@@ -45,7 +51,7 @@ const SPECIAL_EVENT_DEFINITIONS: SpecialEventDefinition[] = [
     noValue: 'PENALTY_NO',
     yesLabel: 'Да',
     noLabel: 'Нет',
-    relatedEvents: [MatchEventType.PENALTY_GOAL],
+    relatedEvents: [MatchEventType.PENALTY_GOAL, MatchEventType.PENALTY_MISSED],
     basePoints: PREDICTION_PENALTY_EVENT_BASE_POINTS,
     difficultyMultiplier: PREDICTION_SPECIAL_EVENT_BASE_DIFFICULTY,
   },
@@ -62,6 +68,128 @@ const SPECIAL_EVENT_DEFINITIONS: SpecialEventDefinition[] = [
     difficultyMultiplier: PREDICTION_SPECIAL_EVENT_BASE_DIFFICULTY,
   },
 ]
+
+const MIN_PROBABILITY = 0.01
+const MAX_PROBABILITY = 0.99
+
+type ProbabilityEntry = {
+  key: string
+  label: string
+  probability: number
+}
+
+const clampProbability = (value: number | null | undefined): number => {
+  if (!Number.isFinite(value)) {
+    return MIN_PROBABILITY
+  }
+  if (value === null || value === undefined) {
+    return MIN_PROBABILITY
+  }
+  if (value <= 0) {
+    return MIN_PROBABILITY
+  }
+  if (value >= 1) {
+    return MAX_PROBABILITY
+  }
+  return value
+}
+
+const distributeInverseProbabilityPoints = (
+  entries: ProbabilityEntry[],
+  totalPoints: number
+): Map<string, number> => {
+  const allocation = new Map<string, number>()
+  if (!entries.length || totalPoints <= 0) {
+    return allocation
+  }
+
+  const normalized = entries.map(entry => ({
+    key: entry.key,
+    label: entry.label,
+    probability: clampProbability(entry.probability),
+  }))
+
+  const weights = normalized.map(entry => 1 / entry.probability)
+  const weightSum = weights.reduce((sum, weight) => sum + weight, 0)
+  const positiveSum = Number.isFinite(weightSum) && weightSum > 0
+
+  if (totalPoints <= normalized.length) {
+    const ordering = normalized
+      .map((entry, index) => ({
+        index,
+        priority: positiveSum ? weights[index] : 1,
+      }))
+      .sort((left, right) => {
+        if (right.priority === left.priority) {
+          return left.index - right.index
+        }
+        return right.priority - left.priority
+      })
+
+    const points: number[] = normalized.map(() => 0)
+    for (let i = 0; i < totalPoints; i += 1) {
+      const target = ordering[i % ordering.length]
+      points[target.index] += 1
+    }
+    normalized.forEach((entry, index) => {
+      allocation.set(entry.key, points[index])
+    })
+    return allocation
+  }
+
+  const points: number[] = normalized.map(() => 1)
+  let remainingPoints = totalPoints - normalized.length
+  if (remainingPoints <= 0) {
+    normalized.forEach((entry, index) => allocation.set(entry.key, points[index]))
+    return allocation
+  }
+
+  const distributions = normalized.map((entry, index) => {
+    const share = positiveSum ? weights[index] / weightSum : 1 / normalized.length
+    const exact = remainingPoints * share
+    const base = Math.floor(exact)
+    points[index] += base
+    return {
+      index,
+      remainder: exact - base,
+    }
+  })
+
+  let assigned = points.reduce((sum, value) => sum + value, 0)
+  let deficit = totalPoints - assigned
+  if (deficit > 0) {
+    distributions.sort((left, right) => {
+      if (right.remainder === left.remainder) {
+        return left.index - right.index
+      }
+      return right.remainder - left.remainder
+    })
+    for (let i = 0; i < deficit; i += 1) {
+      const target = distributions[i % distributions.length]
+      points[target.index] += 1
+    }
+  }
+
+  normalized.forEach((entry, index) => {
+    allocation.set(entry.key, points[index])
+  })
+
+  return allocation
+}
+
+const computeTotalChoiceProbabilities = (
+  line: number,
+  suggestion: TotalGoalsSuggestion
+): { over: number; under: number } => {
+  const avgGoals = suggestion.averageGoals
+  const diff = avgGoals - line
+  const probabilityOver = 1 / (1 + Math.exp(-diff * 2))
+  const probabilityUnder = 1 - probabilityOver
+  return {
+    over: clampProbability(probabilityOver),
+    under: clampProbability(probabilityUnder),
+  }
+}
 
 const toPredictionMatchContext = (match: MatchWithTemplates): PredictionMatchContext => ({
   id: match.id,
@@ -115,7 +243,7 @@ export type PredictionTemplateRangeSummary = {
 const calculateMatchOutcomePoints = async (
   match: MatchWithTemplates,
   client: PrismaClient | Prisma.TransactionClient
-): Promise<{ value: string; label: string; points: number }[]> => {
+): Promise<Array<{ value: string; label: string; points: number; probability: number }>> => {
   // Получаем статистику команд за последние 5 матчей
   const recentMatchesCount = 5
   const homeStats = await client.match.findMany({
@@ -168,21 +296,23 @@ const calculateMatchOutcomePoints = async (
   const probAway = awayStrength / totalStrength
   const probDraw = 0.3 / totalStrength
 
-  // Базовые очки
-  const basePoints = PREDICTION_MATCH_OUTCOME_BASE_POINTS
-
-  // Очки обратно пропорциональны вероятности
-  // Чем меньше вероятность - тем больше очков
-  const calculatePoints = (probability: number): number => {
-    const multiplier = Math.max(1.1, Math.min(3.0, 1 / (probability * 1.5)))
-    return Math.round(basePoints * multiplier)
-  }
-
-  return [
-    { value: 'ONE', label: 'П1', points: calculatePoints(probHome) },
-    { value: 'DRAW', label: 'Н', points: calculatePoints(probDraw) },
-    { value: 'TWO', label: 'П2', points: calculatePoints(probAway) },
+  const distribution = [
+    { key: 'ONE', label: 'П1', probability: clampProbability(probHome) },
+    { key: 'DRAW', label: 'Н', probability: clampProbability(probDraw) },
+    { key: 'TWO', label: 'П2', probability: clampProbability(probAway) },
   ]
+
+  const pointsMap = distributeInverseProbabilityPoints(
+    distribution.map(item => ({ key: item.key, label: item.label, probability: item.probability })),
+    PREDICTION_POINTS_BUDGET_MATCH_OUTCOME
+  )
+
+  return distribution.map(item => ({
+    value: item.key,
+    label: item.label,
+    probability: Number(item.probability.toFixed(3)),
+    points: pointsMap.get(item.key) ?? PREDICTION_MATCH_OUTCOME_BASE_POINTS,
+  }))
 }
 
 const buildMatchOutcomeOptions = async (
@@ -199,13 +329,13 @@ const buildMatchOutcomeOptions = async (
 /**
  * Рассчитывает динамические очки для событий пенальти/красных карточек
  */
-const calculateSpecialEventPoints = async (
+const computeSpecialEventProbability = async (
   match: MatchWithTemplates,
   definition: SpecialEventDefinition,
   client: PrismaClient | Prisma.TransactionClient
-): Promise<{ value: string; label: string; points: number }[]> => {
+): Promise<{ yes: number; no: number; sampleSize: number }> => {
   // Получаем статистику событий за последние матчи команд
-  const recentMatchesCount = 10
+  const recentMatchesCount = 5
   const homeMatchIds = await client.match.findMany({
     where: {
       OR: [
@@ -237,13 +367,15 @@ const calculateSpecialEventPoints = async (
   const allMatchIds = [...new Set([...homeMatchIds.map(m => m.id), ...awayMatchIds.map(m => m.id)])]
 
   if (allMatchIds.length === 0) {
-    // Нет статистики - используем дефолтные значения
-    const basePoints = definition.basePoints
-    const difficulty = definition.difficultyMultiplier
-    return [
-      { value: definition.yesValue, label: definition.yesLabel, points: Math.round(basePoints * difficulty * 1.2) },
-      { value: definition.noValue, label: definition.noLabel, points: Math.round(basePoints * difficulty) },
-    ]
+    const defaultRate = definition.eventKey === 'penalty'
+      ? PREDICTION_PENALTY_DEFAULT_RATE
+      : PREDICTION_RED_CARD_DEFAULT_RATE
+    const yes = clampProbability(defaultRate)
+    return {
+      yes,
+      no: clampProbability(1 - yes),
+      sampleSize: 0,
+    }
   }
 
   // Считаем количество матчей с данным событием
@@ -254,24 +386,12 @@ const calculateSpecialEventPoints = async (
     },
   })
 
-  // Вероятность события
-  const probabilityYes = eventsCount / allMatchIds.length
-  const probabilityNo = 1 - probabilityYes
-
-  // Базовые очки
-  const basePoints = definition.basePoints
-  const difficulty = definition.difficultyMultiplier
-
-  // Очки обратно пропорциональны вероятности
-  const calculatePoints = (probability: number): number => {
-    const multiplier = Math.max(1.1, Math.min(2.5, 1 / (probability + 0.1)))
-    return Math.round(basePoints * difficulty * multiplier)
+  const yesProbability = clampProbability(eventsCount / allMatchIds.length)
+  return {
+    yes: yesProbability,
+    no: clampProbability(1 - yesProbability),
+    sampleSize: allMatchIds.length,
   }
-
-  return [
-    { value: definition.yesValue, label: definition.yesLabel, points: calculatePoints(probabilityYes) },
-    { value: definition.noValue, label: definition.noLabel, points: calculatePoints(probabilityNo) },
-  ]
 }
 
 const buildSpecialEventOptions = async (
@@ -279,7 +399,25 @@ const buildSpecialEventOptions = async (
   definition: SpecialEventDefinition,
   client: PrismaClient | Prisma.TransactionClient
 ): Promise<Prisma.JsonObject> => {
-  const choices = await calculateSpecialEventPoints(match, definition, client)
+  const probability = await computeSpecialEventProbability(match, definition, client)
+  const budget = definition.eventKey === 'penalty'
+    ? PREDICTION_POINTS_BUDGET_PENALTY
+    : PREDICTION_POINTS_BUDGET_RED_CARD
+
+  const entries: ProbabilityEntry[] = [
+    {
+      key: definition.yesValue,
+      label: definition.yesLabel,
+      probability: probability.yes,
+    },
+    {
+      key: definition.noValue,
+      label: definition.noLabel,
+      probability: probability.no,
+    },
+  ]
+
+  const pointsMap = distributeInverseProbabilityPoints(entries, budget)
   return {
     kind: 'match_event_boolean',
     version: 1,
@@ -289,13 +427,29 @@ const buildSpecialEventOptions = async (
     yesValue: definition.yesValue,
     noValue: definition.noValue,
     relatedEvents: definition.relatedEvents,
-    choices,
+    sampleSize: probability.sampleSize,
+    eventProbability: Number(probability.yes.toFixed(3)),
+    choices: [
+      {
+        value: definition.yesValue,
+        label: definition.yesLabel,
+        points: pointsMap.get(definition.yesValue) ?? definition.basePoints,
+        probability: Number(probability.yes.toFixed(3)),
+      },
+      {
+        value: definition.noValue,
+        label: definition.noLabel,
+        points: pointsMap.get(definition.noValue) ?? definition.basePoints,
+        probability: Number(probability.no.toFixed(3)),
+      },
+    ],
   }
 }
 
 const buildTotalGoalsOptionsForLine = (
   line: number,
   suggestion: TotalGoalsSuggestion,
+  pointsBySelection: Map<string, number>,
   deltaOverride?: number
 ): Prisma.JsonObject => {
   const formattedLine = formatTotalLine(line)
@@ -307,50 +461,38 @@ const buildTotalGoalsOptionsForLine = (
     const diff = line - normalizedBase
     return Number((Math.round(diff * 10) / 10).toFixed(1))
   })()
+  const probability = computeTotalChoiceProbabilities(line, suggestion)
+  const overValue = `OVER_${formattedLine}`
+  const underValue = `UNDER_${formattedLine}`
+  const overPoints = pointsBySelection.get(overValue) ?? PREDICTION_TOTAL_GOALS_BASE_POINTS
+  const underPoints = pointsBySelection.get(underValue) ?? PREDICTION_TOTAL_GOALS_BASE_POINTS
   
-  // Рассчитываем вероятность OVER на основе среднего и линии
-  const avgGoals = suggestion.averageGoals
-  const diff = avgGoals - line
-  
-  // Простая эвристика: если среднее выше линии - OVER вероятнее, иначе UNDER
-  // Используем сигмоиду для расчета вероятности
-  const probabilityOver = 1 / (1 + Math.exp(-diff * 2))
-  const probabilityUnder = 1 - probabilityOver
-  
-  // Базовые очки из константы
-  const basePoints = PREDICTION_TOTAL_GOALS_BASE_POINTS
-  const difficulty = computeTotalDifficultyMultiplier(suggestion)
-  
-  // Очки обратно пропорциональны вероятности (меньше вероятность = больше очков)
-  // Минимальный коэффициент 1.2, максимальный 2.5
-  const overMultiplier = Math.max(1.2, Math.min(2.5, 1 / probabilityOver))
-  const underMultiplier = Math.max(1.2, Math.min(2.5, 1 / probabilityUnder))
-  
-  const overPoints = Math.round(basePoints * difficulty * overMultiplier)
-  const underPoints = Math.round(basePoints * difficulty * underMultiplier)
-  
-  const overChoice = { 
-    value: `OVER_${formattedLine}`, 
-    label: 'Больше',
-    points: overPoints
-  }
-  const underChoice = { 
-    value: `UNDER_${formattedLine}`, 
-    label: 'Меньше',
-    points: underPoints
-  }
-
   return {
     line,
     formattedLine,
     delta: resolvedDelta,
-    choices: [overChoice, underChoice],
+    choices: [
+      {
+        value: overValue,
+        label: 'Больше',
+        points: overPoints,
+        probability: Number(probability.over.toFixed(3)),
+      },
+      {
+        value: underValue,
+        label: 'Меньше',
+        points: underPoints,
+        probability: Number(probability.under.toFixed(3)),
+      },
+    ],
     sampleSize: suggestion.sampleSize,
     averageGoals: Number(suggestion.averageGoals.toFixed(3)),
     standardDeviation: Number(suggestion.standardDeviation.toFixed(3)),
     confidence: Number(suggestion.confidence.toFixed(3)),
     fallback: suggestion.fallback,
     generatedAt: suggestion.generatedAt.toISOString(),
+    probabilityOver: Number(probability.over.toFixed(3)),
+    probabilityUnder: Number(probability.under.toFixed(3)),
   }
 }
 
@@ -527,6 +669,25 @@ const ensurePredictionTemplatesForMatchRecord = async (
     )
     totalAlternatives.push({ line: normalizedLine, delta: normalizedDelta })
   }
+  const totalChoiceEntries: ProbabilityEntry[] = []
+  for (const { line } of totalAlternatives) {
+    const probabilities = computeTotalChoiceProbabilities(line, suggestion)
+    const formattedLine = formatTotalLine(line)
+    totalChoiceEntries.push({
+      key: `OVER_${formattedLine}`,
+      label: 'Больше',
+      probability: probabilities.over,
+    })
+    totalChoiceEntries.push({
+      key: `UNDER_${formattedLine}`,
+      label: 'Меньше',
+      probability: probabilities.under,
+    })
+  }
+  const totalPointsMap = distributeInverseProbabilityPoints(
+    totalChoiceEntries,
+    PREDICTION_POINTS_BUDGET_TOTAL_GOALS
+  )
   const desiredTotalDifficulty = computeTotalDifficultyMultiplier(suggestion)
   
   // Получаем существующие TOTAL_GOALS templates
@@ -546,7 +707,7 @@ const ensurePredictionTemplatesForMatchRecord = async (
   
   // Создаем или обновляем template для каждой линии
   for (const { line, delta } of totalAlternatives) {
-    const desiredOptions = buildTotalGoalsOptionsForLine(line, suggestion, delta)
+    const desiredOptions = buildTotalGoalsOptionsForLine(line, suggestion, totalPointsMap, delta)
     const existing = existingByLine.get(line)
     
     if (!existing) {

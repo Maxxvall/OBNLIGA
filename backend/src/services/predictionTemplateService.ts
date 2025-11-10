@@ -72,15 +72,18 @@ const SPECIAL_EVENT_DEFINITIONS: SpecialEventDefinition[] = [
 const MIN_PROBABILITY = 0.01
 const MAX_PROBABILITY = 0.99
 
+const RECENT_MATCH_WEIGHTS = [1.5, 1.3, 1.1, 0.9, 0.5]
+const DEFAULT_DRAW_RATE = 0.22
+const MIN_STRENGTH_VALUE = 0.2
+const SEASON_STRENGTH_WEIGHT = 0.6
+const DRAW_PRIOR_WEIGHT_SEASON = 8
+const DRAW_PRIOR_WEIGHT_TEAM = 3
+
 type ProbabilityEntry = {
   key: string
   label: string
   probability: number
 }
-
-const RECENT_MATCH_WEIGHTS = [1.5, 1.3, 1.1, 0.9, 0.5]
-const DEFAULT_DRAW_RATE = 0.22
-const MIN_STRENGTH_VALUE = 0.05
 
 const clampProbability = (value: number | null | undefined): number => {
   if (!Number.isFinite(value)) {
@@ -189,6 +192,101 @@ type MatchRow = {
   awayScore: number
 }
 
+type SeasonStrengthRow = {
+  clubId: number
+  points: number
+  wins: number
+  losses: number
+  goalsFor: number
+  goalsAgainst: number
+}
+
+const toMatchRow = (row: {
+  id: bigint
+  homeTeamId: number
+  awayTeamId: number
+  homeScore: number
+  awayScore: number
+}): MatchRow => ({
+  id: row.id,
+  homeTeamId: row.homeTeamId,
+  awayTeamId: row.awayTeamId,
+  homeScore: row.homeScore,
+  awayScore: row.awayScore,
+})
+
+const buildSeasonStrengthMap = (rows: SeasonStrengthRow[]): Map<number, number> => {
+  if (!rows.length) {
+    return new Map()
+  }
+
+  const sorted = [...rows].sort((left, right) => {
+    if (right.points !== left.points) {
+      return right.points - left.points
+    }
+    const leftDiff = left.goalsFor - left.goalsAgainst
+    const rightDiff = right.goalsFor - right.goalsAgainst
+    if (rightDiff !== leftDiff) {
+      return rightDiff - leftDiff
+    }
+    return right.goalsFor - left.goalsFor
+  })
+
+  const totalClubs = sorted.length
+  const maxPoints = sorted.reduce((max, row) => Math.max(max, row.points), 0)
+  const maxGoalDiff = sorted.reduce((max, row) => {
+    const diff = Math.abs(row.goalsFor - row.goalsAgainst)
+    return Math.max(max, diff)
+  }, 0)
+
+  const scaleGoalDiff = (value: number): number => {
+    if (maxGoalDiff === 0) {
+      return 0.5
+    }
+    const normalized = (value + maxGoalDiff) / (2 * maxGoalDiff)
+    return Math.min(Math.max(normalized, 0), 1)
+  }
+
+  const strengths = new Map<number, number>()
+  for (let index = 0; index < sorted.length; index += 1) {
+    const row = sorted[index]
+    const positionScore = totalClubs > 1 ? 1 - index / (totalClubs - 1) : 1
+    const pointsScore = maxPoints > 0 ? row.points / maxPoints : 0.5
+    const goalDiffScore = scaleGoalDiff(row.goalsFor - row.goalsAgainst)
+    const composite = 0.5 * pointsScore + 0.3 * positionScore + 0.2 * goalDiffScore
+    strengths.set(row.clubId, Math.max(MIN_STRENGTH_VALUE, Math.min(1, composite)))
+  }
+
+  return strengths
+}
+
+const combineStrengthComponents = (
+  seasonStrength: number | undefined,
+  recentStrength: number | undefined
+): number => {
+  const seasonValid = typeof seasonStrength === 'number' && Number.isFinite(seasonStrength)
+  const recentValid = typeof recentStrength === 'number' && Number.isFinite(recentStrength)
+
+  if (seasonValid && recentValid) {
+    const seasonValue = seasonStrength as number
+    const recentValue = recentStrength as number
+    const value = SEASON_STRENGTH_WEIGHT * seasonValue + (1 - SEASON_STRENGTH_WEIGHT) * recentValue
+    return Math.max(MIN_STRENGTH_VALUE, Math.min(1, value))
+  }
+
+  if (seasonValid) {
+    const value = seasonStrength as number
+    return Math.max(MIN_STRENGTH_VALUE, Math.min(1, value))
+  }
+
+  if (recentValid) {
+    const value = recentStrength as number
+    return Math.max(MIN_STRENGTH_VALUE, Math.min(1, value))
+  }
+
+  return 0.5
+}
+
 const getMatchPointsForTeam = (match: MatchRow, teamId: number): number => {
   const homeGoals = Number(match.homeScore)
   const awayGoals = Number(match.awayScore)
@@ -210,7 +308,7 @@ const getMatchPointsForTeam = (match: MatchRow, teamId: number): number => {
 
 const computeWeightedTeamStrength = (matches: MatchRow[], teamId: number): number => {
   if (!matches.length) {
-    return 1 / 3
+    return 0.5
   }
 
   let weightedPoints = 0
@@ -225,11 +323,21 @@ const computeWeightedTeamStrength = (matches: MatchRow[], teamId: number): numbe
   }
 
   if (totalWeight === 0) {
-    return 1 / 3
+    return 0.5
   }
 
   const normalized = weightedPoints / (3 * totalWeight)
   return Math.max(MIN_STRENGTH_VALUE, Math.min(1, normalized))
+}
+
+const smoothRate = (successes: number, trials: number, priorRate: number, priorWeight: number): number => {
+  if (!Number.isFinite(trials) || trials < 0) {
+    return priorRate
+  }
+  if (trials === 0) {
+    return priorRate
+  }
+  return (successes + priorRate * priorWeight) / (trials + priorWeight)
 }
 
 const computeDrawRateForMatch = async (
@@ -237,6 +345,9 @@ const computeDrawRateForMatch = async (
   client: PrismaClient | Prisma.TransactionClient,
   recentMatches: MatchRow[]
 ): Promise<number> => {
+  let seasonRate: number | null = null
+  const baseline = DEFAULT_DRAW_RATE
+
   if (match.seasonId) {
     const seasonMatches = await client.match.findMany({
       where: {
@@ -250,25 +361,31 @@ const computeDrawRateForMatch = async (
       },
     })
 
-    const totalSeasonMatches = seasonMatches.length
-    if (totalSeasonMatches > 0) {
+    if (seasonMatches.length > 0) {
       const draws = seasonMatches.filter(row => Number(row.homeScore) === Number(row.awayScore)).length
-      const rate = draws / totalSeasonMatches
-      if (rate > 0) {
-        return clampProbability(rate)
-      }
+      const rate = smoothRate(draws, seasonMatches.length, baseline, DRAW_PRIOR_WEIGHT_SEASON)
+      seasonRate = clampProbability(rate)
     }
   }
 
+  let teamRate: number | null = null
   if (recentMatches.length > 0) {
     const draws = recentMatches.filter(row => Number(row.homeScore) === Number(row.awayScore)).length
-    const rate = draws / recentMatches.length
-    if (rate > 0) {
-      return clampProbability(rate)
-    }
+    const prior = seasonRate ?? baseline
+    const rate = smoothRate(draws, recentMatches.length, prior, DRAW_PRIOR_WEIGHT_TEAM)
+    teamRate = clampProbability(rate)
   }
 
-  return clampProbability(DEFAULT_DRAW_RATE)
+  if (seasonRate !== null && teamRate !== null) {
+    return clampProbability(seasonRate * 0.6 + teamRate * 0.4)
+  }
+  if (seasonRate !== null) {
+    return seasonRate
+  }
+  if (teamRate !== null) {
+    return teamRate
+  }
+  return clampProbability(baseline)
 }
 
 const erf = (x: number): number => {
@@ -381,7 +498,7 @@ const calculateMatchOutcomePoints = async (
 ): Promise<Array<{ value: string; label: string; points: number; probability: number }>> => {
   // Получаем статистику команд за последние 5 матчей
   const recentMatchesCount = 5
-  const homeStats = await client.match.findMany({
+  const homeStatsRaw = await client.match.findMany({
     where: {
       OR: [
         { homeTeamId: match.homeTeamId },
@@ -390,11 +507,18 @@ const calculateMatchOutcomePoints = async (
       status: MatchStatus.FINISHED,
       isFriendly: false,
     },
+    select: {
+      id: true,
+      homeTeamId: true,
+      awayTeamId: true,
+      homeScore: true,
+      awayScore: true,
+    },
     orderBy: { matchDateTime: 'desc' },
     take: recentMatchesCount,
   })
 
-  const awayStats = await client.match.findMany({
+  const awayStatsRaw = await client.match.findMany({
     where: {
       OR: [
         { homeTeamId: match.awayTeamId },
@@ -403,9 +527,19 @@ const calculateMatchOutcomePoints = async (
       status: MatchStatus.FINISHED,
       isFriendly: false,
     },
+    select: {
+      id: true,
+      homeTeamId: true,
+      awayTeamId: true,
+      homeScore: true,
+      awayScore: true,
+    },
     orderBy: { matchDateTime: 'desc' },
     take: recentMatchesCount,
   })
+
+  const homeStats = homeStatsRaw.map(toMatchRow)
+  const awayStats = awayStatsRaw.map(toMatchRow)
 
   const combinedRecentMatchesMap = new Map<bigint, MatchRow>()
   for (const row of homeStats) {
@@ -418,8 +552,28 @@ const calculateMatchOutcomePoints = async (
   }
   const combinedRecentMatches = Array.from(combinedRecentMatchesMap.values())
 
-  const homeStrength = computeWeightedTeamStrength(homeStats, match.homeTeamId)
-  const awayStrength = computeWeightedTeamStrength(awayStats, match.awayTeamId)
+  let seasonStrengths: Map<number, number> | null = null
+  if (match.seasonId) {
+    const seasonRows = await client.clubSeasonStats.findMany({
+      where: { seasonId: match.seasonId },
+      select: {
+        clubId: true,
+        points: true,
+        wins: true,
+        losses: true,
+        goalsFor: true,
+        goalsAgainst: true,
+      },
+    })
+    seasonStrengths = buildSeasonStrengthMap(seasonRows)
+  }
+
+  const homeSeasonStrength = seasonStrengths?.get(match.homeTeamId)
+  const awaySeasonStrength = seasonStrengths?.get(match.awayTeamId)
+  const homeRecentStrength = computeWeightedTeamStrength(homeStats, match.homeTeamId)
+  const awayRecentStrength = computeWeightedTeamStrength(awayStats, match.awayTeamId)
+  const homeStrength = combineStrengthComponents(homeSeasonStrength, homeRecentStrength)
+  const awayStrength = combineStrengthComponents(awaySeasonStrength, awayRecentStrength)
   const drawRate = await computeDrawRateForMatch(match, client, combinedRecentMatches)
 
   const adjustedHomeStrength = Math.max(MIN_STRENGTH_VALUE, homeStrength * 1.1)

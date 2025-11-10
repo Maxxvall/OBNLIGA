@@ -365,19 +365,30 @@ const computeTotalDifficultyMultiplier = (suggestion: TotalGoalsSuggestion): num
 
 const jsonEquals = (left: Prisma.JsonValue, right: Prisma.JsonValue): boolean => {
   try {
-    // Игнорируем generatedAt при сравнении
     const normalize = (value: Prisma.JsonValue): unknown => {
-      if (!value || typeof value !== 'object') {
+      if (value === null || value === undefined) {
         return value
       }
       if (Array.isArray(value)) {
-        return value.map(normalize)
+        return value.map(item => normalize(item))
       }
-      const obj = { ...value } as Record<string, unknown>
-      delete obj.generatedAt
-      return obj
+      if (typeof value === 'object') {
+        const entries = Object.entries(value as Record<string, Prisma.JsonValue>)
+          .filter(([key]) => key !== 'generatedAt')
+          .sort(([a], [b]) => a.localeCompare(b))
+
+        const normalized: Record<string, unknown> = {}
+        for (const [key, val] of entries) {
+          normalized[key] = normalize(val)
+        }
+        return normalized
+      }
+      return value
     }
-    return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right))
+
+    const leftNormalized = normalize(left)
+    const rightNormalized = normalize(right)
+    return JSON.stringify(leftNormalized) === JSON.stringify(rightNormalized)
   } catch (_err) {
     return false
   }

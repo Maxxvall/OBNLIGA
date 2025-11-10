@@ -21,6 +21,7 @@ import {
   PREDICTION_PENALTY_DEFAULT_RATE,
   PREDICTION_RED_CARD_DEFAULT_RATE,
   PREDICTION_UPCOMING_MAX_DAYS,
+  PREDICTION_MATCH_DRAW_POINTS_CAP,
 } from './predictionConstants'
 import {
   formatTotalLine,
@@ -576,7 +577,7 @@ const calculateMatchOutcomePoints = async (
   const awayStrength = combineStrengthComponents(awaySeasonStrength, awayRecentStrength)
   const drawRate = await computeDrawRateForMatch(match, client, combinedRecentMatches)
 
-  const adjustedHomeStrength = Math.max(MIN_STRENGTH_VALUE, homeStrength * 1.1)
+  const adjustedHomeStrength = Math.max(MIN_STRENGTH_VALUE, homeStrength)
   const adjustedAwayStrength = Math.max(MIN_STRENGTH_VALUE, awayStrength)
 
   const rawTotalStrength = adjustedHomeStrength + adjustedAwayStrength + drawRate
@@ -597,6 +598,55 @@ const calculateMatchOutcomePoints = async (
     distribution.map(item => ({ key: item.key, label: item.label, probability: item.probability })),
     PREDICTION_POINTS_BUDGET_MATCH_OUTCOME
   )
+
+  const drawKey = 'DRAW'
+  const drawPoints = pointsMap.get(drawKey)
+  if (typeof drawPoints === 'number' && drawPoints > PREDICTION_MATCH_DRAW_POINTS_CAP) {
+    const capped = PREDICTION_MATCH_DRAW_POINTS_CAP
+    const excess = drawPoints - capped
+    const otherEntries = distribution.filter(item => item.key !== drawKey)
+    pointsMap.set(drawKey, capped)
+    if (excess > 0 && otherEntries.length) {
+      const weights = otherEntries.map(entry => 1 / clampProbability(entry.probability))
+      const sumWeights = weights.reduce((sum, current) => sum + current, 0)
+      const adjustments = otherEntries.map((entry, index) => {
+        const share = sumWeights > 0 ? (excess * weights[index]) / sumWeights : excess / otherEntries.length
+        const base = Math.floor(share)
+        return {
+          key: entry.key,
+          base,
+          remainder: share - base,
+        }
+      })
+  const distributed = adjustments.reduce((sum, item) => sum + item.base, 0)
+  let remaining = excess - distributed
+      if (remaining > 0) {
+        adjustments
+          .slice()
+          .sort((left, right) => {
+            if (right.remainder === left.remainder) {
+              return distribution.findIndex(item => item.key === left.key) - distribution.findIndex(item => item.key === right.key)
+            }
+            return right.remainder - left.remainder
+          })
+          .forEach(adjustment => {
+            if (remaining <= 0) {
+              return
+            }
+            pointsMap.set(adjustment.key, (pointsMap.get(adjustment.key) ?? 0) + 1)
+            remaining -= 1
+          })
+      }
+      for (const adjustment of adjustments) {
+        if (adjustment.base > 0) {
+          pointsMap.set(
+            adjustment.key,
+            (pointsMap.get(adjustment.key) ?? 0) + adjustment.base
+          )
+        }
+      }
+    }
+  }
 
   return distribution.map(item => ({
     value: item.key,

@@ -79,6 +79,13 @@ type TotalGoalsAlternativeOption = {
   delta: number
 }
 
+type MatchOutcomeOptionView = {
+  value: string
+  label: string
+  probability?: number
+  points?: number
+}
+
 const parseTotalGoalsOptions = (template?: AdminPredictionTemplate): TotalGoalsOptionsView => {
   if (!template) {
     return {}
@@ -122,6 +129,47 @@ const parseTotalGoalsOptions = (template?: AdminPredictionTemplate): TotalGoalsO
     generatedAt: typeof raw.generatedAt === 'string' ? raw.generatedAt : undefined,
     alternatives,
   }
+}
+
+const parseOutcomeOptions = (template?: AdminPredictionTemplate): MatchOutcomeOptionView[] => {
+  if (!template) {
+    return []
+  }
+  const options = template.options
+  if (!options || typeof options !== 'object') {
+    return []
+  }
+  const record = options as Record<string, unknown>
+  const rawChoices = Array.isArray(record.choices) ? record.choices : []
+  const result: MatchOutcomeOptionView[] = []
+
+  for (const choice of rawChoices) {
+    if (!choice || typeof choice !== 'object') {
+      continue
+    }
+    const entry = choice as Record<string, unknown>
+    const value = typeof entry.value === 'string' ? entry.value : undefined
+    const label = typeof entry.label === 'string' ? entry.label : undefined
+    if (!value || !label) {
+      continue
+    }
+    const probability = parseNumericField(entry.probability)
+    const points = parseNumericField(entry.points)
+    result.push({ value, label, probability, points })
+  }
+
+  return result
+}
+
+const formatCoefficient = (probability?: number): string => {
+  if (probability === undefined || probability === null || !Number.isFinite(probability)) {
+    return '—'
+  }
+  if (probability <= 0) {
+    return '—'
+  }
+  const coefficient = 1 / probability
+  return formatNumber(coefficient, 2)
 }
 
 const totalTemplateOf = (match: AdminPredictionMatch): AdminPredictionTemplate | undefined => {
@@ -456,7 +504,7 @@ export const PredictionsTab = () => {
           <strong>{formatNumber(suggestion.averageGoals)}</strong>
         </li>
         <li>
-          <span>Дисперсия</span>
+                <p>New Content</p>
           <strong>{formatNumber(suggestion.standardDeviation)}</strong>
         </li>
         <li>
@@ -536,6 +584,7 @@ export const PredictionsTab = () => {
         const totalTemplate = totalTemplateOf(match)
         const outcomeTemplate = outcomeTemplateOf(match)
         const totalOptions = parseTotalGoalsOptions(totalTemplate)
+        const outcomeOptions = parseOutcomeOptions(outcomeTemplate)
         const formState = manualForms[match.matchId] ?? buildManualFormState(match)
         const feedbackState = feedback[match.matchId]
         const isLocked = match.status !== 'SCHEDULED'
@@ -604,27 +653,39 @@ export const PredictionsTab = () => {
             <div className="prediction-market">
               <h4>1X2 рынок</h4>
               {outcomeTemplate ? (
-                <ul className="prediction-stats">
-                  <li>
-                    <span>Базовые очки</span>
-                    <strong>{outcomeTemplate.basePoints}</strong>
-                  </li>
-                  <li>
-                    <span>Множитель</span>
-                    <strong>{formatNumber(outcomeTemplate.difficultyMultiplier, 2)}</strong>
-                  </li>
-                  <li>
-                    <span>Последнее обновление</span>
-                    <strong>
-                      {formatDateTime(outcomeTemplate.updatedAt, {
-                        day: '2-digit',
-                        month: 'short',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </strong>
-                  </li>
-                </ul>
+                <>
+                  <ul className="prediction-stats">
+                    <li>
+                      <span>Базовые очки</span>
+                      <strong>{outcomeTemplate.basePoints}</strong>
+                    </li>
+                    <li>
+                      <span>Множитель</span>
+                      <strong>{formatNumber(outcomeTemplate.difficultyMultiplier, 2)}</strong>
+                    </li>
+                    <li>
+                      <span>Последнее обновление</span>
+                      <strong>
+                        {formatDateTime(outcomeTemplate.updatedAt, {
+                          day: '2-digit',
+                          month: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </strong>
+                    </li>
+                  </ul>
+                  {outcomeOptions.length ? (
+                    <ul className="prediction-stats">
+                      {outcomeOptions.map(option => (
+                        <li key={option.value}>
+                          <span>{`Исход ${option.label}`}</span>
+                          <strong>{formatCoefficient(option.probability)}</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </>
               ) : (
                 <p>Шаблон 1X2 отсутствует — проверьте генерацию шаблонов.</p>
               )}

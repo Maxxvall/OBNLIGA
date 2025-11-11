@@ -16,6 +16,12 @@ export default defineConfig({
   server: {
     port: 5183,
     host: '0.0.0.0',
+    proxy: {
+      '/teamlogos': {
+        target: 'https://obnliga-6h6f.onrender.com',
+        changeOrigin: true,
+      },
+    },
   },
   preview: {
     port: 4183,

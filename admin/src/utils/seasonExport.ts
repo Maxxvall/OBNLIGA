@@ -30,8 +30,12 @@ const resolveClubLogoUrl = (logoUrl?: string | null): string | null => {
   if (!trimmed) {
     return null
   }
-  // Заменяем домен админки на домен фронта для логотипов
-  return trimmed.replace('obnligaadmin.onrender.com', 'obnliga-6h6f.onrender.com')
+  // Извлекаем имя файла из URL
+  let filename = trimmed
+  if (filename.includes('/')) {
+    filename = filename.split('/').pop() || filename
+  }
+  return `/teamlogos/${filename}`
 }
 
 const sanitizeFileName = (value: string): string => {
@@ -147,7 +151,7 @@ const buildTeamBlock = (club: Club | undefined, fallbackId: number): string => {
   const displayName = getClubName(club, fallbackId)
   const resolvedLogoUrl = resolveClubLogoUrl(club?.logoUrl)
   const logoMarkup = resolvedLogoUrl
-    ? `<img src="${escapeHtml(resolvedLogoUrl)}" alt="${escapeHtml(displayName)}" crossorigin="anonymous" />`
+    ? `<img src="${escapeHtml(resolvedLogoUrl)}" alt="${escapeHtml(displayName)}" />`
     : `<span class="team-logo-fallback">${escapeHtml(getClubInitial(displayName))}</span>`
   return `
         <div class="league-match-team">
@@ -192,11 +196,24 @@ const buildRoundSelectorOption = (group: SeasonMatchGroup, index: number): strin
   const roundId = resolveRoundIdentifier(group, index)
   return `
       <label class="round-option">
-        <input type="checkbox" data-round-id="${escapeHtml(roundId)}" checked />
+        <input type="checkbox" data-round-id="${escapeHtml(roundId)}" />
         <span class="round-option-label">${escapeHtml(group.label)}</span>
         <span class="round-option-count">(${group.matches.length})</span>
       </label>
     `
+}
+
+const groupMatchesByDate = (matches: MatchSummary[]): Map<string, MatchSummary[]> => {
+  const groups = new Map<string, MatchSummary[]>()
+  matches.forEach(match => {
+    const date = new Date(match.matchDateTime)
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    if (!groups.has(key)) {
+      groups.set(key, [])
+    }
+    groups.get(key)!.push(match)
+  })
+  return groups
 }
 
 const buildRoundSection = (
@@ -205,17 +222,54 @@ const buildRoundSection = (
   clubMap: Map<number, Club>
 ): string => {
   const { label, matches } = group
-  const matchCards = matches.map(match => buildMatchCard(match, clubMap)).join('')
-  const dateLabel = formatRoundDate(matches)
+  const dateGroups = groupMatchesByDate(matches)
   const roundId = resolveRoundIdentifier(group, index)
-  return `
-      <section class="league-round-card" data-round-id="${escapeHtml(roundId)}" data-round-label="${escapeHtml(label)}">
-        <header class="league-round-card-header">
-          <h3>${escapeHtml(label)}${dateLabel ? ` <span class="round-meta">· ${escapeHtml(dateLabel)}</span>` : ''}</h3>
-        </header>
+
+  let bodyContent = ''
+  if (dateGroups.size === 1) {
+    // Один день
+    const matchCards = matches.map(match => buildMatchCard(match, clubMap)).join('')
+    bodyContent = `
         <div class="league-round-card-body">
           ${matchCards}
         </div>
+      `
+  } else {
+    // Несколько дней
+    const sortedDates = Array.from(dateGroups.keys()).sort()
+    bodyContent = sortedDates.map(dateKey => {
+      const dayMatches = dateGroups.get(dateKey)!
+      const matchCards = dayMatches.map(match => buildMatchCard(match, clubMap)).join('')
+      const dateLabel = formatRoundDate(dayMatches)
+      return `
+          <div class="league-day-section">
+            <header class="league-day-header">
+              <h4>${escapeHtml(dateLabel || '')}</h4>
+            </header>
+            <div class="league-round-card-body">
+              ${matchCards}
+            </div>
+          </div>
+        `
+    }).join('')
+  }
+  const headerHtml =
+    dateGroups.size === 1
+      ? (function () {
+          var dateLabel = formatRoundDate(matches)
+          return `
+            <h3>${escapeHtml(label)}</h3>
+            ${dateLabel ? `<div class="league-day-header"><h4>${escapeHtml(dateLabel)}</h4></div>` : ''}
+          `
+        })()
+      : `<h3>${escapeHtml(label)}</h3>`
+
+  return `
+      <section class="league-round-card" data-round-id="${escapeHtml(roundId)}" data-round-label="${escapeHtml(label)}">
+        <header class="league-round-card-header">
+          ${headerHtml}
+        </header>
+        ${bodyContent}
       </section>
     `
 }
@@ -307,7 +361,8 @@ const baseStyles = `
   .league-round-card-header h3 {
     margin: 0;
     font-size: 17px;
-    display: inline-flex;
+    display: block;
+    width: 100%;
     gap: 8px;
     align-items: baseline;
     text-align: center;
@@ -326,6 +381,72 @@ const baseStyles = `
     gap: 12px;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     justify-items: center;
+    /* Ensure all grid items (match cards) stretch to the same height */
+    align-items: stretch;
+    grid-auto-rows: 1fr;
+  }
+
+  /* Make match cards consistent in size and layout */
+  .league-round-card-body > .league-match-card,
+  .league-day-section .league-round-card-body > .league-match-card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 12px 14px;
+  }
+
+  /* Keep team logo area stable */
+  .team-logo {
+    width: 64px;
+    height: 64px;
+    min-width: 64px;
+    min-height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Limit team name height to two lines and center */
+  .team-name {
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.3px;
+    text-align: center;
+    line-height: 1.3;
+    color: rgba(228, 242, 255, 0.94);
+    max-height: 2.6em; /* approx 2 lines */
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Ensure score block doesn't force card height differences */
+  .league-match-score {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    min-height: 56px;
+  }
+
+  .league-day-section {
+    margin-bottom: 20px;
+  }
+
+  .league-day-header {
+    margin-bottom: 10px;
+    text-align: center;
+    width: 100%;
+    flex-basis: 100%;
+  }
+
+  .league-day-header h4 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: rgba(210, 232, 255, 0.82);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
   }
 
   .league-match-card {
@@ -371,9 +492,6 @@ const baseStyles = `
   .team-logo {
     width: 64px;
     height: 64px;
-    border-radius: 18px;
-    background: rgba(0, 240, 255, 0.08);
-    border: 1px solid rgba(0, 240, 255, 0.22);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -511,6 +629,31 @@ const baseStyles = `
     gap: 10px;
     max-height: 320px;
     overflow: auto;
+  }
+
+  .round-selection-controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .round-control-button {
+    border: 1px solid rgba(0, 240, 255, 0.26);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    background: rgba(0, 0, 0, 0.24);
+    color: rgba(235, 246, 255, 0.96);
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease;
+  }
+
+  .round-control-button:hover {
+    background: rgba(0, 240, 255, 0.18);
+    border-color: rgba(0, 240, 255, 0.4);
   }
 
   .round-option {
@@ -691,7 +834,11 @@ export const buildSeasonExportHtml = ({
           <button type="button" class="export-modal-close" data-action="cancel">Закрыть</button>
         </div>
         <div class="export-modal-body">
-          <p>По умолчанию выбраны все туры. Снимите галочки с тех туров, которые не нужны.</p>
+          <p>По умолчанию не выбраны туры. Отметьте галочки с тех туров, которые нужны.</p>
+          <div class="round-selection-controls">
+            <button type="button" class="round-control-button" data-action="select-all">Выбрать все</button>
+            <button type="button" class="round-control-button" data-action="deselect-all">Снять все</button>
+          </div>
           <div class="round-option-list">
             ${roundSelectorMarkup}
           </div>
@@ -787,7 +934,7 @@ export const buildSeasonExportHtml = ({
             return
           }
           checkboxes.forEach(function (input) {
-            input.checked = true
+            input.checked = false
           })
           pendingFormat = format
           modal.removeAttribute('hidden')
@@ -837,6 +984,24 @@ export const buildSeasonExportHtml = ({
               var format = pendingFormat
               closeModal()
               downloadImage(format, selected)
+            })
+          }
+          var selectAllButton = modal.querySelector('[data-action="select-all"]')
+          if (selectAllButton) {
+            selectAllButton.addEventListener('click', function () {
+              var checkboxes = modal.querySelectorAll('input[type="checkbox"]')
+              checkboxes.forEach(function (input) {
+                input.checked = true
+              })
+            })
+          }
+          var deselectAllButton = modal.querySelector('[data-action="deselect-all"]')
+          if (deselectAllButton) {
+            deselectAllButton.addEventListener('click', function () {
+              var checkboxes = modal.querySelectorAll('input[type="checkbox"]')
+              checkboxes.forEach(function (input) {
+                input.checked = false
+              })
             })
           }
         }

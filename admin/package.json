@@ -13,6 +13,7 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
+    "html-to-image": "^1.11.13",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
     "zustand": "^4.5.2"

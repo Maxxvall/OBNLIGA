@@ -22,6 +22,18 @@ const statusClassMap: Record<MatchSummary['status'], string> = {
 
 const metaEnv = ((import.meta as ImportMeta).env ?? {}) as Partial<Record<string, string>>
 
+const resolveClubLogoUrl = (logoUrl?: string | null): string | null => {
+  if (!logoUrl) {
+    return null
+  }
+  const trimmed = logoUrl.trim()
+  if (!trimmed) {
+    return null
+  }
+  // Заменяем домен админки на домен фронта для логотипов
+  return trimmed.replace('obnligaadmin.onrender.com', 'obnliga-6h6f.onrender.com')
+}
+
 const sanitizeFileName = (value: string): string => {
   const normalized = value.replace(/[\\/:*?"<>|]+/g, ' ').trim()
   if (!normalized) {
@@ -133,7 +145,7 @@ const buildSeriesLabel = (match: MatchSummary): string | null => {
 
 const buildTeamBlock = (club: Club | undefined, fallbackId: number): string => {
   const displayName = getClubName(club, fallbackId)
-  const resolvedLogoUrl = club?.logoUrl
+  const resolvedLogoUrl = resolveClubLogoUrl(club?.logoUrl)
   const logoMarkup = resolvedLogoUrl
     ? `<img src="${escapeHtml(resolvedLogoUrl)}" alt="${escapeHtml(displayName)}" crossorigin="anonymous" />`
     : `<span class="team-logo-fallback">${escapeHtml(getClubInitial(displayName))}</span>`

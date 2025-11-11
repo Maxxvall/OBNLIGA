@@ -29,6 +29,7 @@ import {
 } from '../../types'
 import { PlayoffBracket } from '../PlayoffBracket'
 import { formatDateTime, formatDateTimeInput, toMoscowISOString } from '../../utils/date'
+import { buildSeasonExportHtml } from '../../utils/seasonExport'
 
 type FeedbackLevel = 'info' | 'success' | 'error'
 
@@ -388,6 +389,8 @@ export const MatchesTab = () => {
   const [playoffBestOf, setPlayoffBestOf] = useState<number>(playoffBestOfOptions[0])
   const [playoffLoading, setPlayoffLoading] = useState(false)
   const [playoffResult, setPlayoffResult] = useState<PlayoffCreationResult | null>(null)
+  const [seasonExportDialogOpen, setSeasonExportDialogOpen] = useState(false)
+  const [seasonExportStatus, setSeasonExportStatus] = useState<'SCHEDULED' | 'FINISHED'>('FINISHED')
 
   const isLoading = Boolean(loading.matches || loading.seasons)
   const activatingSeason = Boolean(loading.activateSeason)
@@ -1375,6 +1378,16 @@ export const MatchesTab = () => {
     )
   }, [seasonMatches])
 
+  const scheduledMatchesCount = useMemo(() => {
+    return matchesSorted.filter(match => {
+      return match.status === 'SCHEDULED' || match.status === 'POSTPONED'
+    }).length
+  }, [matchesSorted])
+
+  const finishedMatchesCount = useMemo(() => {
+    return matchesSorted.filter(match => match.status === 'FINISHED').length
+  }, [matchesSorted])
+
   const matchesGrouped = useMemo(() => {
     if (!matchesSorted.length) return []
     const map = new Map<string, { label: string; matches: MatchSummary[] }>()
@@ -1389,6 +1402,92 @@ export const MatchesTab = () => {
     }
     return Array.from(map.entries()).map(([key, value]) => ({ key, ...value }))
   }, [matchesSorted])
+
+  const handleSeasonExport = () => {
+    if (!selectedSeason) {
+      handleFeedback('Выберите сезон для экспорта расписания', 'error')
+      return
+    }
+    if (matchesGrouped.length === 0) {
+      handleFeedback('В выбранном сезоне нет матчей для экспорта', 'error')
+      return
+    }
+    const defaultStatus = finishedMatchesCount > 0 ? 'FINISHED' : 'SCHEDULED'
+    setSeasonExportStatus(defaultStatus)
+    setSeasonExportDialogOpen(true)
+  }
+
+  const closeSeasonExportDialog = () => {
+    setSeasonExportDialogOpen(false)
+  }
+
+  const matchesCountForSelectedStatus =
+    seasonExportStatus === 'FINISHED' ? finishedMatchesCount : scheduledMatchesCount
+
+  const runSeasonExport = () => {
+    if (!selectedSeason) {
+      handleFeedback('Выберите сезон для экспорта расписания', 'error')
+      return
+    }
+    if (matchesGrouped.length === 0) {
+      handleFeedback('В выбранном сезоне нет матчей для экспорта', 'error')
+      return
+    }
+
+    const allowedStatuses =
+      seasonExportStatus === 'FINISHED'
+        ? new Set<MatchSummary['status']>(['FINISHED'])
+        : new Set<MatchSummary['status']>(['SCHEDULED', 'POSTPONED'])
+
+    const groupedForExport = matchesGrouped
+      .map(group => ({
+        label: group.label,
+        matches: group.matches.filter(match => allowedStatuses.has(match.status)),
+        identifier: group.key,
+      }))
+      .filter(group => group.matches.length > 0)
+
+    if (groupedForExport.length === 0) {
+      handleFeedback('Нет матчей выбранного статуса для экспорта', 'error')
+      return
+    }
+
+    let markup: string
+    try {
+      markup = buildSeasonExportHtml({
+        season: selectedSeason,
+        groupedMatches: groupedForExport,
+        clubs: data.clubs,
+        stadiums: data.stadiums,
+      })
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Не удалось подготовить файл с расписанием'
+      handleFeedback(message, 'error')
+      return
+    }
+
+    setSeasonExportDialogOpen(false)
+
+    const exportWindow = window.open('', '_blank')
+    if (!exportWindow) {
+      handleFeedback('Разрешите всплывающие окна, чтобы открыть расписание', 'error')
+      return
+    }
+    exportWindow.document.open()
+    exportWindow.document.write(markup)
+    exportWindow.document.close()
+    exportWindow.focus()
+    handleFeedback(
+      'Расписание открыто в новом окне. Используйте кнопки вверху, чтобы сохранить изображение или PDF.',
+      'success'
+    )
+  }
+
+  const handleSeasonExportSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    runSeasonExport()
+  }
   const selectedMatch = useMemo<AdminMatch | null>(() => {
     if (!selectedMatchId) return null
     return (
@@ -2530,9 +2629,34 @@ export const MatchesTab = () => {
           </article>
 
           <article className="card" style={{ gridColumn: '1 / -1' }}>
-            <header>
-              <h4>Матчи сезона</h4>
-              <p>Выберите матч для редактирования счёта, статуса и составов.</p>
+            <header
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                gap: '16px',
+                flexWrap: 'wrap',
+              }}
+            >
+              <div>
+                <h4>Матчи сезона</h4>
+                <p>Выберите матч для редактирования счёта, статуса и составов.</p>
+              </div>
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={handleSeasonExport}
+                disabled={!selectedSeason || matchesGrouped.length === 0}
+                title={
+                  !selectedSeason
+                    ? 'Выберите сезон, чтобы экспортировать расписание'
+                    : matchesGrouped.length === 0
+                      ? 'В сезоне нет матчей для экспорта'
+                      : 'Открыть расписание сезона для печати'
+                }
+              >
+                Экспорт сезона
+              </button>
             </header>
             <div className="table-scroll">
               <table className="data-table">
@@ -2758,6 +2882,76 @@ export const MatchesTab = () => {
           </article>
         </section>
       </div>
+      {seasonExportDialogOpen ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal-card" style={{ maxWidth: 520 }}>
+            <header className="modal-header">
+              <div>
+                <h4>Экспорт расписания</h4>
+                <p>Выберите, какие матчи должны попасть в экспортируемый документ.</p>
+              </div>
+              <button type="button" className="button-ghost" onClick={closeSeasonExportDialog}>
+                Закрыть
+              </button>
+            </header>
+            <form className="modal-body" onSubmit={handleSeasonExportSubmit}>
+              <section className="modal-panel" aria-labelledby="season-export-status-heading">
+                <header>
+                  <h5 id="season-export-status-heading">Статус матчей</h5>
+                  <p>Доступны отдельные выгрузки для запланированных и завершённых игр.</p>
+                </header>
+                <label className="modal-radio-option">
+                  <span className="modal-radio-line">
+                    <input
+                      type="radio"
+                      name="season-export-status"
+                      value="FINISHED"
+                      checked={seasonExportStatus === 'FINISHED'}
+                      onChange={() => setSeasonExportStatus('FINISHED')}
+                    />
+                    <span>Завершённые матчи</span>
+                  </span>
+                  <span className="muted">Доступно: {finishedMatchesCount}</span>
+                </label>
+                <label className="modal-radio-option">
+                  <span className="modal-radio-line">
+                    <input
+                      type="radio"
+                      name="season-export-status"
+                      value="SCHEDULED"
+                      checked={seasonExportStatus === 'SCHEDULED'}
+                      onChange={() => setSeasonExportStatus('SCHEDULED')}
+                    />
+                    <span>Планируемые матчи</span>
+                  </span>
+                  <span className="muted">Доступно: {scheduledMatchesCount}</span>
+                </label>
+                {matchesCountForSelectedStatus === 0 ? (
+                  <div className="inline-feedback info">
+                    В сезоне пока нет матчей с выбранным статусом.
+                  </div>
+                ) : null}
+              </section>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={closeSeasonExportDialog}
+                >
+                  Отмена
+                </button>
+                <button
+                  type="submit"
+                  className="button-primary"
+                  disabled={matchesCountForSelectedStatus === 0}
+                >
+                  Экспортировать
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
       {isMatchModalOpen && selectedMatchId && selectedMatch ? (
         <div className="modal-overlay" role="dialog" aria-modal="true">
           <div

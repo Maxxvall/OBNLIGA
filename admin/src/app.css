@@ -1747,6 +1747,26 @@
   font-size: 12px;
 }
 
+.modal-radio-option {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.modal-radio-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+}
+
+.modal-radio-line input[type='radio'] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--neon-cyan);
+}
+
 .roster-list {
   max-height: 360px;
   overflow: auto;

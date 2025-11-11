@@ -22,53 +22,6 @@ const statusClassMap: Record<MatchSummary['status'], string> = {
 
 const metaEnv = ((import.meta as ImportMeta).env ?? {}) as Partial<Record<string, string>>
 
-const resolveAssetBaseUrl = (): string => {
-  const candidates = [metaEnv.VITE_BACKEND_URL, metaEnv.VITE_ADMIN_API_BASE]
-  for (const candidate of candidates) {
-    if (candidate && candidate.trim().length > 0) {
-      return candidate.trim().replace(/\/$/, '')
-    }
-  }
-  if (typeof window !== 'undefined' && window.location?.origin) {
-    return window.location.origin
-  }
-  return ''
-}
-
-const assetBaseUrl = resolveAssetBaseUrl()
-
-const isAbsoluteUrl = (value: string): boolean => /^https?:\/\//i.test(value)
-
-const resolveClubLogoUrl = (logoUrl?: string | null): string | null => {
-  if (!logoUrl) {
-    return null
-  }
-  const trimmed = logoUrl.trim()
-  if (!trimmed) {
-    return null
-  }
-  if (isAbsoluteUrl(trimmed) || trimmed.startsWith('data:') || trimmed.startsWith('blob:')) {
-    return trimmed
-  }
-  const fallbackOrigin =
-    typeof window !== 'undefined' && window.location?.origin ? window.location.origin : ''
-  if (trimmed.startsWith('//')) {
-    const schemeSource = (assetBaseUrl || fallbackOrigin || '').toLowerCase()
-    const scheme = schemeSource.startsWith('https') ? 'https:' : 'http:'
-    return `${scheme}${trimmed}`
-  }
-  if (!assetBaseUrl) {
-    if (trimmed.startsWith('/')) {
-      return fallbackOrigin ? `${fallbackOrigin}${trimmed}` : trimmed
-    }
-    return fallbackOrigin ? `${fallbackOrigin.replace(/\/$/, '')}/${trimmed}` : trimmed
-  }
-  if (trimmed.startsWith('/')) {
-    return `${assetBaseUrl}${trimmed}`
-  }
-  return `${assetBaseUrl}/${trimmed}`
-}
-
 const sanitizeFileName = (value: string): string => {
   const normalized = value.replace(/[\\/:*?"<>|]+/g, ' ').trim()
   if (!normalized) {
@@ -180,7 +133,7 @@ const buildSeriesLabel = (match: MatchSummary): string | null => {
 
 const buildTeamBlock = (club: Club | undefined, fallbackId: number): string => {
   const displayName = getClubName(club, fallbackId)
-  const resolvedLogoUrl = resolveClubLogoUrl(club?.logoUrl)
+  const resolvedLogoUrl = club?.logoUrl
   const logoMarkup = resolvedLogoUrl
     ? `<img src="${escapeHtml(resolvedLogoUrl)}" alt="${escapeHtml(displayName)}" crossorigin="anonymous" />`
     : `<span class="team-logo-fallback">${escapeHtml(getClubInitial(displayName))}</span>`

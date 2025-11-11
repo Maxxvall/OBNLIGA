@@ -30,7 +30,11 @@ const resolveClubLogoUrl = (logoUrl?: string | null): string | null => {
   if (!trimmed) {
     return null
   }
-  // Извлекаем имя файла из URL
+  // Если это полный URL (начинается с http или https), используем его напрямую
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed
+  }
+  // Извлекаем имя файла из URL или пути
   let filename = trimmed
   if (filename.includes('/')) {
     filename = filename.split('/').pop() || filename
@@ -555,13 +559,14 @@ const baseStyles = `
 
   .export-modal-backdrop {
     position: fixed;
-    inset: 0;
+    top: 80px;
+    right: 24px;
+    width: min(520px, calc(100vw - 48px));
     background: rgba(5, 10, 18, 0.78);
     display: none;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
     z-index: 2000;
+    max-height: calc(100vh - 100px);
+    overflow: auto;
   }
 
   .export-modal-backdrop.open {
@@ -569,7 +574,7 @@ const baseStyles = `
   }
 
   .export-modal-card {
-    width: min(520px, 100%);
+    width: 100%;
     display: flex;
     flex-direction: column;
     background: rgba(8, 14, 26, 0.94);
@@ -577,6 +582,8 @@ const baseStyles = `
     border-radius: 18px;
     box-shadow: 0 28px 60px rgba(2, 6, 14, 0.6);
     color: rgba(235, 246, 255, 0.96);
+    max-height: 100%;
+    overflow: auto;
   }
 
   .export-modal-header {

@@ -20,7 +20,6 @@ const statusClassMap: Record<MatchSummary['status'], string> = {
   POSTPONED: 'postponed',
 }
 
-const metaEnv = ((import.meta as ImportMeta).env ?? {}) as Partial<Record<string, string>>
 
 const resolveClubLogoUrl = (logoUrl?: string | null): string | null => {
   if (!logoUrl) {
@@ -259,8 +258,8 @@ const buildRoundSection = (
   }
   const headerHtml =
     dateGroups.size === 1
-      ? (function () {
-          var dateLabel = formatRoundDate(matches)
+        ? (function () {
+          const dateLabel = formatRoundDate(matches)
           return `
             <h3>${escapeHtml(label)}</h3>
             ${dateLabel ? `<div class="league-day-header"><h4>${escapeHtml(dateLabel)}</h4></div>` : ''}

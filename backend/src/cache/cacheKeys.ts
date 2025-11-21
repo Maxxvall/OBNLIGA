@@ -9,3 +9,5 @@ export const PUBLIC_FRIENDLY_SCHEDULE_KEY = 'public:friendlies:schedule'
 export const PUBLIC_FRIENDLY_RESULTS_KEY = 'public:friendlies:results'
 export const PUBLIC_RATINGS_CURRENT_KEY = 'public:ratings:current'
 export const PUBLIC_RATINGS_YEARLY_KEY = 'public:ratings:yearly'
+export const PUBLIC_SHOP_ITEMS_KEY = 'public:shop:items'
+export const shopHistoryCacheKey = (userKey: string | number) => `public:shop:history:${userKey}`

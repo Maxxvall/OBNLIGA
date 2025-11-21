@@ -19,11 +19,21 @@ import type {
   MatchDetailsBroadcast,
   MatchComment,
   MatchStatus,
+  ShopItemView,
+  ShopOrderView,
 } from '@shared/types'
 import { leagueApi } from '../api/leagueApi'
 import { clubApi } from '../api/clubApi'
 import { matchApi } from '../api/matchApi'
 import { readFromStorage, writeToStorage } from '../utils/leaguePersistence'
+import { fetchShopItems, fetchShopHistory, createShopOrder } from '../api/shopApi'
+import {
+  readCartFromStorage,
+  writeCartToStorage,
+  readContactFromStorage,
+  writeContactToStorage,
+} from '../utils/shopCart'
+import type { StoredCart, StoredContact } from '../utils/shopCart'
 
 export type UITab = 'home' | 'league' | 'predictions' | 'leaderboard' | 'shop' | 'profile'
 export type LeagueSubTab = 'table' | 'schedule' | 'results' | 'stats'
@@ -121,11 +131,97 @@ const CLUB_MATCHES_TTL_MS = 86_400_000
 const DOUBLE_TAP_THRESHOLD_MS = 280
 const MATCH_DETAILS_CACHE_LIMIT = 8
 const FRIENDLY_REFRESH_INTERVAL_MS = 60_000
+const SHOP_ITEMS_TTL_MS = 45_000
+const SHOP_HISTORY_TTL_MS = 45_000
+const SHOP_NOTE_MAX_LENGTH = 500
+const DEFAULT_ITEM_LIMIT = 99
 
 const LEAGUE_POLL_INTERVAL_MS = 10_000
 const TEAM_POLL_INTERVAL_MS = 20_000
 const MATCH_DETAILS_POLL_INTERVAL_MS = 10_000
 const hasWindow = typeof window !== 'undefined'
+
+type ShopCartEntry = {
+  itemId: number
+  quantity: number
+}
+
+type ShopContactInfo = {
+  username?: string
+  firstName?: string
+}
+
+const mapStoredCart = (stored: StoredCart): Record<number, ShopCartEntry> => {
+  const entries: Record<number, ShopCartEntry> = {}
+  Object.values(stored).forEach(entry => {
+    if (!entry) {
+      return
+    }
+    const itemId = Number(entry.itemId)
+    const quantity = Number(entry.quantity)
+    if (!Number.isInteger(itemId) || itemId <= 0 || !Number.isInteger(quantity) || quantity <= 0) {
+      return
+    }
+    entries[itemId] = { itemId, quantity }
+  })
+  return entries
+}
+
+const resolveMaxPurchaseLimit = (item?: ShopItemView): number => {
+  if (!item) {
+    return DEFAULT_ITEM_LIMIT
+  }
+  const perOrderLimit = item.maxPerOrder > 0 ? item.maxPerOrder : DEFAULT_ITEM_LIMIT
+  const stockLimit =
+    typeof item.stockQuantity === 'number' && item.stockQuantity >= 0
+      ? item.stockQuantity
+      : DEFAULT_ITEM_LIMIT
+  const limit = Math.min(perOrderLimit, stockLimit)
+  if (Number.isFinite(limit)) {
+    return Math.max(0, limit)
+  }
+  return DEFAULT_ITEM_LIMIT
+}
+
+const reconcileCartWithItems = (
+  cart: Record<number, ShopCartEntry>,
+  items: ShopItemView[]
+): Record<number, ShopCartEntry> => {
+  if (!items.length || Object.keys(cart).length === 0) {
+    return cart
+  }
+  const map = new Map<number, ShopItemView>()
+  items.forEach(item => {
+    map.set(item.id, item)
+  })
+  let changed = false
+  const nextCart: Record<number, ShopCartEntry> = {}
+  Object.values(cart).forEach(entry => {
+    const item = map.get(entry.itemId)
+    if (!item || !item.isActive) {
+      changed = true
+      return
+    }
+    const limit = resolveMaxPurchaseLimit(item)
+    if (limit <= 0) {
+      changed = true
+      return
+    }
+    const quantity = Math.min(limit, entry.quantity)
+    if (quantity <= 0) {
+      changed = true
+      return
+    }
+    if (quantity !== entry.quantity) {
+      changed = true
+    }
+    nextCart[item.id] = { itemId: item.id, quantity }
+  })
+  return changed ? nextCart : cart
+}
+
+const initialShopCart = mapStoredCart(readCartFromStorage())
+const initialShopContact: ShopContactInfo = readContactFromStorage()
 
 const upsertMatchCacheEntry = (
   cache: Record<string, MatchDetailsCacheEntry>,
@@ -891,7 +987,7 @@ const startTeamPolling = (get: () => AppState, clubId: number) => {
   tick()
 }
 
-type FetchResult = { ok: boolean }
+type FetchResult = { ok: boolean; error?: string }
 
 interface LoadingState {
   seasons: boolean
@@ -955,6 +1051,20 @@ interface AppState {
   matchDetailsCache: Record<string, MatchDetailsCacheEntry>
   matchDetailsCacheOrder: string[]
   matchDetailsPollingAttached: boolean
+  shopItems: ShopItemView[]
+  shopItemsVersion?: string
+  shopItemsFetchedAt: number
+  shopItemsLoading: boolean
+  shopItemsError?: string
+  shopHistory: ShopOrderView[]
+  shopHistoryVersion?: string
+  shopHistoryFetchedAt: number
+  shopHistoryLoading: boolean
+  shopHistoryError?: string
+  shopCart: Record<number, ShopCartEntry>
+  shopContact: ShopContactInfo
+  shopOrderSubmitting: boolean
+  shopOrderError?: string
   setTab: (tab: UITab) => void
   setLeagueSubTab: (tab: LeagueSubTab) => void
   toggleLeagueMenu: (force?: boolean) => void
@@ -991,6 +1101,14 @@ interface AppState {
   ) => Promise<FetchResult>
   ensureMatchDetailsPolling: () => void
   stopMatchDetailsPolling: () => void
+  fetchShopItems: (options?: { force?: boolean }) => Promise<FetchResult>
+  fetchShopHistory: (options?: { force?: boolean }) => Promise<FetchResult>
+  addToCart: (itemId: number, quantity?: number) => void
+  updateCartItem: (itemId: number, quantity: number) => void
+  removeFromCart: (itemId: number) => void
+  clearCart: () => void
+  setShopContact: (contact: ShopContactInfo) => void
+  submitShopOrder: (options?: { note?: string }) => Promise<FetchResult>
 }
 
 const orderSeasons = (items: LeagueSeasonSummary[]) =>
@@ -1229,6 +1347,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   matchDetailsCache: {},
   matchDetailsCacheOrder: [],
   matchDetailsPollingAttached: false,
+  shopItems: [],
+  shopItemsVersion: undefined,
+  shopItemsFetchedAt: 0,
+  shopItemsLoading: false,
+  shopItemsError: undefined,
+  shopHistory: [],
+  shopHistoryVersion: undefined,
+  shopHistoryFetchedAt: 0,
+  shopHistoryLoading: false,
+  shopHistoryError: undefined,
+  shopCart: initialShopCart,
+  shopContact: initialShopContact,
+  shopOrderSubmitting: false,
+  shopOrderError: undefined,
   setTab: tab => {
     set(state => ({
       currentTab: tab,
@@ -2758,6 +2890,206 @@ export const useAppStore = create<AppState>((set, get) => ({
   stopMatchDetailsPolling: () => {
     clearMatchDetailsPolling()
     set({ matchDetailsPollingAttached: false })
+  },
+  fetchShopItems: async options => {
+    const state = get()
+    if (state.shopItemsLoading && !options?.force) {
+      return { ok: true }
+    }
+    const now = Date.now()
+    if (!options?.force && state.shopItemsFetchedAt && now - state.shopItemsFetchedAt < SHOP_ITEMS_TTL_MS) {
+      return { ok: true }
+    }
+
+    set({ shopItemsLoading: true, shopItemsError: undefined })
+    const version = options?.force ? undefined : state.shopItemsVersion
+    const response = await fetchShopItems(version)
+    if (!response.ok) {
+      const errorCode = response.error ?? 'shop_items_failed'
+      set({ shopItemsLoading: false, shopItemsError: errorCode })
+      return { ok: false, error: errorCode }
+    }
+    if (!('data' in response)) {
+      set({ shopItemsLoading: false, shopItemsFetchedAt: now })
+      return { ok: true }
+    }
+    set(prev => {
+      const reconciledCart = reconcileCartWithItems(prev.shopCart, response.data)
+      if (reconciledCart !== prev.shopCart) {
+        writeCartToStorage(reconciledCart)
+      }
+      return {
+        shopItems: response.data,
+        shopItemsVersion: response.version,
+        shopItemsFetchedAt: now,
+        shopItemsLoading: false,
+        shopItemsError: undefined,
+        shopCart: reconciledCart,
+      }
+    })
+    return { ok: true }
+  },
+  fetchShopHistory: async options => {
+    const state = get()
+    if (state.shopHistoryLoading && !options?.force) {
+      return { ok: true }
+    }
+    const now = Date.now()
+    if (!options?.force && state.shopHistoryFetchedAt && now - state.shopHistoryFetchedAt < SHOP_HISTORY_TTL_MS) {
+      return { ok: true }
+    }
+
+    set({ shopHistoryLoading: true, shopHistoryError: undefined })
+    const version = options?.force ? undefined : state.shopHistoryVersion
+    const response = await fetchShopHistory(version)
+    if (!response.ok) {
+      const errorCode = response.status === 401 ? 'unauthorized' : response.error ?? 'shop_history_failed'
+      set({ shopHistoryLoading: false, shopHistoryError: errorCode })
+      return { ok: false, error: errorCode }
+    }
+    if (!('data' in response)) {
+      set({ shopHistoryLoading: false, shopHistoryFetchedAt: now, shopHistoryError: undefined })
+      return { ok: true }
+    }
+    set({
+      shopHistory: response.data,
+      shopHistoryVersion: response.version,
+      shopHistoryFetchedAt: now,
+      shopHistoryLoading: false,
+      shopHistoryError: undefined,
+    })
+    return { ok: true }
+  },
+  addToCart: (itemId, quantity = 1) => {
+    if (!Number.isInteger(itemId) || itemId <= 0 || !Number.isInteger(quantity) || quantity <= 0) {
+      return
+    }
+    const item = get().shopItems.find(entry => entry.id === itemId)
+    const limit = resolveMaxPurchaseLimit(item)
+    if (limit <= 0) {
+      return
+    }
+    const currentQuantity = get().shopCart[itemId]?.quantity ?? 0
+    const nextQuantity = Math.min(limit, currentQuantity + quantity)
+    if (nextQuantity === currentQuantity) {
+      return
+    }
+    set(prev => {
+      const nextCart = {
+        ...prev.shopCart,
+        [itemId]: { itemId, quantity: nextQuantity },
+      }
+      writeCartToStorage(nextCart)
+      return { shopCart: nextCart }
+    })
+  },
+  updateCartItem: (itemId, quantity) => {
+    const normalizedQuantity = Math.floor(quantity)
+    const item = get().shopItems.find(entry => entry.id === itemId)
+    const limit = resolveMaxPurchaseLimit(item)
+    const clamped = Math.min(limit, Math.max(0, normalizedQuantity))
+    const existing = get().shopCart[itemId]
+    if (!existing && clamped <= 0) {
+      return
+    }
+    if (clamped <= 0) {
+      set(prev => {
+        const nextCart = { ...prev.shopCart }
+        delete nextCart[itemId]
+        writeCartToStorage(nextCart)
+        return { shopCart: nextCart }
+      })
+      return
+    }
+    if (existing && existing.quantity === clamped) {
+      return
+    }
+    set(prev => {
+      const nextCart = {
+        ...prev.shopCart,
+        [itemId]: { itemId, quantity: clamped },
+      }
+      writeCartToStorage(nextCart)
+      return { shopCart: nextCart }
+    })
+  },
+  removeFromCart: itemId => {
+    if (!get().shopCart[itemId]) {
+      return
+    }
+    set(prev => {
+      const nextCart = { ...prev.shopCart }
+      delete nextCart[itemId]
+      writeCartToStorage(nextCart)
+      return { shopCart: nextCart }
+    })
+  },
+  clearCart: () => {
+    writeCartToStorage({})
+    set({ shopCart: {} })
+  },
+  setShopContact: contact => {
+    const username = contact.username?.trim()
+    const firstName = contact.firstName?.trim()
+    const nextContact: ShopContactInfo = {
+      username: username || undefined,
+      firstName: firstName || undefined,
+    }
+    writeContactToStorage(nextContact)
+    set({ shopContact: nextContact })
+  },
+  submitShopOrder: async options => {
+    const state = get()
+    if (state.shopOrderSubmitting) {
+      return { ok: false, error: 'shop_order_in_progress' }
+    }
+    const cartItems = Object.values(state.shopCart)
+    if (!cartItems.length) {
+      set({ shopOrderError: 'shop_cart_empty' })
+      return { ok: false, error: 'shop_cart_empty' }
+    }
+    const username = state.shopContact.username?.trim()
+    const firstName = state.shopContact.firstName?.trim()
+    if (!username) {
+      set({ shopOrderError: 'shop_contact_required' })
+      return { ok: false, error: 'shop_contact_required' }
+    }
+    const note = options?.note?.trim()
+    if (note && note.length > SHOP_NOTE_MAX_LENGTH) {
+      set({ shopOrderError: 'shop_note_too_long' })
+      return { ok: false, error: 'shop_note_too_long' }
+    }
+
+    set({ shopOrderSubmitting: true, shopOrderError: undefined })
+    const response = await createShopOrder({
+      items: cartItems.map(entry => ({ itemId: entry.itemId, quantity: entry.quantity })),
+      contact: {
+        username,
+        firstName: firstName || undefined,
+      },
+      customerNote: note || undefined,
+    })
+
+    if (!response.ok) {
+      const errorCode = response.error ?? 'shop_order_failed'
+      set({ shopOrderSubmitting: false, shopOrderError: errorCode })
+      return { ok: false, error: errorCode }
+    }
+
+    set(prev => {
+      const nextHistory = prev.shopHistory.length ? [response.data, ...prev.shopHistory] : [response.data]
+      writeCartToStorage({})
+      return {
+        shopCart: {},
+        shopHistory: nextHistory,
+        shopOrderSubmitting: false,
+        shopOrderError: undefined,
+      }
+    })
+
+    void get().fetchShopItems({ force: true })
+    void get().fetchShopHistory({ force: true })
+    return { ok: true }
   },
 }))
 

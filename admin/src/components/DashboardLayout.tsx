@@ -9,6 +9,7 @@ import { NewsTab } from './tabs/NewsTab'
 import { PredictionsTab } from './tabs/PredictionsTab'
 import { RatingsTab } from './tabs/RatingsTab'
 import { AchievementsTab } from './tabs/AchievementsTab'
+import { ShopTab } from './tabs/ShopTab'
 import { ScrollToTopButton } from './ScrollToTopButton'
 
 const tabMeta: Record<AdminTab, { title: string; description: string }> = {
@@ -36,6 +37,10 @@ const tabMeta: Record<AdminTab, { title: string; description: string }> = {
     title: 'Рейтинги',
     description: 'Управление окнами расчёта и мониторинг лидербордов.',
   },
+  shop: {
+    title: 'Магазин',
+    description: 'Каталог товаров, заказы пользователей и управление запасами.',
+  },
   achievements: {
     title: 'Достижения',
     description: 'Управление типами достижений, метриками и прогрессом пользователей.',
@@ -57,6 +62,7 @@ const tabsOrder: AdminTab[] = [
   'players',
   'predictions',
   'ratings',
+  'shop',
   'achievements',
   'news',
   'users',
@@ -108,6 +114,8 @@ export const DashboardLayout = () => {
         return <PredictionsTab />
       case 'ratings':
         return <RatingsTab />
+      case 'shop':
+        return <ShopTab />
       case 'achievements':
         return <AchievementsTab />
       case 'news':

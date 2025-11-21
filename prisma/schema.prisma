@@ -462,6 +462,7 @@ model AppUser {
   pointAdjustments    AdminPointAdjustment[]
   actionLogs          AdminActionLog[]
   leaguePlayer        Person?                   @relation("AppUserLeaguePlayer", fields: [leaguePlayerId], references: [id])
+  shopOrders          ShopOrder[]
 
   @@map("app_user")
 }
@@ -797,6 +798,80 @@ model AdBanner {
 
   @@index([isActive, displayOrder, updatedAt], map: "ad_banner_active_order")
   @@map("ad_banner")
+}
+
+model ShopItem {
+  id            Int      @id @default(autoincrement()) @map("shop_item_id")
+  slug          String?  @unique(map: "shop_item_slug_unique")
+  title         String   @db.VarChar(80)
+  subtitle      String?  @db.VarChar(160)
+  description   String?  @db.Text
+  priceCents    Int      @map("price_cents")
+  currencyCode  String   @default("RUB") @map("currency_code")
+  stockQuantity Int?     @map("stock_quantity")
+  maxPerOrder   Int      @default(3) @map("max_per_order")
+  sortOrder     Int      @default(100) @map("sort_order")
+  isActive      Boolean  @default(true) @map("is_active")
+  imageUrl      String?  @map("image_url")
+  imageData     Bytes?   @map("image_data")
+  imageMime     String?  @map("image_mime")
+  imageWidth    Int?     @map("image_width")
+  imageHeight   Int?     @map("image_height")
+  imageSize     Int?     @map("image_size")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  orders ShopOrderItem[]
+
+  @@index([isActive, sortOrder], map: "shop_item_active_order_idx")
+  @@map("shop_item")
+}
+
+model ShopOrder {
+  id           BigInt          @id @default(autoincrement()) @map("shop_order_id")
+  orderNumber  String          @unique @map("order_number")
+  userId       Int?            @map("user_id")
+  telegramId   BigInt?         @map("telegram_id")
+  username     String?         @map("username")
+  firstName    String?         @map("first_name")
+  status       ShopOrderStatus @default(PENDING)
+  totalCents   Int             @map("total_cents")
+  currencyCode String          @default("RUB") @map("currency_code")
+  customerNote String?         @map("customer_note")
+  confirmedAt  DateTime?       @map("confirmed_at")
+  confirmedBy  String?         @map("confirmed_by")
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  user  AppUser?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  items ShopOrderItem[]
+
+  @@index([status, createdAt], map: "shop_order_status_created_idx")
+  @@map("shop_order")
+}
+
+model ShopOrderItem {
+  id         BigInt  @id @default(autoincrement()) @map("shop_order_item_id")
+  orderId    BigInt  @map("order_id")
+  itemId     Int     @map("item_id")
+  title      String  @db.VarChar(80)
+  subtitle   String? @db.VarChar(160)
+  priceCents Int     @map("price_cents")
+  quantity   Int     @map("quantity")
+  imageUrl   String? @map("image_url")
+
+  order ShopOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  item  ShopItem  @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@index([orderId], map: "shop_order_item_order_idx")
+  @@index([itemId], map: "shop_order_item_item_idx")
+  @@map("shop_order_item")
+}
+
+enum ShopOrderStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
 }
 
 model Disqualification {

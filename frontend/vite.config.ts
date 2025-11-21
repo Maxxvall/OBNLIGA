@@ -12,6 +12,7 @@ export default defineConfig({
     alias: {
       '@shared': path.resolve(__dirname, '../shared'),
     },
+    extensions: ['.ts', '.tsx', '.mjs', '.js', '.jsx', '.json'],
   },
   server: {
     // Proxy `/api` requests to backend during development so frontend can use relative paths

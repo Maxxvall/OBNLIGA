@@ -10,6 +10,7 @@ import PredictionsPage from './pages/PredictionsPage'
 import RatingsPage from './pages/RatingsPage'
 import { MatchDetailsPage } from './pages/MatchDetailsPage'
 import { useAppStore } from './store/appStore'
+import ShopPage from './pages/ShopPage'
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true)
@@ -77,21 +78,21 @@ export default function App() {
         {currentTab === 'league' && <LeaguePage />}
         {currentTab === 'predictions' && <PredictionsPage />}
         {currentTab === 'leaderboard' && <RatingsPage />}
-        {currentTab === 'profile' ? (
-          <Profile />
-        ) : (
-          currentTab !== 'home' &&
+        {currentTab === 'shop' && <ShopPage />}
+        {currentTab === 'profile' && <Profile />}
+        {currentTab !== 'home' &&
           currentTab !== 'league' &&
           currentTab !== 'predictions' &&
-          currentTab !== 'leaderboard' && (
+          currentTab !== 'leaderboard' &&
+          currentTab !== 'shop' &&
+          currentTab !== 'profile' && (
             <div className="placeholder">
               <div className="placeholder-card">
                 <h2>Страница в разработке</h2>
                 <p>Эта вкладка ещё не реализована — работаем над ней.</p>
               </div>
             </div>
-          )
-        )}
+          )}
       </div>
 
       {!leagueMenuOpen && (

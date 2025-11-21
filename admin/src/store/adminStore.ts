@@ -16,10 +16,12 @@ import {
   adminFetchRatingSeasons,
   adminStartRatingSeason,
   adminCloseRatingSeason,
+  adminFetchShopItems,
+  adminFetchShopOrders,
 } from '../api/adminClient'
 import { assistantLogin } from '../api/assistantClient'
 import { judgeLogin } from '../api/judgeClient'
-import type { AdBanner, NewsItem } from '@shared/types'
+import type { AdBanner, NewsItem, ShopItemView, ShopOrderStatus, ShopOrderView } from '@shared/types'
 import { wsClient } from '../wsClient'
 import type { WsMessage, WsPatchMessage } from '../wsClient'
 import {
@@ -59,6 +61,7 @@ export type AdminTab =
   | 'users'
   | 'predictions'
   | 'ratings'
+  | 'shop'
   | 'achievements'
 
 const storageKey = 'obnliga-admin-token'
@@ -155,6 +158,8 @@ interface AdminData {
   ratingSettings?: AdminRatingSettingsSummary
   ratingLeaderboard?: AdminRatingLeaderboardResponse
   ratingSeasons?: AdminRatingSeasonsCollection
+  shopItems: ShopItemView[]
+  shopOrders: ShopOrderView[]
 }
 
 interface AdminState {
@@ -169,6 +174,10 @@ interface AdminState {
   ratingScope: 'current' | 'yearly'
   ratingPage: number
   ratingPageSize: number
+  shopOrderStatusFilter: ShopOrderStatus | 'ALL'
+  shopOrderSearch?: string
+  shopOrderCursor?: string | null
+  shopOrdersHasMore: boolean
   selectedCompetitionId?: number
   selectedSeasonId?: number
   newsVersion?: number
@@ -197,6 +206,14 @@ interface AdminState {
   fetchRatingSettings(options?: FetchOptions): Promise<void>
   fetchRatingLeaderboard(options?: FetchOptions & { scope?: 'current' | 'yearly'; page?: number; pageSize?: number }): Promise<void>
   fetchRatingSeasons(options?: FetchOptions): Promise<void>
+  fetchShopItems(options?: FetchOptions & { includeInactive?: boolean }): Promise<void>
+  fetchShopOrders(options?: FetchOptions & { status?: ShopOrderStatus | 'ALL'; search?: string; cursor?: string | null; append?: boolean }): Promise<void>
+  setShopOrderStatusFilter(status: ShopOrderStatus | 'ALL'): Promise<void>
+  setShopOrderSearch(query?: string): Promise<void>
+  loadMoreShopOrders(): Promise<void>
+  upsertShopItem(item: ShopItemView): void
+  removeShopItem(itemId: number): void
+  upsertShopOrder(order: ShopOrderView): void
   prependNews(item: NewsItem): void
   updateNews(item: NewsItem): void
   removeNews(id: string): void
@@ -250,6 +267,8 @@ type FetchKey =
   | 'ratingSettings'
   | 'ratingLeaderboard'
   | 'ratingSeasons'
+  | 'shopItems'
+  | 'shopOrders'
 
 type FetchOptions = {
   force?: boolean
@@ -278,6 +297,8 @@ const FETCH_TTL: Record<FetchKey, number> = {
   ratingSettings: 60_000,
   ratingLeaderboard: 30_000,
   ratingSeasons: 30_000,
+  shopItems: 30_000,
+  shopOrders: 15_000,
 }
 
 const DEFAULT_RATING_PAGE_SIZE = 25
@@ -306,6 +327,8 @@ const createEmptyData = (): AdminData => ({
   ratingSettings: undefined,
   ratingLeaderboard: undefined,
   ratingSeasons: undefined,
+  shopItems: [],
+  shopOrders: [],
 })
 
 const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
@@ -710,9 +733,13 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     assistantToken: initialMode === 'assistant' ? initialAssistantToken : undefined,
     error: undefined,
     activeTab: 'teams',
-  ratingScope: 'current',
-  ratingPage: 1,
-  ratingPageSize: DEFAULT_RATING_PAGE_SIZE,
+    ratingScope: 'current',
+    ratingPage: 1,
+    ratingPageSize: DEFAULT_RATING_PAGE_SIZE,
+    shopOrderStatusFilter: 'ALL',
+    shopOrderSearch: undefined,
+    shopOrderCursor: null,
+    shopOrdersHasMore: false,
     selectedCompetitionId: undefined,
     selectedSeasonId: undefined,
     newsVersion: undefined,
@@ -884,6 +911,13 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         judgeToken: undefined,
         assistantToken: undefined,
         activeTab: 'teams',
+        ratingScope: 'current',
+        ratingPage: 1,
+        ratingPageSize: DEFAULT_RATING_PAGE_SIZE,
+        shopOrderStatusFilter: 'ALL',
+        shopOrderSearch: undefined,
+        shopOrderCursor: null,
+        shopOrdersHasMore: false,
         selectedSeasonId: undefined,
         newsVersion: undefined,
         error: undefined,
@@ -1275,6 +1309,51 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         },
       }))
     },
+    upsertShopItem(item: ShopItemView) {
+      set(state => {
+        const existingIndex = state.data.shopItems.findIndex(entry => entry.id === item.id)
+        const nextItems = existingIndex === -1 ? [...state.data.shopItems, item] : state.data.shopItems.slice()
+        if (existingIndex !== -1) {
+          nextItems[existingIndex] = item
+        }
+        nextItems.sort((left, right) => {
+          if (left.sortOrder !== right.sortOrder) {
+            return left.sortOrder - right.sortOrder
+          }
+          return left.id - right.id
+        })
+        return {
+          data: {
+            ...state.data,
+            shopItems: nextItems,
+          },
+        }
+      })
+    },
+    removeShopItem(itemId: number) {
+      set(state => ({
+        data: {
+          ...state.data,
+          shopItems: state.data.shopItems.filter(item => item.id !== itemId),
+        },
+      }))
+    },
+    upsertShopOrder(order: ShopOrderView) {
+      set(state => {
+        const existingIndex = state.data.shopOrders.findIndex(entry => entry.id === order.id)
+        const nextOrders = existingIndex === -1 ? [order, ...state.data.shopOrders] : state.data.shopOrders.slice()
+        if (existingIndex !== -1) {
+          nextOrders[existingIndex] = order
+        }
+        nextOrders.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+        return {
+          data: {
+            ...state.data,
+            shopOrders: nextOrders,
+          },
+        }
+      })
+    },
     async setRatingScope(scope: 'current' | 'yearly') {
       if (get().mode !== 'admin') return
       if (get().ratingScope === scope) return
@@ -1516,6 +1595,67 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         options?.force ? 0 : undefined
       )
     },
+    async setShopOrderStatusFilter(status: ShopOrderStatus | 'ALL') {
+      if (get().mode !== 'admin') return
+      if (get().shopOrderStatusFilter === status) return
+      set({ shopOrderStatusFilter: status, shopOrderCursor: null, shopOrdersHasMore: false })
+      await get().fetchShopOrders({ status, cursor: null, append: false, force: true })
+    },
+    async setShopOrderSearch(query?: string) {
+      if (get().mode !== 'admin') return
+      const normalized = query?.trim() || undefined
+      if (normalized === get().shopOrderSearch) return
+      set({ shopOrderSearch: normalized, shopOrderCursor: null, shopOrdersHasMore: false })
+      await get().fetchShopOrders({ search: normalized, cursor: null, append: false, force: true })
+    },
+    async loadMoreShopOrders() {
+      if (get().mode !== 'admin') return
+      if (!get().shopOrdersHasMore || !get().shopOrderCursor || get().loading.shopOrders) {
+        return
+      }
+      await get().fetchShopOrders({ cursor: get().shopOrderCursor, append: true, force: true })
+    },
+    async fetchShopItems(options?: FetchOptions & { includeInactive?: boolean }) {
+      if (get().mode !== 'admin') return
+      await runCachedFetch(
+        'shopItems',
+        [options?.includeInactive ? 'all' : 'active'],
+        async () => {
+          const token = ensureToken()
+          const items = await adminFetchShopItems(token, {
+            includeInactive: options?.includeInactive,
+          })
+          set(state => ({
+            data: { ...state.data, shopItems: items },
+          }))
+        },
+        options?.force ? 0 : undefined
+      )
+    },
+    async fetchShopOrders(options?: FetchOptions & { status?: ShopOrderStatus | 'ALL'; search?: string; cursor?: string | null; append?: boolean }) {
+      if (get().mode !== 'admin') return
+      const status = options?.status ?? get().shopOrderStatusFilter
+      const search = options?.search ?? get().shopOrderSearch
+      const cursor = options?.cursor ?? (options?.append ? get().shopOrderCursor : null)
+      await run('shopOrders', async () => {
+        const token = ensureToken()
+        const { orders, nextCursor } = await adminFetchShopOrders(token, {
+          status,
+          search,
+          cursor,
+        })
+        set(state => ({
+          data: {
+            ...state.data,
+            shopOrders: options?.append ? [...state.data.shopOrders, ...orders] : orders,
+          },
+          shopOrderCursor: nextCursor,
+          shopOrdersHasMore: Boolean(nextCursor),
+          shopOrderStatusFilter: status ?? state.shopOrderStatusFilter,
+          shopOrderSearch: search,
+        }))
+      })
+    },
     prependNews(item: NewsItem) {
       const cacheKey = composeCacheKey('news', [])
       fetchTimestamps[cacheKey] = Date.now()
@@ -1577,6 +1717,12 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         }
         case 'news':
           await Promise.all([get().fetchNews({ force: true }), get().fetchAds({ force: true })])
+          break
+        case 'shop':
+          await Promise.all([
+            get().fetchShopItems({ force: true, includeInactive: true }),
+            get().fetchShopOrders({ force: true, cursor: null }),
+          ])
           break
         case 'users':
           await Promise.all([

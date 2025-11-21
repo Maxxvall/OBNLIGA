@@ -15,7 +15,14 @@ import type {
   AdminRatingSeasonView,
   AdminRatingSeasonsCollection,
 } from '../types'
-import type { AdBanner, AdBannerImage, NewsItem } from '@shared/types'
+import type {
+  AdBanner,
+  AdBannerImage,
+  NewsItem,
+  ShopItemView,
+  ShopOrderStatus,
+  ShopOrderView,
+} from '@shared/types'
 
 const API_BASE = import.meta.env.VITE_ADMIN_API_BASE || 'http://localhost:3000'
 
@@ -176,6 +183,43 @@ const ERROR_DICTIONARY: Record<string, string> = {
   series_format_locked: 'Формат серий изменить нельзя.',
   series_has_matches: 'Серия содержит матчи — операция невозможна.',
   stadium_used_in_matches: 'Стадион используется в матчах.',
+    shop_title_required: 'Введите название товара.',
+    shop_title_too_long: 'Название товара слишком длинное.',
+    shop_subtitle_too_long: 'Подзаголовок слишком длинный.',
+    shop_description_too_long: 'Описание слишком длинное.',
+    shop_currency_invalid: 'Некорректный код валюты.',
+    shop_currency_unsupported: 'Эта валюта не поддерживается.',
+    shop_price_invalid: 'Некорректная цена.',
+    shop_stock_invalid: 'Некорректный остаток на складе.',
+    shop_max_per_order_invalid: 'Некорректный лимит на заказ.',
+    shop_sort_order_invalid: 'Некорректный порядок сортировки.',
+    shop_slug_too_long: 'Слаг товара слишком длинный.',
+    shop_image_url_invalid: 'Некорректная ссылка на изображение.',
+    shop_image_required: 'Загрузите изображение товара.',
+    shop_image_mime_required: 'Не удалось определить тип изображения.',
+    shop_image_mime_unsupported: 'Поддерживаются только PNG, JPEG или WebP.',
+    shop_image_base64_required: 'Не удалось прочитать изображение.',
+    shop_image_invalid: 'Файл изображения повреждён.',
+    shop_image_too_large: 'Изображение слишком большое — максимум 2 МБ.',
+    shop_image_dimensions_invalid: 'Размеры изображения некорректны.',
+    shop_image_size_invalid: 'Некорректный размер файла изображения.',
+    shop_image_size_mismatch: 'Размер файла не совпадает с содержимым.',
+    shop_slug_taken: 'Слаг уже используется.',
+    shop_item_invalid: 'Некорректный товар магазина.',
+    shop_item_not_found: 'Товар не найден.',
+    shop_item_in_use: 'Товар уже есть в заказах — удаление запрещено.',
+    shop_item_create_failed: 'Не удалось создать товар.',
+    shop_item_update_failed: 'Не удалось обновить товар.',
+    shop_item_delete_failed: 'Не удалось удалить товар.',
+    shop_status_invalid: 'Некорректный статус.',
+    shop_cursor_invalid: 'Некорректный курсор пагинации.',
+    shop_order_invalid: 'Некорректный заказ магазина.',
+    shop_order_not_found: 'Заказ не найден.',
+    shop_update_empty: 'Нет изменений для сохранения.',
+    shop_order_locked: 'Статус заказа уже зафиксирован.',
+    shop_order_update_failed: 'Не удалось обновить заказ.',
+    shop_note_too_long: 'Комментарий слишком длинный.',
+    shop_confirmed_by_too_long: 'Поле «Подтвердил» слишком длинное.',
   too_many_names: 'Слишком много имён в списке.',
   update_failed: 'Не удалось сохранить изменения.',
   userid_required: 'Укажите пользователя.',
@@ -509,6 +553,133 @@ export const adminDeleteAd = async (
   token: string | undefined,
   adId: string
 ): Promise<AdBanner> => adminDelete<AdBanner>(token, `/api/admin/news/ads/${adId}`)
+
+export interface AdminShopImagePayload {
+  mimeType: string
+  base64: string
+  width: number
+  height: number
+  size: number
+}
+
+export interface AdminShopItemPayload {
+  title: string
+  subtitle?: string | null
+  description?: string | null
+  priceCents: number
+  currencyCode: string
+  stockQuantity?: number | null
+  maxPerOrder?: number
+  sortOrder?: number
+  isActive?: boolean
+  slug?: string | null
+  image?: AdminShopImagePayload | null
+  imageUrl?: string | null
+}
+
+export type AdminShopItemUpdatePayload = Partial<AdminShopItemPayload>
+
+export interface AdminShopOrderListParams {
+  status?: ShopOrderStatus | 'ALL'
+  search?: string
+  limit?: number
+  cursor?: string | null
+}
+
+export interface AdminShopOrderListResult {
+  orders: ShopOrderView[]
+  nextCursor: string | null
+}
+
+export interface AdminShopOrderUpdatePayload {
+  status?: ShopOrderStatus
+  customerNote?: string | null
+  confirmedBy?: string | null
+}
+
+export const adminFetchShopItems = async (
+  token: string | undefined,
+  options?: { includeInactive?: boolean }
+): Promise<ShopItemView[]> => {
+  const params = new URLSearchParams()
+  if (options?.includeInactive) {
+    params.set('includeInactive', 'true')
+  }
+  const query = params.size ? `?${params.toString()}` : ''
+  return adminGet<ShopItemView[]>(token, `/api/admin/shop/items${query}`)
+}
+
+export const adminCreateShopItem = async (
+  token: string | undefined,
+  payload: AdminShopItemPayload
+): Promise<ShopItemView> => adminPost<ShopItemView>(token, '/api/admin/shop/items', payload)
+
+export const adminUpdateShopItem = async (
+  token: string | undefined,
+  itemId: number,
+  payload: AdminShopItemUpdatePayload
+): Promise<ShopItemView> => adminPut<ShopItemView>(token, `/api/admin/shop/items/${itemId}`, payload)
+
+export const adminSetShopItemStatus = async (
+  token: string | undefined,
+  itemId: number,
+  isActive: boolean
+): Promise<ShopItemView> =>
+  adminPatch<ShopItemView>(token, `/api/admin/shop/items/${itemId}/status`, { isActive })
+
+export const adminDeleteShopItem = async (
+  token: string | undefined,
+  itemId: number
+): Promise<void> => adminDelete<void>(token, `/api/admin/shop/items/${itemId}`)
+
+export const adminFetchShopOrders = async (
+  token: string | undefined,
+  params?: AdminShopOrderListParams
+): Promise<AdminShopOrderListResult> => {
+  const searchParams = new URLSearchParams()
+  if (params?.status && params.status !== 'ALL') {
+    searchParams.set('status', params.status)
+  }
+  if (params?.search) {
+    const trimmed = params.search.trim()
+    if (trimmed) {
+      searchParams.set('search', trimmed)
+    }
+  }
+  if (params?.limit && Number.isFinite(params.limit)) {
+    const normalized = Math.min(50, Math.max(1, Math.trunc(params.limit)))
+    searchParams.set('limit', normalized.toString())
+  }
+  if (params?.cursor) {
+    searchParams.set('cursor', params.cursor)
+  }
+  const query = searchParams.size ? `?${searchParams.toString()}` : ''
+  const { data, meta } = await adminRequestWithMeta<ShopOrderView[]>(
+    token,
+    `/api/admin/shop/orders${query}`
+  )
+  let nextCursor: string | null = null
+  if (meta && typeof (meta as { nextCursor?: string | null }).nextCursor !== 'undefined') {
+    const rawCursor = (meta as { nextCursor?: string | null }).nextCursor
+    nextCursor = rawCursor ?? null
+  }
+  return {
+    orders: data,
+    nextCursor,
+  }
+}
+
+export const adminFetchShopOrder = async (
+  token: string | undefined,
+  orderId: string
+): Promise<ShopOrderView> => adminGet<ShopOrderView>(token, `/api/admin/shop/orders/${orderId}`)
+
+export const adminUpdateShopOrder = async (
+  token: string | undefined,
+  orderId: string,
+  payload: AdminShopOrderUpdatePayload
+): Promise<ShopOrderView> =>
+  adminPatch<ShopOrderView>(token, `/api/admin/shop/orders/${orderId}`, payload)
 
 export interface UpdateClubPlayersPayload {
   players: Array<{ personId: number; defaultShirtNumber?: number | null }>

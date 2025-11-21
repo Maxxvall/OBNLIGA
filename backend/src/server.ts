@@ -63,7 +63,9 @@ server.register(authRoutes)
 
 // register admin routes (RBAC / dashboard)
 import adminRoutes from './routes/adminRoutes'
+import adminShopRoutes from './routes/adminShopRoutes'
 server.register(adminRoutes)
+server.register(adminShopRoutes)
 
 // register lineup portal routes (captain portal)
 import lineupRoutes from './routes/lineupRoutes'
@@ -89,6 +91,7 @@ import clubRoutes from './routes/clubRoutes'
 import matchPublicRoutes from './routes/matchPublicRoutes'
 import predictionRoutes from './routes/predictionRoutes'
 import ratingsRoutes from './routes/ratingsRoutes'
+import shopRoutes from './routes/shopRoutes'
 server.register(newsRoutes)
 server.register(adsRoutes)
 server.register(leagueRoutes)
@@ -96,6 +99,7 @@ server.register(clubRoutes)
 server.register(matchPublicRoutes)
 server.register(predictionRoutes)
 server.register(ratingsRoutes)
+server.register(shopRoutes)
 
 // register fastify websocket & cookie plugins and realtime
 // websocket & cookie plugins and realtime will be registered in start() to avoid top-level await

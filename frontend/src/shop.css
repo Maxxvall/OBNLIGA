@@ -443,35 +443,6 @@
   gap: 8px;
 }
 
-.shop-cart-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.shop-cart-form input,
-.shop-cart-form textarea {
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.3);
-  padding: 10px 12px;
-  color: white;
-  font-size: 15px;
-}
-
-.shop-cart-form textarea {
-  min-height: 80px;
-  resize: vertical;
-}
-
-.shop-hint {
-  align-self: flex-end;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
 .shop-error {
   padding: 10px 12px;
   background: rgba(255, 77, 77, 0.2);
@@ -484,6 +455,33 @@
   background: rgba(122, 255, 106, 0.16);
   border: 1px solid rgba(122, 255, 106, 0.4);
   border-radius: 12px;
+}
+
+/* Centered error placeholder for order history failures */
+.shop-placeholder-centered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  padding: 36px 18px;
+  background: rgba(6, 10, 18, 0.6);
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.04);
+}
+
+.shop-error-text {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.9);
+}
+
+/* empty history text style */
+.shop-empty-text {
+  margin: 0;
+  font-size: 15px;
+  color: rgba(190,215,255,0.9);
 }
 
 .shop-cart-buttons {

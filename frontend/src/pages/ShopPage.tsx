@@ -1,8 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react'
 import { useAppStore } from '../store/appStore'
 import '../shop.css'
-
-const NOTE_LIMIT = 500
 const SHOP_CURRENCY = 'RUB'
 
 type ShopSubTab = 'catalog' | 'history'
@@ -35,7 +33,6 @@ const resolveItemLimit = (options?: { maxPerOrder?: number; stockQuantity?: numb
 export default function ShopPage() {
   const [activeTab, setActiveTab] = useState<ShopSubTab>('catalog')
   const [cartOpen, setCartOpen] = useState(false)
-  const [note, setNote] = useState('')
   const [orderSuccess, setOrderSuccess] = useState<string | null>(null)
 
   const shopItems = useAppStore(state => state.shopItems)
@@ -54,8 +51,6 @@ export default function ShopPage() {
   const removeFromCart = useAppStore(state => state.removeFromCart)
   const clearCart = useAppStore(state => state.clearCart)
 
-  const shopContact = useAppStore(state => state.shopContact)
-  const setShopContact = useAppStore(state => state.setShopContact)
   const submitShopOrder = useAppStore(state => state.submitShopOrder)
   const shopOrderSubmitting = useAppStore(state => state.shopOrderSubmitting)
   const shopOrderError = useAppStore(state => state.shopOrderError)
@@ -116,10 +111,9 @@ export default function ShopPage() {
 
   const handleSubmitOrder = async () => {
     setOrderSuccess(null)
-    const result = await submitShopOrder({ note })
+    const result = await submitShopOrder()
     if (result.ok) {
       setOrderSuccess('Заказ отправлен, мы скоро свяжемся с вами.')
-      setNote('')
     }
   }
 
@@ -206,16 +200,17 @@ export default function ShopPage() {
     }
     if (shopHistoryError) {
       return (
-        <div className="shop-placeholder">
-          <p>Не удалось загрузить историю.</p>
-          <button className="shop-secondary" onClick={() => fetchShopHistory({ force: true })}>
-            Повторить запрос
-          </button>
+        <div className="shop-placeholder shop-placeholder-centered">
+          <p className="shop-error-text">Не удалось загрузить историю.</p>
         </div>
       )
     }
     if (!shopHistory.length) {
-      return <div className="shop-placeholder">Вы ещё не оформляли заказы.</div>
+      return (
+        <div className="shop-placeholder shop-placeholder-centered">
+          <p className="shop-empty-text">Вы ещё не оформляли заказы.</p>
+        </div>
+      )
     }
     return (
       <div className="shop-history-list">
@@ -329,52 +324,22 @@ export default function ShopPage() {
                   )
                 })}
               </div>
-              <div className="shop-cart-form">
-                <label>
-                  Telegram username
-                  <input
-                    type="text"
-                    value={shopContact.username ?? ''}
-                    placeholder="@username"
-                    onChange={event => setShopContact({ ...shopContact, username: event.target.value })}
-                  />
-                </label>
-                <label>
-                  Имя
-                  <input
-                    type="text"
-                    value={shopContact.firstName ?? ''}
-                    placeholder="Имя, чтобы с вами связаться"
-                    onChange={event => setShopContact({ ...shopContact, firstName: event.target.value })}
-                  />
-                </label>
-                <label>
-                  Комментарий (необязательно)
-                  <textarea
-                    value={note}
-                    maxLength={NOTE_LIMIT}
-                    onChange={event => setNote(event.target.value)}
-                    placeholder="Укажите размер или пожелания по доставке"
-                  />
-                  <span className="shop-hint">{note.length}/{NOTE_LIMIT}</span>
-                </label>
-                {shopOrderError && <div className="shop-error">{shopOrderError}</div>}
-                {orderSuccess && <div className="shop-success">{orderSuccess}</div>}
-                <div className="shop-total-row">
-                  Итого: {formatPrice(cartTotal)}
-                </div>
-                <div className="shop-cart-buttons">
-                  <button className="shop-clear" onClick={clearCart} disabled={!cartDetails.length}>
-                    Очистить
-                  </button>
-                  <button
-                    className="shop-primary"
-                    onClick={handleSubmitOrder}
-                    disabled={!cartDetails.length || shopOrderSubmitting}
-                  >
-                    {shopOrderSubmitting ? 'Отправляем...' : 'Оформить заказ'}
-                  </button>
-                </div>
+              {shopOrderError && <div className="shop-error">{shopOrderError}</div>}
+              {orderSuccess && <div className="shop-success">{orderSuccess}</div>}
+              <div className="shop-total-row">
+                Итого: {formatPrice(cartTotal)}
+              </div>
+              <div className="shop-cart-buttons">
+                <button className="shop-clear" onClick={clearCart} disabled={!cartDetails.length}>
+                  Очистить
+                </button>
+                <button
+                  className="shop-primary"
+                  onClick={handleSubmitOrder}
+                  disabled={!cartDetails.length || shopOrderSubmitting}
+                >
+                  {shopOrderSubmitting ? 'Отправляем...' : 'Оформить заказ'}
+                </button>
               </div>
             </>
           )}

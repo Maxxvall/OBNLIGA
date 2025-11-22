@@ -25,7 +25,6 @@ type ItemFormState = {
   stockQuantity: string
   maxPerOrder: string
   sortOrder: string
-  slug: string
   isActive: boolean
   imagePayload?: AdminShopImagePayload | null
   imageChanged: boolean
@@ -48,7 +47,6 @@ const DEFAULT_ITEM_FORM = (): ItemFormState => ({
   stockQuantity: '',
   maxPerOrder: '3',
   sortOrder: '100',
-  slug: '',
   isActive: true,
   imagePayload: undefined,
   imageChanged: false,
@@ -62,15 +60,53 @@ const formatPriceInput = (priceCents: number): string => {
 
 const formatMoney = (cents: number, currency: string): string => {
   try {
-    return new Intl.NumberFormat('ru-RU', {
+    const value = cents / 100
+    const options: Intl.NumberFormatOptions = {
       style: 'currency',
       currency,
-      maximumFractionDigits: 2,
-    }).format(cents / 100)
+    }
+    // if whole rubles (no kopeks) — show without decimals
+    if (cents % 100 === 0) {
+      options.maximumFractionDigits = 0
+    } else {
+      options.maximumFractionDigits = 2
+    }
+    return new Intl.NumberFormat('ru-RU', options).format(value)
   } catch (err) {
-    return `${(cents / 100).toFixed(2)} ${currency}`
+    return cents % 100 === 0 ? `${cents / 100} ${currency}` : `${(cents / 100).toFixed(2)} ${currency}`
   }
 }
+
+// Inline SVG icons
+const IconEdit = ({ width = 16, height = 16 }: { width?: number; height?: number }) => (
+  <svg width={width} height={height} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+const IconTrash = ({ width = 14, height = 14 }: { width?: number; height?: number }) => (
+  <svg width={width} height={height} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M3 6h18" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    <path d="M8 6v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+const IconEye = ({ width = 16, height = 16 }: { width?: number; height?: number }) => (
+  <svg width={width} height={height} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.2" />
+  </svg>
+)
+
+const IconEyeOff = ({ width = 16, height = 16 }: { width?: number; height?: number }) => (
+  <svg width={width} height={height} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-6 0-10-7-10-7a20.1 20.1 0 0 1 5-4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M1 1l22 22" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
 
 const readImageFile = (file: File): Promise<{ preview: string; payload: AdminShopImagePayload }> => {
   return new Promise((resolve, reject) => {
@@ -207,9 +243,8 @@ export const ShopTab = () => {
       return
     }
     try {
-      const { preview, payload } = await readImageFile(file)
+      const { payload } = await readImageFile(file)
       setItemForm(state => ({ ...state, imagePayload: payload, imageChanged: true }))
-      setItemImagePreview(preview)
       setFormFeedback(null)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Не удалось обработать изображение.'
@@ -220,7 +255,7 @@ export const ShopTab = () => {
   }
 
   const handleClearImage = () => {
-    setItemForm(state => ({ ...state, imagePayload: null, imageChanged: true }))
+    setItemForm(state => ({ ...state, imagePayload: null, imageChanged: true, imageUrl: '' }))
     setItemImagePreview(null)
   }
 
@@ -234,13 +269,13 @@ export const ShopTab = () => {
       stockQuantity: item.stockQuantity === null || item.stockQuantity === undefined ? '' : String(item.stockQuantity),
       maxPerOrder: String(item.maxPerOrder),
       sortOrder: String(item.sortOrder),
-      slug: item.slug ?? '',
       isActive: item.isActive,
       imagePayload: undefined,
       imageChanged: false,
       imageUrl: item.image?.url ?? '',
     })
-    setItemImagePreview(item.image?.url ?? (item.image?.base64 ? `data:${item.image.mimeType};base64,${item.image.base64}` : null))
+    // do not preload/preview full image here — admin uses image path only
+    setItemImagePreview(null)
     setFormFeedback(null)
   }
 
@@ -294,7 +329,6 @@ export const ShopTab = () => {
       stockQuantity: stockQuantity ?? null,
       maxPerOrder,
       sortOrder,
-      slug: itemForm.slug.trim() || undefined,
       isActive: itemForm.isActive,
       imageUrl: itemForm.imageUrl.trim() || undefined,
     }
@@ -495,41 +529,30 @@ export const ShopTab = () => {
 
   return (
     <div className="tab-sections">
-      <header className="tab-header shop-hero">
+      <header className="tab-header">
         <div>
-          <p className="shop-hero-pretitle">Магазин лиги</p>
-          <h3>Вкладка магазина</h3>
-          <p className="shop-hero-note">
-            Управляйте каталогом и оперативно обрабатывайте заказы пользователей в одном стиле.
+          <h3>Магазин лиги</h3>
+          <p>
+            Управляйте каталогом и оперативно обрабатывайте заказы пользователей.
           </p>
-          <div className="shop-hero-metrics">
-            <span className="status-chip success">Всего товаров: {items.length}</span>
-            <span className="status-chip success">Активных: {activeItemsCount}</span>
-            <span className={`status-chip ${pendingOrdersCount ? 'pending' : 'muted'}`}>
-              {pendingOrdersCount ? `${pendingOrdersCount} заказа ждут` : 'Новых заказов нет'}
-            </span>
-          </div>
         </div>
-        <div className="tab-header-actions shop-header-actions">
+        <div className="tab-header-actions">
           <button type="button" className="button-ghost" onClick={handleItemsRefresh} disabled={loadingItems}>
-            {loadingItems ? 'Обновляем каталог…' : 'Обновить каталог'}
+            {loadingItems ? 'Обновляем…' : 'Обновить каталог'}
           </button>
           <button type="button" className="button-ghost" onClick={handleOrdersRefresh} disabled={loadingOrders}>
-            {loadingOrders ? 'Обновляем заказы…' : 'Обновить заказы'}
+            {loadingOrders ? 'Обновляем…' : 'Обновить заказы'}
           </button>
         </div>
       </header>
 
-      <section className="card shop-form-card">
-        <header>
-          <h4>{editingItemId ? 'Редактирование товара' : 'Новый товар'}</h4>
-          <p>
-            {editingItemId
-              ? 'Измените поля и сохраните — данные обновятся на клиенте моментально.'
-              : 'Заполните карточку товара и сохраните её в каталоге.'}
-          </p>
-        </header>
-        {formFeedback ? (
+      <div className="card-grid-2col">
+        <article className="card">
+          <header>
+            <h4>Новый товар</h4>
+            <p>{editingItemId ? 'Отредактируйте товар и сохраните.' : 'Заполните карточку и добавьте в каталог.'}</p>
+          </header>
+          {formFeedback ? (
           <div className={`inline-feedback ${formFeedback.kind}`}>
             <div>
               <strong>{formFeedback.message}</strong>
@@ -540,63 +563,59 @@ export const ShopTab = () => {
             </button>
           </div>
         ) : null}
-        <form className="shop-form" onSubmit={handleItemSubmit}>
-          <div className="shop-form-grid">
-            <label>
-              Название
-              <input value={itemForm.title} onChange={handleItemField('title')} required maxLength={80} placeholder="Например, Фирменный шарф" />
-            </label>
-            <label>
-              Подзаголовок
-              <input value={itemForm.subtitle} onChange={handleItemField('subtitle')} maxLength={160} placeholder="В 1-2 словах" />
-            </label>
-            <label>
-              Цена
-              <input value={itemForm.price} onChange={handleItemField('price')} inputMode="decimal" placeholder="499 или 499.99" />
-            </label>
-            <label>
-              Остаток
-              <input value={itemForm.stockQuantity} onChange={handleItemField('stockQuantity')} inputMode="numeric" placeholder="Пусто = безлимит" />
-            </label>
-            <label>
-              Лимит на заказ
-              <input value={itemForm.maxPerOrder} onChange={handleItemField('maxPerOrder')} inputMode="numeric" />
-            </label>
-            <label>
-              Порядок сортировки
-              <input value={itemForm.sortOrder} onChange={handleItemField('sortOrder')} inputMode="numeric" />
-            </label>
-            <label>
-              Слаг (опционально)
-              <input value={itemForm.slug} onChange={handleItemField('slug')} maxLength={64} placeholder="fan-sharf" />
-            </label>
-            <label>
-              Ссылка на изображение (опционально)
-              <input value={itemForm.imageUrl} onChange={handleItemField('imageUrl')} placeholder="https://" />
-            </label>
-          </div>
+        <form className="stacked" onSubmit={handleItemSubmit}>
+          <label>
+            Название
+            <input value={itemForm.title} onChange={handleItemField('title')} required maxLength={80} placeholder="Например, Фирменный шарф" />
+          </label>
+          <label>
+            Подзаголовок
+            <input value={itemForm.subtitle} onChange={handleItemField('subtitle')} maxLength={160} placeholder="В 1-2 словах" />
+          </label>
+          <label>
+            Цена
+            <input value={itemForm.price} onChange={handleItemField('price')} inputMode="decimal" placeholder="499 или 499.99" />
+          </label>
+          <label>
+            Остаток
+            <input value={itemForm.stockQuantity} onChange={handleItemField('stockQuantity')} inputMode="numeric" placeholder="Пусто = безлимит" />
+          </label>
+          <label>
+            Лимит на заказ
+            <input value={itemForm.maxPerOrder} onChange={handleItemField('maxPerOrder')} inputMode="numeric" />
+          </label>
+          <label>
+            Порядок сортировки
+            <input value={itemForm.sortOrder} onChange={handleItemField('sortOrder')} inputMode="numeric" />
+          </label>
+          <label>
+            Ссылка на изображение (опционально)
+            <input value={itemForm.imageUrl} onChange={handleItemField('imageUrl')} placeholder="https://" />
+          </label>
           <label>
             Описание
-            <textarea rows={5} value={itemForm.description} onChange={handleItemField('description')} placeholder="Подробности о товаре" />
+            <textarea rows={4} value={itemForm.description} onChange={handleItemField('description')} placeholder="Подробности о товаре" />
           </label>
-          <label className="checkbox-inline">
+          <label className="checkbox">
             <input type="checkbox" checked={itemForm.isActive} onChange={event => setItemForm(state => ({ ...state, isActive: event.target.checked }))} />
             <span>Показывать в витрине</span>
           </label>
           <div className="shop-image-upload">
             <div>
               <label className="button-secondary" htmlFor="shop-image-input">
-                {itemImagePreview ? 'Заменить изображение' : 'Загрузить изображение'}
+                Выбрать файл
               </label>
               <input id="shop-image-input" type="file" accept="image/png,image/jpeg,image/webp" onChange={handleItemImage} />
-              {itemImagePreview ? (
+              {(itemForm.imageUrl || itemForm.imagePayload) ? (
                 <button type="button" className="button-ghost" onClick={handleClearImage}>
                   Сбросить изображение
                 </button>
               ) : null}
             </div>
-            {itemImagePreview ? (
-              <img src={itemImagePreview} alt="Превью товара" className="shop-image-preview" />
+            {itemForm.imageUrl ? (
+              <div className="shop-image-path">
+                <a href={itemForm.imageUrl} target="_blank" rel="noreferrer">Открыть изображение</a>
+              </div>
             ) : null}
           </div>
           <div className="form-actions">
@@ -610,77 +629,101 @@ export const ShopTab = () => {
             ) : null}
           </div>
         </form>
-      </section>
+      </article>
 
-      <section className="card">
+      <article className="card">
         <header>
           <h4>Каталог</h4>
           <p>Быстрые действия: активируйте, редактируйте или удаляйте товары.</p>
         </header>
+        <div className="shop-metrics">
+          <span className="status-chip success">Всего: {items.length}</span>
+          <span className="status-chip success">Активных: {activeItemsCount}</span>
+          <span className={`status-chip ${pendingOrdersCount ? 'pending' : 'muted'}`}>
+            {pendingOrdersCount ? `${pendingOrdersCount} ожидают` : 'Нет новых'}
+          </span>
+        </div>
         {items.length ? (
-          <div className="shop-items-grid">
-            {items.map(item => (
-              <article key={item.id} className="shop-item-card">
-                <div className="shop-item-header">
-                  <div>
-                    <h5>{item.title}</h5>
-                    {item.subtitle ? <span className="shop-item-subtitle">{item.subtitle}</span> : null}
-                  </div>
-                  <span className={`status-chip ${item.isActive ? 'success' : 'muted'}`}>
-                    {item.isActive ? 'Витрина' : 'Скрыт'}
-                  </span>
-                </div>
-                <div className="shop-item-body">
-                  <div className="shop-item-price">{formatMoney(item.priceCents, item.currencyCode)}</div>
-                  <div className="shop-item-meta">
-                    <span>Лимит: {item.maxPerOrder}</span>
-                    <span>Сортировка: {item.sortOrder}</span>
-                  </div>
-                  <div className="shop-item-stock">
-                    Остаток:{' '}
-                    {item.stockQuantity === null || item.stockQuantity === undefined
-                      ? 'безлимит'
-                      : item.stockQuantity}
-                  </div>
-                </div>
-                <div className="shop-item-actions">
-                  <button type="button" className="button-secondary" onClick={() => pickItemForEdit(item)}>
-                    Редактировать
-                  </button>
-                  <button
-                    type="button"
-                    className="button-secondary"
-                    onClick={() => handleToggleItemStatus(item)}
-                    disabled={itemStatusPendingId === item.id}
-                  >
-                    {itemStatusPendingId === item.id
-                      ? 'Сохраняем…'
-                      : item.isActive
-                        ? 'Скрыть'
-                        : 'Показать'}
-                  </button>
-                  <button
-                    type="button"
-                    className="button-danger"
-                    onClick={() => handleDeleteItem(item)}
-                    disabled={itemDeletePendingId === item.id}
-                  >
-                    {itemDeletePendingId === item.id ? 'Удаляем…' : 'Удалить'}
-                  </button>
-                </div>
-              </article>
-            ))}
+          <div className="shop-items-table-wrapper">
+            <table className="shop-items-table">
+              <thead>
+                <tr>
+                  <th scope="col">Товар</th>
+                  <th scope="col">Статус</th>
+                  <th scope="col">Цена</th>
+                  <th scope="col">Лимит / сортировка</th>
+                  <th scope="col">Остаток</th>
+                  <th scope="col">Действия</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map(item => (
+                  <tr key={item.id}>
+                    <td>
+                      <strong>{item.title}</strong>
+                    </td>
+                    <td>
+                      <span className={`status-chip ${item.isActive ? 'success' : 'muted'}`} title={item.isActive ? 'Показывается в витрине' : 'Скрыт'}>
+                        {item.isActive ? <IconEye /> : <IconEyeOff />}
+                      </span>
+                    </td>
+                    <td>{formatMoney(item.priceCents, item.currencyCode)}</td>
+                    <td>
+                      <span>{(item.maxPerOrder ?? 0) + '/' + (item.sortOrder ?? 0)}</span>
+                    </td>
+                    <td>
+                      {item.stockQuantity === null || item.stockQuantity === undefined
+                        ? 'безлимит'
+                        : item.stockQuantity}
+                    </td>
+                    <td>
+                      <div className="shop-item-actions">
+                        <button
+                          type="button"
+                          className="icon-button"
+                          aria-label="Редактировать"
+                          title="Редактировать"
+                          onClick={() => pickItemForEdit(item)}
+                        >
+                          <IconEdit />
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-button"
+                          aria-label={item.isActive ? 'Скрыть' : 'Показать'}
+                          title={item.isActive ? 'Скрыть товар' : 'Показать товар'}
+                          onClick={() => handleToggleItemStatus(item)}
+                          disabled={itemStatusPendingId === item.id}
+                        >
+                          {itemStatusPendingId === item.id ? '…' : item.isActive ? <IconEyeOff /> : <IconEye />}
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-button danger"
+                          aria-label="Удалить"
+                          title="Удалить"
+                          onClick={() => handleDeleteItem(item)}
+                          disabled={itemDeletePendingId === item.id}
+                        >
+                          {itemDeletePendingId === item.id ? '…' : <IconTrash />}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : (
           <p>Каталог пока пуст.</p>
         )}
-      </section>
+      </article>
 
-      <section className="card">
+      <article className="card card-fullwidth">
         <header className="shop-orders-header">
           <div>
             <h4>Заказы пользователей</h4>
-            <p>Обрабатывайте новые заказы, оставляйте комментарии и подтверждайте оплату.</p>
+            <p>Обрабатывайте заказы, оставляйте комментарии и подтверждайте оплату.</p>
           </div>
           <form className="shop-order-filters" onSubmit={handleSearchSubmit}>
             <select value={shopOrderStatusFilter} onChange={handleStatusFilterChange}>
@@ -798,9 +841,10 @@ export const ShopTab = () => {
             ) : null}
           </div>
         ) : (
-          <p className="shop-orders-empty">Заказы не найдены.</p>
+          <p>Заказов не найдено.</p>
         )}
-      </section>
+      </article>
+      </div>
     </div>
   )
 }

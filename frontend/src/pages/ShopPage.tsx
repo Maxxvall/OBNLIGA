@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState, useRef } from 'react'
 import { useAppStore } from '../store/appStore'
 import '../shop.css'
 
@@ -103,6 +103,17 @@ export default function ShopPage() {
     }, 0)
   }, [cartDetails])
 
+  const [limitNotice, setLimitNotice] = useState<string | null>(null)
+  const limitTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (limitTimerRef.current) {
+        window.clearTimeout(limitTimerRef.current)
+      }
+    }
+  }, [])
+
   const handleSubmitOrder = async () => {
     setOrderSuccess(null)
     const result = await submitShopOrder({ note })
@@ -139,27 +150,32 @@ export default function ShopPage() {
           const inStock = item.isActive && (item.stockQuantity === null || (item.stockQuantity ?? 0) > 0)
           const disabled = !inStock || limit === 0
           const current = shopCart[item.id]?.quantity ?? 0
+          const imageUrl = item.image?.url
+          const imageBase64 = item.image?.base64
+          const imageMime = item.image?.mimeType ?? 'image/png'
+          const heroImageSrc = imageUrl ?? (imageBase64 ? `data:${imageMime};base64,${imageBase64}` : undefined)
           return (
             <article key={item.id} className="shop-card">
-              {item.image?.url && (
-                <img src={item.image.url} alt={item.title} className="shop-card-image" loading="lazy" />
-              )}
+              <div className="shop-card-visual">
+                {heroImageSrc && (
+                  <img src={heroImageSrc} alt={item.title} className="shop-card-image" loading="lazy" />
+                )}
+                {!item.isActive ? (
+                  <span className="shop-chip warning shop-chip-overlay">Скрыто</span>
+                ) : null}
+                {item.stockQuantity !== null ? (
+                  <span className="shop-stock-overlay">В наличии: {item.stockQuantity}</span>
+                ) : (
+                  <span className="shop-stock-overlay">Под заказ</span>
+                )}
+              </div>
+              <h3 className="shop-card-title">{item.title}</h3>
               <div className="shop-card-body">
-                <div className="shop-card-header">
-                  <span className="shop-chip">#{item.sortOrder.toString().padStart(2, '0')}</span>
-                  {!item.isActive && <span className="shop-chip warning">Скрыто</span>}
-                </div>
-                <h3>{item.title}</h3>
-                {item.subtitle && <p className="shop-subtitle">{item.subtitle}</p>}
+                {/* subtitle intentionally hidden per design request */}
                 {item.description && <p className="shop-description">{item.description}</p>}
                 <div className="shop-card-footer">
                   <div>
                     <div className="shop-price">{formatPrice(item.priceCents)}</div>
-                    {item.stockQuantity !== null ? (
-                      <span className="shop-stock">В наличии: {item.stockQuantity}</span>
-                    ) : (
-                      <span className="shop-stock">Под заказ</span>
-                    )}
                   </div>
                   <button
                     className="shop-primary"
@@ -245,6 +261,7 @@ export default function ShopPage() {
     return (
       <div className="shop-cart-overlay" role="dialog" aria-modal>
         <div className="shop-cart-modal">
+          {limitNotice ? <div className="shop-limit-notice">{limitNotice}</div> : null}
           <header>
             <div>
               <h3>Корзина</h3>
@@ -266,7 +283,7 @@ export default function ShopPage() {
                   })
                   return (
                     <div key={entry.itemId} className="shop-cart-item">
-                      <div>
+                      <div className="shop-cart-item-left">
                         <strong>{item?.title ?? `ID ${entry.itemId}`}</strong>
                         {item && (
                           <span className="shop-price light">
@@ -285,14 +302,24 @@ export default function ShopPage() {
                         <span>{entry.quantity}</span>
                         <button
                           className="shop-icon"
-                          onClick={() => updateCartItem(entry.itemId, entry.quantity + 1)}
-                          disabled={limit > 0 && entry.quantity >= limit}
+                          onClick={() => {
+                            if (limit > 0 && entry.quantity >= limit) {
+                              setLimitNotice(`На этот товар установлен лимит ${limit} шт. в один заказ`)
+                              if (limitTimerRef.current) {
+                                window.clearTimeout(limitTimerRef.current)
+                              }
+                              limitTimerRef.current = window.setTimeout(() => setLimitNotice(null), 5000)
+                              return
+                            }
+                            updateCartItem(entry.itemId, entry.quantity + 1)
+                          }}
+                          disabled={limit === 0}
                           aria-label="Увеличить количество"
                         >
                           +
                         </button>
                         <button
-                          className="shop-secondary"
+                          className="shop-delete"
                           onClick={() => removeFromCart(entry.itemId)}
                         >
                           Удалить
@@ -337,7 +364,7 @@ export default function ShopPage() {
                   Итого: {formatPrice(cartTotal)}
                 </div>
                 <div className="shop-cart-buttons">
-                  <button className="shop-secondary" onClick={clearCart} disabled={!cartDetails.length}>
+                  <button className="shop-clear" onClick={clearCart} disabled={!cartDetails.length}>
                     Очистить
                   </button>
                   <button
@@ -359,36 +386,35 @@ export default function ShopPage() {
   return (
     <section className="shop-page">
       <header className="shop-hero">
-        <div>
-          <p className="shop-pretitle">Магазин лиги</p>
-          <h2>Атрибутика, абонементы и спецпредложения</h2>
-          <p>Выбирайте товары, оформляйте заказ и ожидайте подтверждение от администраторов.</p>
+        <div className="shop-hero-content">
+          <div>
+            <h2>МАГАЗИН</h2>
+            <p className="shop-hero-subtitle">Сувениры и мерч лиги. Доставка обсуждается с менеджером после заказа.</p>
+          </div>
+          <div className="shop-tabs">
+            <button
+              className={activeTab === 'catalog' ? 'active' : ''}
+              onClick={() => setActiveTab('catalog')}
+            >
+              Каталог
+            </button>
+            <button className={activeTab === 'history' ? 'active' : ''} onClick={() => setActiveTab('history')}>
+              История заказов
+            </button>
+          </div>
         </div>
-        <button className="shop-primary ghost" onClick={() => fetchShopItems({ force: true })}>
-          Обновить каталог
-        </button>
       </header>
-
-      <div className="shop-tabs">
-        <button
-          className={activeTab === 'catalog' ? 'active' : ''}
-          onClick={() => setActiveTab('catalog')}
-        >
-          Каталог
-        </button>
-        <button className={activeTab === 'history' ? 'active' : ''} onClick={() => setActiveTab('history')}>
-          История заказов
-        </button>
-      </div>
 
       <div className="shop-content">
         {activeTab === 'catalog' ? renderCatalog() : renderHistory()}
       </div>
 
-      <button className="shop-cart-fab" onClick={() => setCartOpen(true)}>
-        <span>Корзина</span>
-        <strong>{cartCount}</strong>
-      </button>
+      {cartCount > 0 ? (
+        <button className="shop-cart-fab" onClick={() => setCartOpen(true)}>
+          <span>Корзина</span>
+          <strong>{cartCount}</strong>
+        </button>
+      ) : null}
 
       {renderCart()}
     </section>

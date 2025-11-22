@@ -218,8 +218,8 @@ export default function ShopPage() {
           <article key={order.id} className="shop-history-card">
             <header>
               <div>
-                <strong>{order.orderNumber}</strong>
-                <span>от {new Date(order.createdAt).toLocaleDateString('ru-RU')}</span>
+                <strong>{order.orderNumber}</strong>{' '}
+                <span>от {new Date(order.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
               </div>
               <span className={`shop-status ${order.status.toLowerCase()}`}>
                 {order.status === 'PENDING' && 'В обработке'}
@@ -228,18 +228,20 @@ export default function ShopPage() {
               </span>
             </header>
             <div className="shop-history-content">
-              <ul>
+              <ul className="shop-order-items">
                 {order.items.map(item => (
                   <li key={`${order.id}-${item.itemId}`}>
-                    <span>{item.title}</span>
-                    <span>
-                      {item.quantity} × {formatPrice(item.priceCents)}
-                    </span>
+                    <div>
+                      <strong>{item.title}</strong>
+                      {item.subtitle ? <span className="shop-order-item-subtitle">{item.subtitle}</span> : null}
+                    </div>
+                    <span className="shop-order-item-qty">× {item.quantity}</span>
+                    <span className="shop-order-item-price">{formatPrice(item.priceCents)}</span>
                   </li>
                 ))}
               </ul>
               <div className="shop-total-row">
-                Итого: {formatPrice(order.totalCents)}
+                Итого: <strong>{formatPrice(order.totalCents)}</strong>
               </div>
               {order.customerNote && <p className="shop-note">Комментарий: {order.customerNote}</p>}
             </div>
@@ -353,7 +355,7 @@ export default function ShopPage() {
       <header className="shop-hero">
         <div className="shop-hero-content">
           <div>
-            <h2>МАГАЗИН</h2>
+            <h2>Магазин</h2>
             <p className="shop-hero-subtitle">Сувениры и мерч лиги. Доставка обсуждается с менеджером после заказа.</p>
           </div>
           <div className="shop-tabs">

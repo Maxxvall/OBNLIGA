@@ -40,19 +40,31 @@
 }
 
 .shop-tabs button {
-  padding: 8px 18px;
-  border-radius: 999px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  font-weight: 600;
-  letter-spacing: 0.6px;
   cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(190, 215, 255, 0.74);
+  padding: 10px 20px;
+  border-radius: 10px;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.shop-tabs button:hover,
+.shop-tabs button:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(0, 240, 255, 0.36);
+  outline: none;
 }
 
 .shop-tabs button.active {
-  background: linear-gradient(135deg, rgba(0, 240, 255, 0.22), rgba(120, 31, 143, 0.35));
-  color: white;
+  background: linear-gradient(135deg, rgba(247, 154, 255, 0.48), rgba(0, 240, 255, 0.62));
+  color: rgba(12, 24, 38, 0.92);
+  border-color: rgba(0, 240, 255, 0.48);
+  box-shadow: 0 12px 26px rgba(0, 240, 255, 0.28);
 }
 
 .shop-content {
@@ -188,7 +200,7 @@
 }
 .shop-hero h2 {
   margin: 0;
-  font-size: 26px;
+  font-size: 22px;
   font-weight: 700;
   letter-spacing: 0.04em;
 }

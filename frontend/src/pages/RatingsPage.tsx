@@ -283,23 +283,7 @@ export function RatingsPage() {
             ))}
           </div>
           <div className="ratings-meta">
-            {scope === 'current' ? (
-              <>
-                {formattedCurrentWindowStart && formattedCurrentWindowEnd ? (
-                  <span className="ratings-meta-line">
-                    Срез от {formattedCurrentWindowStart} до {formattedCurrentWindowEnd}
-                  </span>
-                ) : null}
-              </>
-            ) : (
-              <>
-                {formattedYearlyWindowStart && formattedYearlyWindowEnd ? (
-                  <span className="ratings-meta-line">
-                    Годовой рейтинг от {formattedYearlyWindowStart} до {formattedYearlyWindowEnd}
-                  </span>
-                ) : null}
-              </>
-            )}
+            {/* intentionally left blank: hide window range text */}
           </div>
         </div>
         {activeState.error ? <div className="ratings-error">{activeState.error}</div> : null}

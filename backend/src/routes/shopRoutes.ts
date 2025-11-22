@@ -26,14 +26,7 @@ const loadPublicShopItems = async (): Promise<ShopItemView[]> => {
   return rows.map(serializeShopItemView)
 }
 
-const generateOrderNumber = (): string => {
-  const date = new Date()
-  const stamp = `${date.getUTCFullYear()}${String(date.getUTCMonth() + 1).padStart(2, '0')}${String(
-    date.getUTCDate()
-  ).padStart(2, '0')}`
-  const randomPart = randomBytes(3).toString('hex').toUpperCase()
-  return `ORD-${stamp}-${randomPart}`
-}
+
 
 const fetchOrderHistory = async (telegramId: bigint): Promise<ShopOrderView[]> => {
   const rows = await prisma.shopOrder.findMany({
@@ -227,13 +220,12 @@ export default async function shopRoutes(server: FastifyInstance) {
       return reply.status(400).send({ ok: false, error: 'shop_contact_required' })
     }
 
-    const orderNumber = generateOrderNumber()
-
     try {
       const created = await prisma.$transaction(async tx => {
+        // create order with temporary orderNumber, we'll set human-friendly number after create
         const order = await tx.shopOrder.create({
           data: {
-            orderNumber,
+            orderNumber: '',
             userId: userRecord?.id ?? null,
             telegramId: telegramId ?? null,
             username: normalizedUsername,
@@ -275,7 +267,14 @@ export default async function shopRoutes(server: FastifyInstance) {
           }
         }
 
-        return order
+        // set human-friendly order number like "Заказ #<id>"
+        const updatedOrder = await tx.shopOrder.update({
+          where: { id: order.id },
+          data: { orderNumber: `Заказ #${order.id}` },
+          include: { items: true },
+        })
+
+        return updatedOrder
       })
 
       const payload = serializeShopOrderView(created)

@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
+import React, { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
 import {
   adminCreateShopItem,
   adminDeleteShopItem,
@@ -191,6 +191,7 @@ export const ShopTab = () => {
   const [orderFeedback, setOrderFeedback] = useState<Record<string, FeedbackState>>({})
   const [orderSearchDraft, setOrderSearchDraft] = useState(shopOrderSearch ?? '')
   const [orderActionPending, setOrderActionPending] = useState<Record<string, boolean>>({})
+  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null)
 
   const items = useMemo(() => filterItems(data.shopItems), [data.shopItems])
   const orders = useMemo(() => sortOrders(data.shopOrders), [data.shopOrders])
@@ -514,15 +515,15 @@ export const ShopTab = () => {
     if (!order.user) {
       return 'Анонимный пользователь'
     }
-    const parts = []
+    const parts: string[] = []
     if (order.user.firstName) {
       parts.push(order.user.firstName)
     }
-    if (order.user.username) {
-      parts.push(`@${order.user.username}`)
-    }
-    if (order.user.telegramId) {
-      parts.push(`#${order.user.telegramId}`)
+    // username may contain leading @ signs in some records — normalize and don't show @
+    const rawUsername = order.user.username ? String(order.user.username) : ''
+    const username = rawUsername.replace(/^@+/, '')
+    if (username) {
+      parts.push(username)
     }
     return parts.join(' • ')
   }
@@ -754,95 +755,141 @@ export const ShopTab = () => {
           </form>
         </header>
         {orders.length ? (
-          <div className="shop-orders-list">
-            {orders.map(order => {
-              const pending = Boolean(orderActionPending[order.id])
-              const feedback = orderFeedback[order.id]
-              return (
-                <article key={order.id} className="shop-order-card">
-                  <div className="shop-order-header">
-                    <div>
-                      <strong>№ {order.orderNumber}</strong>
-                      <span>{formatDateTime(order.createdAt)}</span>
-                    </div>
-                    <span className={`status-chip ${order.status.toLowerCase()}`}>
-                      {ORDER_STATUS_LABELS[order.status]}
-                    </span>
-                  </div>
-                  <div className="shop-order-user">{renderOrderUser(order)}</div>
-                  {renderOrderItems(order)}
-                  <div className="shop-order-total">
-                    Итого: <strong>{formatMoney(order.totalCents, order.currencyCode)}</strong>
-                  </div>
-                  <label className="shop-order-note">
-                    Комментарий администратора
-                    <textarea
-                      rows={3}
-                      value={orderNotes[order.id] ?? ''}
-                      onChange={event =>
-                        setOrderNotes(state => ({ ...state, [order.id]: event.target.value }))
-                      }
-                      placeholder="Например, выдан на матче 5 ноября"
-                    />
-                  </label>
-                  {feedback ? (
-                    <div className={`inline-feedback ${feedback.kind}`}>
-                      <div>
-                        <strong>{feedback.message}</strong>
-                        {feedback.meta ? <span className="feedback-meta">{feedback.meta}</span> : null}
-                      </div>
-                      <button type="button" className="feedback-close" onClick={() => setOrderFeedbackFor(order.id, null)}>
-                        ×
-                      </button>
-                    </div>
-                  ) : null}
-                  <div className="shop-order-actions">
-                    <button
-                      type="button"
-                      className="button-secondary"
-                      onClick={() => handleOrderNoteSave(order)}
-                      disabled={pending}
-                    >
-                      {pending ? 'Сохраняем…' : 'Сохранить комментарий'}
-                    </button>
-                    {order.status === 'PENDING' ? (
-                      <>
-                        <button
-                          type="button"
-                          className="button-primary"
-                          onClick={() => handleOrderStatusUpdate(order, 'CONFIRMED')}
-                          disabled={pending}
-                        >
-                          {pending ? 'Обрабатываем…' : 'Подтвердить'}
-                        </button>
-                        <button
-                          type="button"
-                          className="button-danger"
-                          onClick={() => handleOrderStatusUpdate(order, 'CANCELLED')}
-                          disabled={pending}
-                        >
-                          Отменить
-                        </button>
-                      </>
-                    ) : null}
-                  </div>
-                </article>
-              )
-            })}
-            {shopOrdersHasMore ? (
-              <button
-                type="button"
-                className="button-secondary"
-                onClick={() => void loadMoreShopOrders()}
-                disabled={loadingOrders}
-              >
-                {loadingOrders ? 'Загружаем…' : 'Загрузить ещё'}
-              </button>
-            ) : null}
+          <div className="shop-orders-table-wrapper">
+            <table className="shop-orders-table">
+              <thead>
+                <tr>
+                  <th scope="col">Заказ</th>
+                  <th scope="col">Пользователь</th>
+                  <th scope="col">Сумма</th>
+                  <th scope="col">Статус</th>
+                  <th scope="col">Действия</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map(order => {
+                  const pending = Boolean(orderActionPending[order.id])
+                  const feedback = orderFeedback[order.id]
+                  const isExpanded = expandedOrderId === order.id
+                  return (
+                    <React.Fragment key={order.id}>
+                      <tr onClick={() => setExpandedOrderId(isExpanded ? null : order.id)} style={{ cursor: 'pointer' }}>
+                        <td>
+                          <strong>{order.orderNumber}</strong>
+                          <br />
+                          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                            {formatDateTime(order.createdAt)}
+                          </span>
+                        </td>
+                        <td>
+                          <span style={{ fontSize: '14px' }}>{renderOrderUser(order)}</span>
+                        </td>
+                        <td>
+                          <strong>{formatMoney(order.totalCents, order.currencyCode)}</strong>
+                        </td>
+                        <td>
+                          <span className={`status-chip ${order.status.toLowerCase()}`}>
+                            {ORDER_STATUS_LABELS[order.status]}
+                          </span>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            title={isExpanded ? 'Свернуть' : 'Развернуть'}
+                            aria-label={isExpanded ? 'Свернуть' : 'Развернуть'}
+                          >
+                            {isExpanded ? '▼' : '▶'}
+                          </button>
+                        </td>
+                      </tr>
+                      {isExpanded ? (
+                        <tr style={{ background: 'rgba(0, 240, 255, 0.06)' }}>
+                          <td colSpan={5}>
+                            <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                              {renderOrderItems(order)}
+                              <label className="shop-order-note">
+                                <span style={{ fontSize: '13px', fontWeight: 600 }}>Комментарий администратора</span>
+                                <textarea
+                                  rows={3}
+                                  value={orderNotes[order.id] ?? ''}
+                                  onChange={event =>
+                                    setOrderNotes(state => ({ ...state, [order.id]: event.target.value }))
+                                  }
+                                  placeholder="Например, выдан на матче 5 ноября"
+                                />
+                              </label>
+                              {feedback ? (
+                                <div className={`inline-feedback ${feedback.kind}`}>
+                                  <div>
+                                    <strong>{feedback.message}</strong>
+                                    {feedback.meta ? (
+                                      <span className="feedback-meta">{feedback.meta}</span>
+                                    ) : null}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="feedback-close"
+                                    onClick={() => setOrderFeedbackFor(order.id, null)}
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              ) : null}
+                              <div className="shop-order-actions">
+                                <button
+                                  type="button"
+                                  className="button-secondary"
+                                  onClick={() => handleOrderNoteSave(order)}
+                                  disabled={pending}
+                                >
+                                  {pending ? 'Сохраняем…' : 'Сохранить комментарий'}
+                                </button>
+                                {order.status === 'PENDING' ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="button-primary"
+                                      onClick={() => handleOrderStatusUpdate(order, 'CONFIRMED')}
+                                      disabled={pending}
+                                    >
+                                      {pending ? 'Обрабатываем…' : 'Подтвердить'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="button-danger"
+                                      onClick={() => handleOrderStatusUpdate(order, 'CANCELLED')}
+                                      disabled={pending}
+                                    >
+                                      Отменить
+                                    </button>
+                                  </>
+                                ) : null}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </React.Fragment>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
         ) : (
-          <p>Заказов не найдено.</p>
+          <p className="shop-orders-empty">Заказов не найдено.</p>
         )}
+        {shopOrdersHasMore ? (
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => void loadMoreShopOrders()}
+            disabled={loadingOrders}
+            style={{ marginTop: '16px', width: '100%' }}
+          >
+            {loadingOrders ? 'Загружаем…' : 'Загрузить ещё'}
+          </button>
+        ) : null}
       </article>
       </div>
     </div>

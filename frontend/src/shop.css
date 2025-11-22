@@ -538,10 +538,6 @@
     overflow: hidden;
   }
 
-  .shop-card-image {
-    height: 120px;
-  }
-
   .shop-card-body {
     padding: 12px;
     gap: 10px;

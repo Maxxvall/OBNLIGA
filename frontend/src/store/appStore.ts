@@ -3050,7 +3050,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     const username = state.shopContact.username?.trim()
     const firstName = state.shopContact.firstName?.trim()
-    if (!username) {
+    // allow submitting if we have a session token (Telegram auth) even when contact not present
+    const hasSessionToken = typeof window !== 'undefined' && !!window.localStorage.getItem('session')
+    if (!username && !hasSessionToken) {
       set({ shopOrderError: 'shop_contact_required' })
       return { ok: false, error: 'shop_contact_required' }
     }

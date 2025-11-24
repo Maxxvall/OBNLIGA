@@ -33,7 +33,7 @@ import {
   readContactFromStorage,
   writeContactToStorage,
 } from '../utils/shopCart'
-import type { StoredCart, StoredContact } from '../utils/shopCart'
+import type { StoredCart } from '../utils/shopCart'
 
 export type UITab = 'home' | 'league' | 'predictions' | 'leaderboard' | 'shop' | 'profile'
 export type LeagueSubTab = 'table' | 'schedule' | 'results' | 'stats'

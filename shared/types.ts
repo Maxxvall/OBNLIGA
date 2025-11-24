@@ -640,6 +640,60 @@ export interface UserAchievementsSummary {
 }
 
 // ============================================================
+// Daily reward system shared types
+// ============================================================
+
+export type DailyRewardDayStatus = 'claimed' | 'claimable' | 'locked' | 'cooldown'
+
+export interface DailyRewardDayView {
+  day: number
+  points: number
+  animationKey: string
+  gradient?: readonly [string, string]
+  status: DailyRewardDayStatus
+}
+
+export interface DailyRewardSummary {
+  streak: number
+  effectiveStreak: number
+  cycleProgress: number
+  cycleLength: number
+  claimedToday: boolean
+  claimAvailable: boolean
+  claimableDay: number | null
+  nextDay: number
+  pendingPoints: number
+  totalClaims: number
+  totalPointsEarned: number
+  lastClaimedAt: string | null
+  lastClaimDateKey: string | null
+  todayKey: string
+  nextResetKey: string
+  cooldownEndsAt: string
+  cooldownSeconds: number
+  timezone: string
+  missed: boolean
+  message?: string | null
+  serverTime: string
+  lastReward?: {
+    day: number
+    points: number
+    animationKey: string
+    claimedAt: string
+  } | null
+  days: DailyRewardDayView[]
+}
+
+export interface DailyRewardClaimResponse {
+  summary: DailyRewardSummary
+  awarded: {
+    day: number
+    points: number
+    animationKey: string
+  }
+}
+
+// ============================================================
 // Shop module shared types
 // ============================================================
 

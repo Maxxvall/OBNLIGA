@@ -1,6 +1,11 @@
 /* Profile page styled in the same neon glassmorphism palette as the League tab */
 .profile-container {
-  min-height: 70vh;
+  /* Сделать фон на всю высоту экрана и выровнять содержимое сверху */
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
   background: linear-gradient(150deg, #040914 0%, #091528 55%, #0c1424 100%);
   color: #e6f7ff;
 }
@@ -9,7 +14,9 @@
   position: relative;
   width: min(960px, 100%);
   margin: 0 auto;
-  padding: 64px 16px 96px;
+  /* Растянуть обёртку на всю высоту страницы и сократить верхний отступ */
+  min-height: 100vh;
+  padding: 24px 16px 96px;
   box-sizing: border-box;
   z-index: 1;
 }
@@ -17,6 +24,7 @@
 .profile-header {
   position: relative;
   margin-bottom: 28px;
+  margin-top: 0;
 }
 
 .profile-hero-card {
@@ -29,7 +37,9 @@
   border-radius: 24px;
   border: 1px solid rgba(0, 240, 255, 0.2);
   box-shadow: 0 22px 48px rgba(5, 11, 25, 0.65);
+  /* Убедиться, что карточка находится у верхнего края обёртки */
   padding: 32px 32px 28px;
+  margin-top: 0;
   overflow: hidden;
 }
 
@@ -142,6 +152,9 @@
 }
 
 .profile-status-message {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   font-size: 16px;
   font-weight: 500;
   line-height: 1.5;
@@ -166,6 +179,51 @@
   gap: 12px;
   flex-wrap: wrap;
   justify-content: center;
+}
+
+.verify-info-hide-btn {
+  padding: 6px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  background: rgba(9, 17, 32, 0.4);
+  color: rgba(214, 248, 255, 0.9);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+}
+
+.verify-info-hide-btn:hover {
+  opacity: 0.85;
+  transform: translateY(-1px);
+  border-color: rgba(0, 240, 255, 0.6);
+}
+
+.verify-info-toggle {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 240, 255, 0.4);
+  background: rgba(0, 240, 255, 0.15);
+  color: rgba(0, 240, 255, 0.9);
+  font-weight: 700;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.verify-info-toggle:hover {
+  transform: translateY(-2px);
+  background: rgba(0, 240, 255, 0.25);
+  box-shadow: 0 18px 32px rgba(0, 240, 255, 0.25);
 }
 
 .verify-button {
@@ -247,6 +305,260 @@
   pointer-events: none;
   background: radial-gradient(circle at 0% 0%, rgba(0, 240, 255, 0.18), transparent 60%);
   opacity: 0.85;
+}
+
+.daily-reward-card {
+  position: relative;
+  margin: 26px 0 14px;
+  padding: 26px 26px 30px;
+  border-radius: 24px;
+  border: 1px solid rgba(0, 240, 255, 0.2);
+  background: rgba(10, 16, 32, 0.9);
+  box-shadow:
+    0 22px 48px rgba(5, 11, 25, 0.6),
+    0 2px 16px rgba(0, 240, 255, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow: hidden;
+}
+
+.daily-reward-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 12% 16%, rgba(0, 255, 240, 0.22), transparent 60%),
+    radial-gradient(circle at 100% -10%, rgba(247, 154, 255, 0.24), transparent 65%);
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.daily-reward-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.daily-reward-card[aria-busy='true'] {
+  opacity: 0.85;
+}
+
+.daily-reward-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+}
+
+.daily-reward-title {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.daily-reward-counter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 240, 255, 0.4);
+  font-weight: 600;
+  color: #0a1524;
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.95), rgba(102, 0, 255, 0.65));
+  box-shadow: 0 10px 24px rgba(0, 240, 255, 0.24);
+}
+
+.daily-reward-message {
+  flex: 1;
+  min-width: 220px;
+  color: rgba(224, 250, 255, 0.9);
+  font-size: 14px;
+}
+
+.daily-reward-track {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
+  gap: 14px;
+  width: 100%;
+}
+
+.daily-reward-track.skeleton {
+  min-height: 96px;
+  border-radius: 18px;
+  background: linear-gradient(120deg, rgba(12, 20, 36, 0.9), rgba(17, 34, 56, 0.7), rgba(12, 20, 36, 0.9));
+  background-size: 200% 100%;
+  animation: shimmer 1.8s linear infinite;
+}
+
+.daily-reward-empty {
+  padding: 20px 14px;
+  border-radius: 18px;
+  border: 1px dashed rgba(0, 240, 255, 0.35);
+  text-align: center;
+  font-size: 14px;
+  color: rgba(200, 249, 255, 0.8);
+}
+
+.daily-reward-day {
+  position: relative;
+  border-radius: 20px;
+  padding: 14px 12px 12px;
+  border: 1px solid rgba(0, 240, 255, 0.15);
+  background: rgba(7, 13, 25, 0.8);
+  text-align: center;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.daily-reward-day .day-index {
+  display: block;
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.daily-reward-day .day-points {
+  font-size: 14px;
+  color: rgba(214, 248, 255, 0.9);
+}
+
+.daily-reward-day::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border-radius: 18px;
+  border: 1px solid transparent;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.daily-reward-day.claimable,
+.daily-reward-day.claimed,
+.daily-reward-day.cooldown {
+  color: #041224;
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow:
+    0 14px 32px rgba(0, 240, 255, 0.35),
+    inset 0 0 24px rgba(255, 255, 255, 0.08);
+}
+
+.daily-reward-day.claimable .day-points,
+.daily-reward-day.claimable .day-index,
+.daily-reward-day.claimed .day-points,
+.daily-reward-day.claimed .day-index,
+.daily-reward-day.cooldown .day-points,
+.daily-reward-day.cooldown .day-index {
+  color: #041224;
+}
+
+.daily-reward-day.claimable::after,
+.daily-reward-day.claimed::after {
+  opacity: 0.4;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.daily-reward-day.claimable:hover {
+  transform: translateY(-4px) scale(1.02);
+}
+
+.daily-reward-day.cooldown {
+  opacity: 0.85;
+}
+
+.daily-reward-day.locked {
+  opacity: 0.6;
+}
+
+.daily-reward-day.animate {
+  animation: rewardPop 0.85s ease;
+}
+
+.daily-reward-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.daily-reward-button {
+  align-self: flex-start;
+  padding: 14px 32px;
+  border-radius: 999px;
+  border: none;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.95), rgba(255, 90, 255, 0.8));
+  color: #041224;
+  box-shadow:
+    0 18px 36px rgba(0, 240, 255, 0.3),
+    0 4px 12px rgba(255, 90, 255, 0.3);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.daily-reward-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.daily-reward-button:not(:disabled):hover {
+  transform: translateY(-2px);
+}
+
+.daily-reward-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  font-size: 13px;
+  color: rgba(200, 249, 255, 0.9);
+}
+
+.daily-reward-award {
+  font-weight: 600;
+  font-size: 14px;
+  color: #9fffe0;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+@keyframes rewardPop {
+  0% {
+    transform: scale(0.94);
+  }
+  55% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (max-width: 720px) {
+  .daily-reward-card {
+    padding: 22px 18px 26px;
+  }
+
+  .daily-reward-track {
+    grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+    gap: 10px;
+  }
+
+  .daily-reward-button {
+    width: 100%;
+    text-align: center;
+  }
 }
 
 .profile-card-header {

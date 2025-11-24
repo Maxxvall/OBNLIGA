@@ -134,14 +134,6 @@ export function RatingsPage() {
       }),
     []
   )
-  const dateFormatter = useMemo(
-    () =>
-      new Intl.DateTimeFormat('ru-RU', {
-        dateStyle: 'short',
-        timeStyle: 'short',
-      }),
-    []
-  )
 
   const loadLeaderboard = useCallback(
     async (targetScope: RatingScopeKey, page = 1, force = false) => {
@@ -234,18 +226,6 @@ export function RatingsPage() {
   const isLoadingInitial = activeState.loading && activeState.entries.length === 0
   const isLoadingMore = activeState.loading && activeState.entries.length > 0
   
-  const formattedCurrentWindowStart = activeState.currentWindowStart
-    ? dateFormatter.format(new Date(activeState.currentWindowStart))
-    : null
-  const formattedCurrentWindowEnd = activeState.currentWindowEnd
-    ? dateFormatter.format(new Date(activeState.currentWindowEnd))
-    : null
-  const formattedYearlyWindowStart = activeState.yearlyWindowStart
-    ? dateFormatter.format(new Date(activeState.yearlyWindowStart))
-    : null
-  const formattedYearlyWindowEnd = activeState.yearlyWindowEnd
-    ? dateFormatter.format(new Date(activeState.yearlyWindowEnd))
-    : null
   const scopePointsLabel = scope === 'current' ? 'Сезон' : 'Год'
 
   const handleScopeChange = (nextScope: RatingScopeKey) => {

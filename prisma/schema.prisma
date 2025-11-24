@@ -461,6 +461,7 @@ model AppUser {
   ratingSnapshots     RatingSnapshot[]
   pointAdjustments    AdminPointAdjustment[]
   actionLogs          AdminActionLog[]
+  dailyRewardClaims   DailyRewardClaim[]
   leaguePlayer        Person?                   @relation("AppUserLeaguePlayer", fields: [leaguePlayerId], references: [id])
   shopOrders          ShopOrder[]
 
@@ -765,6 +766,24 @@ model UserAchievement {
 
   @@id([userId, achievementTypeId])
   @@map("user_achievement")
+}
+
+model DailyRewardClaim {
+  id            BigInt   @id @default(autoincrement()) @map("daily_reward_claim_id")
+  userId        Int      @map("user_id")
+  dayNumber     Int      @map("day_number")
+  streakAfter   Int      @map("streak_after")
+  pointsAwarded Int      @map("points_awarded")
+  claimDateKey  String   @db.VarChar(16) @map("claim_date_key")
+  animationKey  String   @db.VarChar(32) @map("animation_key")
+  claimedAt     DateTime @default(now()) @map("claimed_at")
+  metadata      Json?    @map("metadata")
+
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, claimDateKey], map: "daily_reward_unique_day")
+  @@index([claimDateKey], map: "daily_reward_date_idx")
+  @@map("daily_reward_claim")
 }
 
 model News {

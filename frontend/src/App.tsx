@@ -12,6 +12,9 @@ import { MatchDetailsPage } from './pages/MatchDetailsPage'
 import { useAppStore } from './store/appStore'
 import ShopPage from './pages/ShopPage'
 
+const KNOWN_TABS = ['home', 'league', 'predictions', 'leaderboard', 'shop', 'profile'] as const
+const KNOWN_TAB_SET = new Set<string>(KNOWN_TABS)
+
 export default function App() {
   const [showSplash, setShowSplash] = useState(true)
   const [progress, setProgress] = useState(0)
@@ -66,6 +69,8 @@ export default function App() {
     )
   }
 
+  const isKnownTab = KNOWN_TAB_SET.has(currentTab)
+
   return (
     <div className="app-root main">
       <div className="content-wrapper">
@@ -80,19 +85,14 @@ export default function App() {
         {currentTab === 'leaderboard' && <RatingsPage />}
         {currentTab === 'shop' && <ShopPage />}
         {currentTab === 'profile' && <Profile />}
-        {currentTab !== 'home' &&
-          currentTab !== 'league' &&
-          currentTab !== 'predictions' &&
-          currentTab !== 'leaderboard' &&
-          currentTab !== 'shop' &&
-          currentTab !== 'profile' && (
-            <div className="placeholder">
-              <div className="placeholder-card">
-                <h2>Страница в разработке</h2>
-                <p>Эта вкладка ещё не реализована — работаем над ней.</p>
-              </div>
+        {!isKnownTab && (
+          <div className="placeholder">
+            <div className="placeholder-card">
+              <h2>Страница в разработке</h2>
+              <p>Эта вкладка ещё не реализована — работаем над ней.</p>
             </div>
-          )}
+          </div>
+        )}
       </div>
 
       {!leagueMenuOpen && (

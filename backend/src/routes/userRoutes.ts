@@ -3,6 +3,14 @@ import prisma from '../db'
 import { serializePrisma, isSerializedAppUserPayload } from '../utils/serialization'
 import { defaultCache } from '../cache'
 import { extractSessionToken, resolveSessionSubject } from '../utils/session'
+import { buildWeakEtag, matchesIfNoneMatch } from '../utils/httpCaching'
+import {
+  DAILY_REWARD_CACHE_OPTIONS,
+  dailyRewardCacheKey,
+  getDailyRewardSummary,
+  claimDailyReward,
+  DailyRewardError,
+} from '../services/dailyRewards'
 
 type UserUpsertBody = {
   userId?: string | number | bigint
@@ -147,6 +155,89 @@ export default async function (server: FastifyInstance) {
       return reply.send({ ok: true, user: serializePrisma(updated) })
     } catch (err) {
       request.log.error({ err }, 'league player request failed')
+      return reply.status(500).send({ ok: false, error: 'internal' })
+    }
+  })
+
+  server.get('/api/users/me/daily-reward', async (request, reply) => {
+    const token = extractSessionToken(request)
+    if (!token) {
+      return reply.status(401).send({ ok: false, error: 'no_token' })
+    }
+
+    const subject = resolveSessionSubject(token)
+    if (!subject) {
+      return reply.status(401).send({ ok: false, error: 'invalid_token' })
+    }
+
+    const user = await prisma.appUser.findUnique({
+      where: { telegramId: BigInt(subject) },
+      select: { id: true },
+    })
+
+    if (!user) {
+      return reply.status(404).send({ ok: false, error: 'user_not_found' })
+    }
+
+    const { value, version } = await getDailyRewardSummary(user.id)
+    const etag = buildWeakEtag(dailyRewardCacheKey(user.id), version)
+
+    if (matchesIfNoneMatch(request.headers, etag)) {
+      return reply
+        .status(304)
+        .header('ETag', etag)
+        .header('X-Resource-Version', String(version))
+        .send()
+    }
+
+    reply.header(
+      'Cache-Control',
+      `private, max-age=${DAILY_REWARD_CACHE_OPTIONS.ttlSeconds}, stale-while-revalidate=${DAILY_REWARD_CACHE_OPTIONS.staleWhileRevalidateSeconds}`
+    )
+    reply.header('ETag', etag)
+    reply.header('X-Resource-Version', String(version))
+
+    return reply.send({ ok: true, data: value, meta: { version } })
+  })
+
+  server.post('/api/users/me/daily-reward/claim', async (request, reply) => {
+    const token = extractSessionToken(request)
+    if (!token) {
+      return reply.status(401).send({ ok: false, error: 'no_token' })
+    }
+
+    const subject = resolveSessionSubject(token)
+    if (!subject) {
+      return reply.status(401).send({ ok: false, error: 'invalid_token' })
+    }
+
+    const user = await prisma.appUser.findUnique({
+      where: { telegramId: BigInt(subject) },
+      select: { id: true },
+    })
+
+    if (!user) {
+      return reply.status(404).send({ ok: false, error: 'user_not_found' })
+    }
+
+    try {
+      const result = await claimDailyReward(user.id)
+      const etag = buildWeakEtag(dailyRewardCacheKey(user.id), result.version)
+      reply.header('ETag', etag)
+      reply.header('X-Resource-Version', String(result.version))
+      return reply.send({
+        ok: true,
+        data: {
+          summary: result.summary,
+          awarded: result.awarded,
+        },
+        meta: { version: result.version },
+      })
+    } catch (err) {
+      if (err instanceof DailyRewardError) {
+        return reply.status(err.status).send({ ok: false, error: err.code })
+      }
+      request.log.error({ err }, 'daily reward claim failed')
       return reply.status(500).send({ ok: false, error: 'internal' })
     }
   })

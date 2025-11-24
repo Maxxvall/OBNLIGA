@@ -1,7 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { UserRatingSummary, UserAchievementsSummary } from '@shared/types'
+import type {
+  UserRatingSummary,
+  UserAchievementsSummary,
+  DailyRewardSummary,
+  DailyRewardClaimResponse,
+} from '@shared/types'
 import { fetchMyRating } from './api/ratingsApi'
 import { fetchMyAchievements } from './api/achievementsApi'
+import { fetchDailyRewardSummary, claimDailyReward } from './api/dailyRewardApi'
+import DailyRewardCard from './components/DailyRewardCard'
 import './profile.css'
 
 type LeaguePlayerStatus = 'NONE' | 'PENDING' | 'VERIFIED'
@@ -124,6 +131,7 @@ function isAscii(value: string): boolean {
 const CACHE_TTL = 5 * 60 * 1000 // 5 минут
 const CACHE_KEY = 'obnliga_profile_cache'
 const PROFILE_REFRESH_INTERVAL_MS = 90_000
+const VERIFY_PROMPT_STORAGE_KEY = 'profile_verify_prompt_hidden'
 
 type ProfileSection = 'overview' | 'stats' | 'achievements'
 
@@ -136,6 +144,17 @@ export default function Profile() {
   const [activeSection, setActiveSection] = useState<ProfileSection>('overview')
   const [rating, setRating] = useState<UserRatingSummary | null>(null)
   const [achievements, setAchievements] = useState<UserAchievementsSummary | null>(null)
+  const [dailyReward, setDailyReward] = useState<DailyRewardSummary | null>(null)
+  const [dailyRewardLoading, setDailyRewardLoading] = useState(false)
+  const [dailyRewardError, setDailyRewardError] = useState<string | null>(null)
+  const [claimRewardLoading, setClaimRewardLoading] = useState(false)
+  const [lastReward, setLastReward] = useState<DailyRewardClaimResponse['awarded'] | null>(null)
+  const [verifyPromptHidden, setVerifyPromptHidden] = useState<boolean>(() => {
+    if (typeof window === 'undefined') {
+      return false
+    }
+    return window.localStorage.getItem(VERIFY_PROMPT_STORAGE_KEY) === '1'
+  })
   const [isCompactLayout, setIsCompactLayout] = useState<boolean>(() => {
     if (typeof window === 'undefined') {
       return false
@@ -196,6 +215,26 @@ export default function Profile() {
       // ignore
     }
   }
+
+  const updateVerifyPromptHidden = useCallback((next: boolean) => {
+    setVerifyPromptHidden(next)
+    if (typeof window === 'undefined') {
+      return
+    }
+    if (next) {
+      window.localStorage.setItem(VERIFY_PROMPT_STORAGE_KEY, '1')
+    } else {
+      window.localStorage.removeItem(VERIFY_PROMPT_STORAGE_KEY)
+    }
+  }, [])
+
+  const handleHideVerifyPrompt = useCallback(() => {
+    updateVerifyPromptHidden(true)
+  }, [updateVerifyPromptHidden])
+
+  const handleShowVerifyPrompt = useCallback(() => {
+    updateVerifyPromptHidden(false)
+  }, [updateVerifyPromptHidden])
 
   const loadProfile = useCallback(async (opts?: { background?: boolean; skipCache?: boolean }) => {
     if (isFetchingRef.current) {
@@ -449,6 +488,67 @@ export default function Profile() {
     })()
   }, [user])
 
+  useEffect(() => {
+    if (!user) {
+      setDailyReward(null)
+      setDailyRewardError(null)
+      setLastReward(null)
+      return
+    }
+
+    let cancelled = false
+
+    const load = async (options?: { background?: boolean }) => {
+      if (options?.background) {
+        try {
+          const result = await fetchDailyRewardSummary({ force: true })
+          if (!cancelled && result.data) {
+            setDailyReward(result.data)
+            setDailyRewardError(null)
+          }
+        } catch (err) {
+          if (!cancelled) {
+            setDailyRewardError('Не удалось обновить ежедневные награды')
+          }
+        }
+        return
+      }
+
+      setDailyRewardLoading(true)
+      setDailyRewardError(null)
+      try {
+        const result = await fetchDailyRewardSummary()
+        if (!cancelled && result.data) {
+          setDailyReward(result.data)
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setDailyRewardError('Не удалось загрузить ежедневные награды')
+        }
+      } finally {
+        if (!cancelled) {
+          setDailyRewardLoading(false)
+        }
+      }
+    }
+
+    void load()
+    if (typeof window === 'undefined') {
+      return () => {
+        cancelled = true
+      }
+    }
+
+    const intervalId = window.setInterval(() => {
+      void load({ background: true })
+    }, 120000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [user])
+
   const status: LeaguePlayerStatus =
     user && isLeagueStatus(user.leaguePlayerStatus) ? user.leaguePlayerStatus : 'NONE'
   const isVerified = status === 'VERIFIED'
@@ -519,6 +619,36 @@ export default function Profile() {
     },
     []
   )
+
+  const handleClaimReward = useCallback(async () => {
+    if (!dailyReward || claimRewardLoading || !dailyReward.claimAvailable) {
+      return
+    }
+
+    setClaimRewardLoading(true)
+    setDailyRewardError(null)
+    try {
+      const result = await claimDailyReward()
+      setDailyReward(result.summary)
+      setLastReward(result.awarded)
+
+      const [ratingResult, achievementsResult] = await Promise.all([
+        fetchMyRating(),
+        fetchMyAchievements({ force: true }),
+      ])
+
+      if (ratingResult.ok) {
+        setRating(ratingResult.data)
+      }
+      if (achievementsResult.data) {
+        setAchievements(achievementsResult.data)
+      }
+    } catch (err) {
+      setDailyRewardError('Не удалось получить награду. Попробуйте ещё раз.')
+    } finally {
+      setClaimRewardLoading(false)
+    }
+  }, [dailyReward, claimRewardLoading])
 
   const shareCareerSnapshot = useCallback(
     async (entry: LeaguePlayerCareerEntry, rowKey: string) => {
@@ -801,14 +931,16 @@ export default function Profile() {
     }
     return null
   })()
+  const canHideVerifyPrompt = status === 'NONE' && Boolean(statusMessage) && !verifyPromptHidden
 
   useEffect(() => {
     if (status !== 'NONE') {
       setShowVerifyModal(false)
       setVerifyLoading(false)
       setVerifyError(null)
+      updateVerifyPromptHidden(false)
     }
-  }, [status])
+  }, [status, updateVerifyPromptHidden])
 
   const submitVerificationRequest = useCallback(async () => {
     if (verifyLoading) return
@@ -877,6 +1009,16 @@ export default function Profile() {
       <div className="profile-wrapper">
         <div className="profile-header">
           <div className="profile-hero-card">
+            {status === 'NONE' && verifyPromptHidden ? (
+              <button
+                type="button"
+                className="verify-info-toggle"
+                onClick={handleShowVerifyPrompt}
+                aria-label="Показать подсказку о подтверждении статуса игрока"
+              >
+                i
+              </button>
+            ) : null}
             <div className="avatar-section">
               <div className={`profile-avatar-wrapper${rating ? ` rating-border-${rating.currentLevel.toLowerCase()}` : ''}`}>
                 {user && user.photoUrl ? (
@@ -906,12 +1048,21 @@ export default function Profile() {
                 isCompactLayout && activeSection !== 'overview' ? ' hidden-on-compact' : ''
               }`}
             >
-              {statusMessage ? (
+              {statusMessage && !(status === 'NONE' && verifyPromptHidden) ? (
                 <div className={`profile-status-message status-${status.toLowerCase()}`}>
-                  {statusMessage}
+                  <span>{statusMessage}</span>
+                  {canHideVerifyPrompt ? (
+                    <button
+                      type="button"
+                      className="verify-info-hide-btn"
+                      onClick={handleHideVerifyPrompt}
+                    >
+                      Скрыть
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
-              {status === 'NONE' ? (
+              {status === 'NONE' && !verifyPromptHidden ? (
                 <div className="verification-actions">
                   <button
                     type="button"
@@ -934,6 +1085,15 @@ export default function Profile() {
             </div>
           </div>
         </div>
+
+        <DailyRewardCard
+          summary={dailyReward}
+          loading={dailyRewardLoading}
+          error={dailyRewardError}
+          onClaim={handleClaimReward}
+          claimLoading={claimRewardLoading}
+          lastAward={lastReward}
+        />
 
         {isCompactLayout && isVerified ? (
           <div className="profile-mobile-tabs" role="tablist" aria-label="Разделы профиля">

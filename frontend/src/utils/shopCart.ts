@@ -30,7 +30,7 @@ export const readCartFromStorage = (): StoredCart => {
       return {}
     }
     const entries: StoredCart = {}
-    Object.entries(parsed as Record<string, StoredCartEntry>).forEach(([key, value]) => {
+    Object.entries(parsed as Record<string, StoredCartEntry>).forEach(([, value]) => {
       if (!value || typeof value !== 'object') {
         return
       }

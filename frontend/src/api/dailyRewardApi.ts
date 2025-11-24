@@ -1,4 +1,5 @@
 import { buildApiUrl, httpRequest } from './httpClient'
+import type { ApiResponse } from './httpClient'
 import type { DailyRewardClaimResponse, DailyRewardSummary } from '@shared/types'
 
 const CACHE_KEY = 'daily-reward-summary:v1'
@@ -39,15 +40,40 @@ const clearCache = () => {
   }
 }
 
-const authHeader = (): Record<string, string> | undefined => {
+const readSessionToken = (): string | null => {
   if (typeof window === 'undefined') {
-    return undefined
+    return null
   }
-  const token = window.localStorage.getItem('session')
-  if (!token) {
-    return undefined
+
+  const storedToken = window.localStorage.getItem('session')
+  if (storedToken && storedToken.length > 0) {
+    return storedToken
   }
-  return { Authorization: `Bearer ${token}` }
+
+  if (typeof document === 'undefined' || typeof document.cookie !== 'string') {
+    return null
+  }
+
+  const sessionCookie = document.cookie
+    .split(';')
+    .map(chunk => chunk.trim())
+    .find(chunk => chunk.startsWith('session='))
+
+  if (!sessionCookie) {
+    return null
+  }
+
+  const cookieValue = sessionCookie.slice('session='.length)
+  return cookieValue.length > 0 ? decodeURIComponent(cookieValue) : null
+}
+
+const authHeader = (): Record<string, string> | undefined => {
+  const token = readSessionToken()
+  return token ? { Authorization: `Bearer ${token}` } : undefined
+}
+
+const hasData = <T>(response: ApiResponse<T>): response is Extract<ApiResponse<T>, { data: T }> => {
+  return 'data' in response
 }
 
 export const fetchDailyRewardSummary = async (options: { force?: boolean } = {}) => {
@@ -84,6 +110,7 @@ export const fetchDailyRewardSummary = async (options: { force?: boolean } = {})
       writeCache(refreshed)
       return { data: cache.data, fromCache: true as const, etag: cache.etag }
     }
+    throw new Error('daily_reward_not_modified_without_cache')
   }
 
   if (!response.ok) {
@@ -91,6 +118,10 @@ export const fetchDailyRewardSummary = async (options: { force?: boolean } = {})
       clearCache()
     }
     throw new Error(response.error ?? 'daily_reward_error')
+  }
+
+  if (!hasData(response)) {
+    throw new Error('daily_reward_invalid_payload')
   }
 
   const summary = response.data
@@ -120,12 +151,12 @@ export const claimDailyReward = async (): Promise<DailyRewardClaimResponse> => {
     }
   )
 
-  if (!response.ok) {
-    throw new Error(response.error ?? 'daily_reward_claim_failed')
-  }
-
   if ('notModified' in response && response.notModified) {
     throw new Error('unexpected_not_modified_on_claim')
+  }
+
+  if (!response.ok || !hasData(response)) {
+    throw new Error(response.error ?? 'daily_reward_claim_failed')
   }
 
   const now = Date.now()

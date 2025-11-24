@@ -380,10 +380,14 @@
 }
 
 .daily-reward-track {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
-  gap: 14px;
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
   width: 100%;
+  overflow-x: hidden;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 6px;
 }
 
 .daily-reward-track.skeleton {
@@ -405,35 +409,60 @@
 
 .daily-reward-day {
   position: relative;
-  border-radius: 20px;
-  padding: 14px 12px 12px;
-  border: 1px solid rgba(0, 240, 255, 0.15);
-  background: rgba(7, 13, 25, 0.8);
+  border-radius: 8px;
+  padding: 4px 6px;
+  width: auto;
+  height: 36px;
+  min-width: 36px;
+  border: 1px solid rgba(0, 240, 255, 0.10);
+  background: rgba(7, 13, 25, 0.85);
   text-align: center;
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.25);
-  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 6px 10px rgba(0, 0, 0, 0.18);
+  transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
 }
 
 .daily-reward-day .day-index {
   display: block;
-  font-size: 18px;
-  font-weight: 700;
-  margin-bottom: 4px;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+  width: 100%;
+}
+
+/* center both index and points exactly in the tile (overlay) */
+.daily-reward-day .day-index,
+.daily-reward-day .day-points {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  width: 100%;
+  text-align: center;
+  line-height: 1;
+  pointer-events: none;
+  font-weight: 800;
+  color: rgba(14, 20, 28, 0.95);
+}
+
+.daily-reward-day .day-index {
+  font-size: 14px;
+  color: inherit; /* will be overridden for claimed/active */
+  opacity: 1;
+  transition: opacity 180ms ease, transform 180ms ease;
 }
 
 .daily-reward-day .day-points {
   font-size: 14px;
-  color: rgba(214, 248, 255, 0.9);
-}
-
-.daily-reward-day::after {
-  content: '';
-  position: absolute;
-  inset: 2px;
-  border-radius: 18px;
-  border: 1px solid transparent;
+  color: rgba(214, 248, 255, 0.95);
   opacity: 0;
-  transition: opacity 0.2s ease;
+  transition: opacity 180ms ease, transform 180ms ease;
 }
 
 .daily-reward-day.claimable,
@@ -477,6 +506,28 @@
   animation: rewardPop 0.85s ease;
 }
 
+/* When animating, hide index and show points (+N) smoothly */
+.daily-reward-day.animate .day-index {
+  opacity: 0;
+  transform: translate(-50%, -60%) scale(0.98);
+}
+
+.daily-reward-day.animate .day-points {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+/* For already claimed days, permanently show +points */
+.daily-reward-day.claimed .day-index {
+  opacity: 0;
+  transform: translate(-50%, -60%) scale(0.98);
+}
+
+.daily-reward-day.claimed .day-points {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
 .daily-reward-footer {
   display: flex;
   flex-direction: column;
@@ -518,6 +569,24 @@
   color: rgba(200, 249, 255, 0.9);
 }
 
+@media (max-width: 720px) {
+  .daily-reward-card {
+    padding: 22px 18px 26px;
+  }
+  .daily-reward-track {
+    gap: 8px;
+  }
+  .daily-reward-day {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+  }
+  .daily-reward-button {
+    width: 100%;
+    text-align: center;
+  }
+}
+
 .daily-reward-award {
   font-weight: 600;
   font-size: 14px;
@@ -550,9 +619,17 @@
     padding: 22px 18px 26px;
   }
 
+  /* Make all 7 day tiles fit on smaller screens: reduce gaps and compute exact flex-basis */
   .daily-reward-track {
-    grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
-    gap: 10px;
+    gap: 6px;
+    /* ensure flex row stays single-line and items shrink to fit */
+    overflow-x: hidden;
+    justify-content: space-between;
+  }
+
+  .daily-reward-day {
+    min-width: 0;
+    height: 40px;
   }
 
   .daily-reward-button {

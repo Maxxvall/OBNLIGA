@@ -4,10 +4,17 @@ export const buildApiUrl = (path: string): string => {
   if (typeof path !== 'string') {
     throw new Error('API path must be a string')
   }
+
   const trimmed = path.trim()
   if (trimmed.length === 0) {
     throw new Error('API path must not be empty')
   }
+
+  const isAbsoluteUrl = /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(trimmed)
+  if (isAbsoluteUrl) {
+    return trimmed
+  }
+
   const normalizedPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
   return API_BASE ? `${API_BASE}${normalizedPath}` : normalizedPath
 }

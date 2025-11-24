@@ -115,7 +115,6 @@ export const DailyRewardCard: React.FC<DailyRewardCardProps> = ({
       <header className="daily-reward-header">
         <div>
           <p className="daily-reward-title">Ежедневные награды</p>
-          <span className="daily-reward-counter">День {summary?.effectiveStreak ?? 0}</span>
         </div>
         <div className="daily-reward-message" role="status">
           {metaMessage}
@@ -134,18 +133,7 @@ export const DailyRewardCard: React.FC<DailyRewardCardProps> = ({
           {claimLoading ? 'Начисляем…' : summary ? `Получить награду +${summary.pendingPoints}` : 'Недоступно'}
         </button>
         <div className="daily-reward-meta">
-          {summary ? (
-            <>
-              <span>
-                Следующее обновление {cooldownLabel ? `в ${cooldownLabel}` : 'после полуночи'} ({summary.timezone})
-              </span>
-              <span>
-                Всего очков: {summary.totalPointsEarned} · Получено дней: {summary.totalClaims}
-              </span>
-            </>
-          ) : (
-            <span>Войдите, чтобы накапливать очки и держать стрик.</span>
-          )}
+          {!summary ? <span>Войдите, чтобы накапливать очки и держать стрик.</span> : null}
         </div>
         {lastAward ? (
           <div className="daily-reward-award">+{lastAward.points} очков начислено за день {lastAward.day}</div>

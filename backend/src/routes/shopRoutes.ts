@@ -1,5 +1,4 @@
 import { FastifyInstance } from 'fastify'
-import { randomBytes } from 'crypto'
 import prisma from '../db'
 import { defaultCache, PUBLIC_SHOP_ITEMS_KEY, shopHistoryCacheKey } from '../cache'
 import { buildWeakEtag, matchesIfNoneMatch } from '../utils/httpCaching'

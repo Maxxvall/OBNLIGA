@@ -44,6 +44,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^8.45.0",
+    "@prisma/config": "^7.0.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "eslint": "^8.45.0",

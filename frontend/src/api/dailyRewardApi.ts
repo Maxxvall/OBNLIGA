@@ -124,6 +124,10 @@ export const claimDailyReward = async (): Promise<DailyRewardClaimResponse> => {
     throw new Error(response.error ?? 'daily_reward_claim_failed')
   }
 
+  if ('notModified' in response && response.notModified) {
+    throw new Error('unexpected_not_modified_on_claim')
+  }
+
   const now = Date.now()
   const summary = response.data.summary
   const etag = response.version

@@ -50,7 +50,7 @@ export const incrementAchievementProgress = async (
   for (const type of types) {
     const progress = await client.userAchievementProgress.upsert({
       where: {
-        userId_achievementId: {
+        achievement_progress_unique: {
           userId,
           achievementId: type.id,
         },

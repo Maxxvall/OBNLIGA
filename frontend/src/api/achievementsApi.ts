@@ -4,6 +4,7 @@
  */
 
 import { buildApiUrl, httpRequest } from './httpClient'
+import { authHeader } from './sessionToken'
 import type { UserAchievementsSummary } from '@shared/types'
 
 // TTL для кэша достижений (5m fresh / 15m stale)
@@ -85,15 +86,12 @@ export async function fetchMyAchievements(options: { force?: boolean } = {}): Pr
     }
   }
 
-  const token =
-    typeof window !== 'undefined' ? window.localStorage.getItem('session') ?? undefined : undefined
-
   const response = await httpRequest<{ data: UserAchievementsSummary }>(
     buildApiUrl('/api/users/me/achievements'),
     {
       version: cache?.etag,
       credentials: 'include',
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      headers: authHeader(),
     }
   )
 

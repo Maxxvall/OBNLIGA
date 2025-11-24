@@ -1,10 +1,15 @@
 const API_BASE = import.meta.env.VITE_BACKEND_URL ?? ''
 
 export const buildApiUrl = (path: string): string => {
-  if (!path.startsWith('/')) {
-    throw new Error('API paths must start with "/"')
+  if (typeof path !== 'string') {
+    throw new Error('API path must be a string')
   }
-  return API_BASE ? `${API_BASE}${path}` : path
+  const trimmed = path.trim()
+  if (trimmed.length === 0) {
+    throw new Error('API path must not be empty')
+  }
+  const normalizedPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+  return API_BASE ? `${API_BASE}${normalizedPath}` : normalizedPath
 }
 
 type ApiSuccess<T> = {

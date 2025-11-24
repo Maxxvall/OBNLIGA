@@ -1,4 +1,5 @@
 import { buildApiUrl, httpRequest } from './httpClient'
+import { authHeader } from './sessionToken'
 import type { ApiResponse } from './httpClient'
 import type { DailyRewardClaimResponse, DailyRewardSummary } from '@shared/types'
 
@@ -38,38 +39,6 @@ const clearCache = () => {
   } catch (err) {
     console.warn('dailyRewardApi: failed to clear cache', err)
   }
-}
-
-const readSessionToken = (): string | null => {
-  if (typeof window === 'undefined') {
-    return null
-  }
-
-  const storedToken = window.localStorage.getItem('session')
-  if (storedToken && storedToken.length > 0) {
-    return storedToken
-  }
-
-  if (typeof document === 'undefined' || typeof document.cookie !== 'string') {
-    return null
-  }
-
-  const sessionCookie = document.cookie
-    .split(';')
-    .map(chunk => chunk.trim())
-    .find(chunk => chunk.startsWith('session='))
-
-  if (!sessionCookie) {
-    return null
-  }
-
-  const cookieValue = sessionCookie.slice('session='.length)
-  return cookieValue.length > 0 ? decodeURIComponent(cookieValue) : null
-}
-
-const authHeader = (): Record<string, string> | undefined => {
-  const token = readSessionToken()
-  return token ? { Authorization: `Bearer ${token}` } : undefined
 }
 
 const hasData = <T>(response: ApiResponse<T>): response is Extract<ApiResponse<T>, { data: T }> => {

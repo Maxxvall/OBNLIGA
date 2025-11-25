@@ -11,7 +11,7 @@ import {
   claimDailyReward,
   DailyRewardError,
 } from '../services/dailyRewards'
-import { STREAK_REWARD_CONFIG } from '../services/achievementJobProcessor'
+import { STREAK_REWARD_CONFIG, PREDICTIONS_REWARD_CONFIG } from '../services/achievementJobProcessor'
 
 type UserUpsertBody = {
   userId?: string | number | bigint
@@ -279,28 +279,25 @@ export default async function (server: FastifyInstance) {
             return null
           }
 
-          // Получаем прогресс достижений с пагинацией
-          const [progress, total] = await Promise.all([
-            prisma.userAchievementProgress.findMany({
-              where: { userId: user.id },
-              include: {
-                achievement: {
-                  include: {
-                    levels: {
-                      orderBy: { level: 'asc' },
-                    },
-                  },
-                },
+          // Получаем ВСЕ типы достижений с уровнями
+          const allAchievementTypes = await prisma.achievementType.findMany({
+            include: {
+              levels: {
+                orderBy: { level: 'asc' },
               },
-              skip: offset,
-              take: limit,
-              orderBy: { achievementId: 'asc' },
-            }),
-            prisma.userAchievementProgress.count({ where: { userId: user.id } }),
-          ])
+            },
+            orderBy: { id: 'asc' },
+          })
+
+          // Получаем прогресс пользователя
+          const userProgress = await prisma.userAchievementProgress.findMany({
+            where: { userId: user.id },
+          })
+
+          // Создаём map прогресса для быстрого поиска
+          const progressMap = new Map(userProgress.map(p => [p.achievementId, p]))
 
           // Получаем непрочитанные награды для анимации (за последние 24 часа)
-          // Gracefully handle case when table doesn't exist yet
           let unnotifiedRewards: { id: bigint; group: string; tier: number; points: number }[] = []
           try {
             const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
@@ -318,7 +315,7 @@ export default async function (server: FastifyInstance) {
               },
             })
           } catch {
-            // Table may not exist yet — ignore and return empty
+            // Table may not exist yet
           }
 
           // Создаём map для быстрого поиска анимаций
@@ -326,30 +323,40 @@ export default async function (server: FastifyInstance) {
             unnotifiedRewards.map(r => [`${r.group}:${r.tier}`, { rewardId: r.id.toString(), points: r.points }])
           )
 
-          const items = progress.map(p => {
-            const currentLevelData = p.achievement.levels.find(l => l.level === p.currentLevel)
-            const nextLevelData = p.achievement.levels.find(l => l.level === p.currentLevel + 1)
-            const maxLevel = Math.max(...p.achievement.levels.map(l => l.level), 0)
+          // Применяем пагинацию к типам достижений
+          const total = allAchievementTypes.length
+          const paginatedTypes = allAchievementTypes.slice(offset, offset + limit)
 
-            // Проверяем, есть ли непрочитанная награда для этого достижения
-            // Для streak группа = 'streak', tier = currentLevel
-            const group = p.achievement.metric === 'DAILY_LOGIN' ? 'streak' : p.achievement.name.toLowerCase()
-            const animationInfo = animationMap.get(`${group}:${p.currentLevel}`)
+          const items = paginatedTypes.map(type => {
+            const progress = progressMap.get(type.id)
+            const currentLevel = progress?.currentLevel ?? 0
+            const progressCount = progress?.progressCount ?? 0
 
-            // Вычисляем иконку для streak на основе уровня
-            let iconUrl = currentLevelData?.iconUrl ?? null
-            if (p.achievement.metric === 'DAILY_LOGIN') {
-              iconUrl = getStreakIconUrl(p.currentLevel)
-            }
+            // Определяем группу для достижения
+            const group = getAchievementGroup(type.metric)
+
+            // Получаем следующий уровень и первый уровень (для locked state)
+            const nextLevelData = type.levels.find(l => l.level === currentLevel + 1)
+            const firstLevelData = type.levels.find(l => l.level === 1)
+            const maxLevel = Math.max(...type.levels.map(l => l.level), 0)
+
+            // Проверяем анимацию
+            const animationInfo = animationMap.get(`${group}:${currentLevel}`)
+
+            // Вычисляем иконку
+            const iconUrl = getAchievementIconUrl(type.metric, currentLevel)
+
+            // Вычисляем следующий порог
+            const nextThreshold = nextLevelData?.threshold ?? firstLevelData?.threshold ?? 0
 
             const baseResult = {
-              achievementId: p.achievementId,
+              achievementId: type.id,
               group,
-              currentLevel: p.currentLevel,
-              currentProgress: p.progressCount,
-              nextThreshold: nextLevelData?.threshold ?? (currentLevelData?.threshold ?? 0),
+              currentLevel,
+              currentProgress: progressCount,
+              nextThreshold,
               iconSrc: iconUrl,
-              shortTitle: currentLevelData?.title ?? getStreakLevelTitle(p.currentLevel),
+              shortTitle: getAchievementLevelTitle(type.metric, currentLevel),
               shouldPlayAnimation: !!animationInfo,
               animationRewardId: animationInfo?.rewardId ?? null,
               animationPoints: animationInfo?.points ?? null,
@@ -359,22 +366,22 @@ export default async function (server: FastifyInstance) {
               return baseResult
             }
 
-            // Полная информация для не-summary запросов
+            // Полная информация
             return {
               ...baseResult,
-              achievementName: p.achievement.name,
-              achievementDescription: p.achievement.description,
-              lastUnlockedAt: p.lastUnlockedAt?.toISOString() ?? null,
+              achievementName: type.name,
+              achievementDescription: type.description,
+              lastUnlockedAt: progress?.lastUnlockedAt?.toISOString() ?? null,
               maxLevel,
-              isMaxLevel: p.currentLevel >= maxLevel && maxLevel > 0,
-              levels: p.achievement.levels.map(l => ({
+              isMaxLevel: currentLevel >= maxLevel && maxLevel > 0,
+              levels: type.levels.map(l => ({
                 id: l.id,
                 level: l.level,
                 threshold: l.threshold,
-                iconUrl: p.achievement.metric === 'DAILY_LOGIN' ? getStreakIconUrl(l.level) : l.iconUrl,
-                title: l.title || getStreakLevelTitle(l.level),
+                iconUrl: getAchievementIconUrl(type.metric, l.level),
+                title: l.title || getAchievementLevelTitle(type.metric, l.level),
                 description: l.description,
-                points: p.achievement.metric === 'DAILY_LOGIN' ? (STREAK_REWARD_CONFIG[l.level] ?? 0) : 0,
+                points: getAchievementRewardPoints(type.metric, l.level),
               })),
             }
           })
@@ -383,7 +390,7 @@ export default async function (server: FastifyInstance) {
             achievements: items,
             total,
             hasMore: offset + limit < total,
-            totalUnlocked: progress.reduce((sum, p) => sum + p.currentLevel, 0),
+            totalUnlocked: userProgress.reduce((sum, p) => sum + p.currentLevel, 0),
           }
         },
         300 // 5 min fresh
@@ -395,10 +402,7 @@ export default async function (server: FastifyInstance) {
 
       return reply.send({
         ok: true,
-        data: {
-          ...achievements,
-          generatedAt: new Date().toISOString(),
-        },
+        data: achievements,
       })
     } catch (err) {
       request.log.error({ err }, 'user achievements fetch failed')
@@ -466,6 +470,53 @@ export default async function (server: FastifyInstance) {
 }
 
 // Вспомогательные функции для streak достижений
+// Helper функции для достижений
+function getAchievementGroup(metric: string): string {
+  switch (metric) {
+    case 'DAILY_LOGIN':
+      return 'streak'
+    case 'TOTAL_PREDICTIONS':
+      return 'predictions'
+    case 'CORRECT_PREDICTIONS':
+      return 'accuracy'
+    default:
+      return metric.toLowerCase()
+  }
+}
+
+function getAchievementIconUrl(metric: string, level: number): string {
+  switch (metric) {
+    case 'DAILY_LOGIN':
+      return getStreakIconUrl(level)
+    case 'TOTAL_PREDICTIONS':
+      return getPredictionsIconUrl(level)
+    default:
+      return '/achievements/default-locked.png'
+  }
+}
+
+function getAchievementLevelTitle(metric: string, level: number): string {
+  switch (metric) {
+    case 'DAILY_LOGIN':
+      return getStreakLevelTitle(level)
+    case 'TOTAL_PREDICTIONS':
+      return getPredictionsLevelTitle(level)
+    default:
+      return `Уровень ${level}`
+  }
+}
+
+function getAchievementRewardPoints(metric: string, level: number): number {
+  switch (metric) {
+    case 'DAILY_LOGIN':
+      return STREAK_REWARD_CONFIG[level] ?? 0
+    case 'TOTAL_PREDICTIONS':
+      return PREDICTIONS_REWARD_CONFIG[level] ?? 0
+    default:
+      return 0
+  }
+}
+
 function getStreakIconUrl(level: number): string {
   switch (level) {
     case 0:
@@ -493,5 +544,35 @@ function getStreakLevelTitle(level: number): string {
       return 'Капитан'
     default:
       return 'Скамейка'
+  }
+}
+
+function getPredictionsIconUrl(level: number): string {
+  switch (level) {
+    case 0:
+      return '/achievements/betcount-locked.png'
+    case 1:
+      return '/achievements/betcount-bronze.png'
+    case 2:
+      return '/achievements/betcount-silver.png'
+    case 3:
+      return '/achievements/betcount-gold.png'
+    default:
+      return '/achievements/betcount-locked.png'
+  }
+}
+
+function getPredictionsLevelTitle(level: number): string {
+  switch (level) {
+    case 0:
+      return 'Новичок'
+    case 1:
+      return 'Любитель'
+    case 2:
+      return 'Знаток'
+    case 3:
+      return 'Эксперт'
+    default:
+      return 'Новичок'
   }
 }

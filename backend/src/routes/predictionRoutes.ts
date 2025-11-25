@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify'
-import { MatchStatus, PredictionEntryStatus, PredictionMarketType, Prisma } from '@prisma/client'
+import { AchievementMetric, MatchStatus, PredictionEntryStatus, PredictionMarketType, Prisma } from '@prisma/client'
 import prisma from '../db'
 import { defaultCache } from '../cache'
 import { buildWeakEtag, matchesIfNoneMatch } from '../utils/httpCaching'
@@ -17,6 +17,7 @@ import {
   USER_PREDICTION_CACHE_KEY,
 } from '../services/predictionConstants'
 import { ensurePredictionTemplatesInRange } from '../services/predictionTemplateService'
+import { incrementAchievementProgress } from '../services/achievementProgress'
 
 const toNumber = (value: unknown): number | null => {
   if (value == null) {
@@ -622,7 +623,14 @@ export default async function predictionRoutes(server: FastifyInstance) {
         return { entry: created, created: true }
       })
 
-  await defaultCache.invalidate(USER_PREDICTION_CACHE_KEY(user.id)).catch(() => undefined)
+      // Инкрементируем достижение за прогнозы только для новых записей
+      if (result.created) {
+        await incrementAchievementProgress(user.id, AchievementMetric.TOTAL_PREDICTIONS, 1).catch(err => {
+          request.log.warn({ err }, 'Failed to increment prediction achievement')
+        })
+      }
+
+      await defaultCache.invalidate(USER_PREDICTION_CACHE_KEY(user.id)).catch(() => undefined)
 
       const view = serializeEntry(result.entry)
 

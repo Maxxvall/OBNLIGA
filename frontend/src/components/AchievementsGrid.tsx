@@ -8,12 +8,30 @@ interface AchievementsGridProps {
   className?: string
 }
 
-// Конфигурация названий уровней для streak
-const STREAK_LEVEL_NAMES: Record<number, string> = {
-  0: 'Скамейка',
-  1: 'Запасной',
-  2: 'Основной',
-  3: 'Капитан',
+// Конфигурация названий уровней для достижений
+const ACHIEVEMENT_LEVEL_NAMES: Record<string, Record<number, string>> = {
+  streak: {
+    0: 'Скамейка',
+    1: 'Запасной',
+    2: 'Основной',
+    3: 'Капитан',
+  },
+  predictions: {
+    0: 'Новичок',
+    1: 'Любитель',
+    2: 'Знаток',
+    3: 'Эксперт',
+  },
+}
+
+// Группа для отображения
+const ACHIEVEMENT_GROUP_LABELS: Record<string, string> = {
+  streak: 'Серия',
+  predictions: 'Прогнозы',
+}
+
+function getAchievementLevelName(group: string, level: number): string {
+  return ACHIEVEMENT_LEVEL_NAMES[group]?.[level] ?? `Уровень ${level}`
 }
 
 export default function AchievementsGrid({ className }: AchievementsGridProps) {
@@ -156,7 +174,9 @@ export default function AchievementsGrid({ className }: AchievementsGridProps) {
           const progress = achievement.nextThreshold > 0
             ? Math.min(100, Math.round((achievement.currentProgress / achievement.nextThreshold) * 100))
             : 100
-          const levelName = STREAK_LEVEL_NAMES[achievement.currentLevel] ?? achievement.shortTitle
+          const levelName = getAchievementLevelName(achievement.group, achievement.currentLevel)
+          const groupLabel = ACHIEVEMENT_GROUP_LABELS[achievement.group] ?? achievement.group
+          const progressText = `${achievement.currentProgress} / ${achievement.nextThreshold}`
 
           return (
             <div
@@ -171,12 +191,12 @@ export default function AchievementsGrid({ className }: AchievementsGridProps) {
                   handleCardClick(achievement)
                 }
               }}
-              aria-label={`Игровая серия — ${levelName}`}
+              aria-label={`${groupLabel} — ${levelName}`}
             >
               <div className="achievement-icon-wrapper">
                 <img
                   src={achievement.iconSrc ?? '/achievements/streak-locked.png'}
-                  alt={`Игровая серия — ${levelName}`}
+                  alt={`${groupLabel} — ${levelName}`}
                   width={40}
                   height={40}
                   className="achievement-icon"
@@ -191,6 +211,7 @@ export default function AchievementsGrid({ className }: AchievementsGridProps) {
                     style={{ width: `${progress}%` }}
                   />
                 </div>
+                <div className="achievement-progress-text">{progressText}</div>
               </div>
 
               <div className="achievement-level-label">{levelName}</div>

@@ -707,7 +707,6 @@ export interface DailyRewardSummary {
   timezone: string
   missed: boolean
   message?: string | null
-  serverTime: string
   lastReward?: {
     day: number
     points: number

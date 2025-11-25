@@ -74,6 +74,13 @@
   transition: width 0.4s ease;
 }
 
+.achievement-progress-text {
+  font-size: 10px;
+  color: rgba(230, 247, 255, 0.5);
+  text-align: center;
+  margin-top: 4px;
+}
+
 /* Название уровня */
 .achievement-level-label {
   font-size: 12px;

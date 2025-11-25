@@ -29,6 +29,13 @@ export const STREAK_REWARD_CONFIG: Record<number, number> = {
   3: 1000, // Gold — 180 дней
 }
 
+// Конфигурация очков для уровней predictions (betcount)
+export const PREDICTIONS_REWARD_CONFIG: Record<number, number> = {
+  1: 50,    // Bronze — 20 прогнозов
+  2: 350,   // Silver — 100 прогнозов
+  3: 1000,  // Gold — 250 прогнозов
+}
+
 /**
  * Создаёт задачу на выдачу награды за достижение
  * Gracefully handles case when table doesn't exist yet

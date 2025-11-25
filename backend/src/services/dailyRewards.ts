@@ -207,7 +207,6 @@ const buildSummary = async (userId: number): Promise<DailyRewardSummary> => {
     timezone: DAILY_REWARD_TIMEZONE,
     missed,
     message,
-    serverTime: now.toISOString(),
     lastReward: lastClaim
       ? {
           day: lastClaim.dayNumber,

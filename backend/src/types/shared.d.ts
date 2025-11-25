@@ -30,7 +30,6 @@ declare module '@shared/types' {
     timezone: string
     missed: boolean
     message?: string | null
-    serverTime: string
     lastReward?: {
       day: number
       points: number

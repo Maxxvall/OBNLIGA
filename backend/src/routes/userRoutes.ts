@@ -11,7 +11,7 @@ import {
   claimDailyReward,
   DailyRewardError,
 } from '../services/dailyRewards'
-import { STREAK_REWARD_CONFIG, PREDICTIONS_REWARD_CONFIG } from '../services/achievementJobProcessor'
+import { STREAK_REWARD_CONFIG, PREDICTIONS_REWARD_CONFIG, SEASON_POINTS_REWARD_CONFIG } from '../services/achievementJobProcessor'
 
 type UserUpsertBody = {
   userId?: string | number | bigint
@@ -479,6 +479,8 @@ function getAchievementGroup(metric: string): string {
       return 'predictions'
     case 'CORRECT_PREDICTIONS':
       return 'accuracy'
+    case 'SEASON_POINTS':
+      return 'credits'
     default:
       return metric.toLowerCase()
   }
@@ -490,6 +492,8 @@ function getAchievementIconUrl(metric: string, level: number): string {
       return getStreakIconUrl(level)
     case 'TOTAL_PREDICTIONS':
       return getPredictionsIconUrl(level)
+    case 'SEASON_POINTS':
+      return getSeasonPointsIconUrl(level)
     default:
       return '/achievements/default-locked.png'
   }
@@ -501,6 +505,8 @@ function getAchievementLevelTitle(metric: string, level: number): string {
       return getStreakLevelTitle(level)
     case 'TOTAL_PREDICTIONS':
       return getPredictionsLevelTitle(level)
+    case 'SEASON_POINTS':
+      return getSeasonPointsLevelTitle(level)
     default:
       return `Уровень ${level}`
   }
@@ -512,6 +518,8 @@ function getAchievementRewardPoints(metric: string, level: number): number {
       return STREAK_REWARD_CONFIG[level] ?? 0
     case 'TOTAL_PREDICTIONS':
       return PREDICTIONS_REWARD_CONFIG[level] ?? 0
+    case 'SEASON_POINTS':
+      return SEASON_POINTS_REWARD_CONFIG[level] ?? 0
     default:
       return 0
   }
@@ -574,5 +582,35 @@ function getPredictionsLevelTitle(level: number): string {
       return 'Эксперт'
     default:
       return 'Новичок'
+  }
+}
+
+function getSeasonPointsIconUrl(level: number): string {
+  switch (level) {
+    case 0:
+      return '/achievements/credits-locked.png'
+    case 1:
+      return '/achievements/credits-bronze.png'
+    case 2:
+      return '/achievements/credits-silver.png'
+    case 3:
+      return '/achievements/credits-gold.png'
+    default:
+      return '/achievements/credits-locked.png'
+  }
+}
+
+function getSeasonPointsLevelTitle(level: number): string {
+  switch (level) {
+    case 0:
+      return 'Дебютант'
+    case 1:
+      return 'Форвард'
+    case 2:
+      return 'Голеадор'
+    case 3:
+      return 'Легенда'
+    default:
+      return 'Дебютант'
   }
 }

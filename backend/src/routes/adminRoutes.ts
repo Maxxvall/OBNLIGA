@@ -66,6 +66,7 @@ import {
   getActiveSeason,
   SeasonWinnerInput,
   startSeason,
+  resetSeasonPointsAchievements,
 } from '../services/ratingSeasons'
 import { adminAuthHook, getJwtSecret } from '../utils/adminAuth'
 import {
@@ -87,6 +88,7 @@ import {
   processPendingAchievementJobs,
   getAchievementJobsStats,
 } from '../services/achievementJobProcessor'
+import { syncAllSeasonPointsProgress } from '../services/achievementProgress'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -1776,6 +1778,23 @@ export default async function (server: FastifyInstance) {
           return reply.status(500).send({ ok: false, error: 'rating_recalculate_failed' })
         }
 
+        // Синхронизируем прогресс достижения SEASON_POINTS после пересчёта
+        if (!userIds) {
+          try {
+            const syncedCount = await syncAllSeasonPointsProgress()
+            request.server.log.info(
+              { syncedCount },
+              'admin ratings: synced SEASON_POINTS achievements after recalculation'
+            )
+          } catch (err) {
+            request.server.log.error(
+              { err },
+              'admin ratings: failed to sync SEASON_POINTS achievements'
+            )
+            // Не прерываем операцию — рейтинги уже пересчитаны
+          }
+        }
+
         await invalidateRatingsCaches(context)
 
         const settings = await getRatingSettings()
@@ -1959,6 +1978,24 @@ export default async function (server: FastifyInstance) {
         const closedSeason = await closeActiveSeason(scope, endedAt, winners)
         if (!closedSeason) {
           return reply.status(404).send({ ok: false, error: 'season_not_found' })
+        }
+
+        // При закрытии CURRENT сезона сбрасываем прогресс достижения SEASON_POINTS
+        // (достижение за накопление сезонных очков сбрасывается каждый сезон)
+        if (scope === RatingScope.CURRENT) {
+          try {
+            const resetCount = await resetSeasonPointsAchievements()
+            request.server.log.info(
+              { resetCount },
+              'admin ratings: reset SEASON_POINTS achievements on season close'
+            )
+          } catch (err) {
+            request.server.log.error(
+              { err },
+              'admin ratings: failed to reset SEASON_POINTS achievements'
+            )
+            // Не прерываем операцию — сезон уже закрыт
+          }
         }
 
         const payload = serializeSeasonRecord(closedSeason)

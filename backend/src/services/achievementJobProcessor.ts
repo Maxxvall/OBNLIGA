@@ -36,6 +36,14 @@ export const PREDICTIONS_REWARD_CONFIG: Record<number, number> = {
   3: 1000,  // Gold — 250 прогнозов
 }
 
+// Конфигурация очков для уровней season_points (credits)
+// Очки начисляются ТОЛЬКО в годовой рейтинг, не в сезонный
+export const SEASON_POINTS_REWARD_CONFIG: Record<number, number> = {
+  1: 50,    // Bronze (Форвард) — 200 сезонных очков
+  2: 250,   // Silver (Голеадор) — 1000 сезонных очков
+  3: 1000,  // Gold (Легенда) — 5000 сезонных очков
+}
+
 /**
  * Создаёт задачу на выдачу награды за достижение
  * Gracefully handles case when table doesn't exist yet

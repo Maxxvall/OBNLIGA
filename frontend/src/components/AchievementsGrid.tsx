@@ -22,12 +22,19 @@ const ACHIEVEMENT_LEVEL_NAMES: Record<string, Record<number, string>> = {
     2: 'Знаток',
     3: 'Эксперт',
   },
+  credits: {
+    0: 'Дебютант',
+    1: 'Форвард',
+    2: 'Голеадор',
+    3: 'Легенда',
+  },
 }
 
 // Группа для отображения
 const ACHIEVEMENT_GROUP_LABELS: Record<string, string> = {
   streak: 'Серия',
   predictions: 'Прогнозы',
+  credits: 'Очки сезона',
 }
 
 function getAchievementLevelName(group: string, level: number): string {

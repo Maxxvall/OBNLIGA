@@ -1,4 +1,4 @@
-import { Prisma, PrismaClient, RatingScope } from '@prisma/client'
+import { AchievementMetric, Prisma, PrismaClient, RatingScope } from '@prisma/client'
 import prisma from '../db'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -125,4 +125,39 @@ export const fetchSeasonSummaries = async (
     },
   })
   return seasons
+}
+
+/**
+ * Сбрасывает прогресс достижения SEASON_POINTS для всех пользователей.
+ * Вызывается при закрытии сезонного рейтинга.
+ * Это позволяет пользователям начинать новый сезон с нуля.
+ */
+export const resetSeasonPointsAchievements = async (
+  client: PrismaClientOrTx = prisma
+): Promise<number> => {
+  // Находим тип достижения SEASON_POINTS
+  const achievementType = await client.achievementType.findFirst({
+    where: { metric: AchievementMetric.SEASON_POINTS },
+  })
+
+  if (!achievementType) {
+    return 0
+  }
+
+  // Сбрасываем прогресс всех пользователей по этому достижению
+  const result = await client.userAchievementProgress.updateMany({
+    where: { achievementId: achievementType.id },
+    data: {
+      currentLevel: 0,
+      progressCount: 0,
+      lastUnlockedAt: null,
+    },
+  })
+
+  // Удаляем записи из userAchievement для этого типа
+  await client.userAchievement.deleteMany({
+    where: { achievementTypeId: achievementType.id },
+  })
+
+  return result.count
 }

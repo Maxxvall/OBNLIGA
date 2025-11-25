@@ -755,6 +755,7 @@ enum AchievementMetric {
   DAILY_LOGIN
   TOTAL_PREDICTIONS
   CORRECT_PREDICTIONS
+  SEASON_POINTS
 }
 
 model UserAchievement {

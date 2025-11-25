@@ -751,8 +751,7 @@ body {
 
 .col-record,
 .col-score,
-.col-diff,
-.col-points {
+.col-diff {
   display: flex;
   align-items: center;
   justify-content: center;

@@ -852,9 +852,6 @@ export default function Profile() {
     return (
       <section className="profile-section">
         <div className="profile-card">
-          <header className="profile-card-header">
-            <h2>Достижения</h2>
-          </header>
           <AchievementsGrid />
         </div>
       </section>
@@ -863,6 +860,7 @@ export default function Profile() {
 
   const shouldShowCareerSection = isVerified && (!isCompactLayout || activeSection === 'stats')
   const shouldShowAchievements = !isCompactLayout || activeSection === 'achievements'
+  const shouldShowDailyReward = !isCompactLayout || activeSection === 'overview'
 
   const statusMessage = (() => {
     if (status === 'PENDING') {
@@ -1028,15 +1026,6 @@ export default function Profile() {
           </div>
         </div>
 
-        <DailyRewardCard
-          summary={dailyReward}
-          loading={dailyRewardLoading}
-          error={dailyRewardError}
-          onClaim={handleClaimReward}
-          claimLoading={claimRewardLoading}
-          lastAward={lastReward}
-        />
-
         {isCompactLayout ? (
           <div className="profile-mobile-tabs" role="tablist" aria-label="Разделы профиля">
             <button
@@ -1149,6 +1138,18 @@ export default function Profile() {
             </div>
           </section>
         ) : null}
+
+        {shouldShowDailyReward && (
+          <DailyRewardCard
+            summary={dailyReward}
+            loading={dailyRewardLoading}
+            error={dailyRewardError}
+            onClaim={handleClaimReward}
+            claimLoading={claimRewardLoading}
+            lastAward={lastReward}
+          />
+        )}
+
         {shouldShowAchievements && achievementsBlock}
 
         {showVerifyModal ? (

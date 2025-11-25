@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect } from 'react'
+import React, { useCallback, useState, useEffect, useRef } from 'react'
 import type { UserAchievementSummaryItem, UserAchievementsResponse } from '@shared/types'
 import type { AchievementsResult } from '../api/achievementsApi'
 import { fetchMyAchievementsPaginated, markRewardNotified, invalidateAchievementsCache } from '../api/achievementsApi'
@@ -33,9 +33,35 @@ const ACHIEVEMENT_LEVEL_NAMES: Record<string, Record<number, string>> = {
 
 // Группа для отображения
 const ACHIEVEMENT_GROUP_LABELS: Record<string, string> = {
-  streak: 'Серия',
+  streak: 'Игровая серия',
   predictions: 'Прогнозы',
   credits: 'Очки сезона',
+}
+
+// Конфигурация порогов и очков для каждой группы
+const ACHIEVEMENT_THRESHOLDS: Record<string, { level: number; threshold: number; points: number }[]> = {
+  streak: [
+    { level: 1, threshold: 7, points: 20 },
+    { level: 2, threshold: 60, points: 200 },
+    { level: 3, threshold: 180, points: 1000 },
+  ],
+  predictions: [
+    { level: 1, threshold: 20, points: 20 },
+    { level: 2, threshold: 100, points: 200 },
+    { level: 3, threshold: 500, points: 1000 },
+  ],
+  credits: [
+    { level: 1, threshold: 200, points: 0 },
+    { level: 2, threshold: 1000, points: 0 },
+    { level: 3, threshold: 5000, points: 0 },
+  ],
+}
+
+// Единицы измерения прогресса
+const ACHIEVEMENT_PROGRESS_UNITS: Record<string, string> = {
+  streak: 'дней подряд',
+  predictions: 'прогнозов',
+  credits: 'очков',
 }
 
 const DEFAULT_ACHIEVEMENTS: UserAchievementSummaryItem[] = [
@@ -104,11 +130,110 @@ function getAchievementLevelName(group: string, level: number): string {
   return ACHIEVEMENT_LEVEL_NAMES[group]?.[level] ?? `Уровень ${level}`
 }
 
+// Модальное окно деталей достижения
+interface AchievementModalProps {
+  achievement: UserAchievementSummaryItem
+  onClose: () => void
+}
+
+function AchievementModal({ achievement, onClose }: AchievementModalProps) {
+  const groupLabel = ACHIEVEMENT_GROUP_LABELS[achievement.group] ?? achievement.group
+  const levelName = getAchievementLevelName(achievement.group, achievement.currentLevel)
+  const unit = ACHIEVEMENT_PROGRESS_UNITS[achievement.group] ?? ''
+  const thresholds = ACHIEVEMENT_THRESHOLDS[achievement.group] ?? []
+  const maxLevel = thresholds.length
+
+  const isMaxLevel = achievement.currentLevel >= maxLevel
+  const nextThreshold = thresholds.find(t => t.level === achievement.currentLevel + 1)
+  const remaining = nextThreshold ? nextThreshold.threshold - achievement.currentProgress : 0
+
+  // Закрытие по Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
+  // Закрытие по клику на overlay
+  const handleOverlayClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      onClose()
+    }
+  }
+
+  return (
+    <div
+      className="achievement-modal-overlay"
+      onClick={handleOverlayClick}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="achievement-modal-title"
+    >
+      <div className="achievement-modal">
+        <div className="achievement-modal-header">
+          <img
+            src={achievement.iconSrc ?? '/achievements/streak-locked.png'}
+            alt={`${groupLabel} — ${levelName}`}
+            className="achievement-modal-icon"
+          />
+          <h2 id="achievement-modal-title" className="achievement-modal-title">
+            {levelName}
+          </h2>
+          <span className="achievement-modal-group">{groupLabel}</span>
+        </div>
+
+        <div className="achievement-modal-status">
+          <div className="achievement-modal-status-label">Текущий прогресс</div>
+          <div className="achievement-modal-status-value">
+            {achievement.currentProgress} {unit}
+          </div>
+        </div>
+
+        <div className="achievement-modal-next">
+          {isMaxLevel
+            ? 'Вы достигли максимального уровня!'
+            : `До следующего уровня: ${remaining} ${unit}`}
+        </div>
+
+        <div className="achievement-modal-levels">
+          <div className="achievement-modal-levels-title">Уровни и награды</div>
+          {thresholds.map(t => {
+            const tLevelName = getAchievementLevelName(achievement.group, t.level)
+            const isCurrent = t.level === achievement.currentLevel
+            const isUnlocked = t.level <= achievement.currentLevel
+
+            return (
+              <div key={t.level} className="achievement-modal-level-row">
+                <span className={`achievement-modal-level-name ${isCurrent ? 'current' : ''}`}>
+                  {isUnlocked ? '✓ ' : ''}{tLevelName}
+                </span>
+                <span className="achievement-modal-level-threshold">{t.threshold} {unit}</span>
+                {t.points > 0 && (
+                  <span className="achievement-modal-level-points">+{t.points} очков</span>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        <button type="button" className="achievement-modal-close" onClick={onClose}>
+          Закрыть
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function AchievementsGrid({ className }: AchievementsGridProps) {
   const [achievements, setAchievements] = useState<UserAchievementsResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [offset, setOffset] = useState(0)
+  const [selectedAchievement, setSelectedAchievement] = useState<UserAchievementSummaryItem | null>(null)
   const [celebration, setCelebration] = useState<{
     iconSrc: string
     levelName: string
@@ -116,10 +241,15 @@ export default function AchievementsGrid({ className }: AchievementsGridProps) {
     rewardId: string
   } | null>(null)
 
+  const loadedRef = useRef(false)
   const BATCH_SIZE = 4
 
   // Загрузка первоначального батча
   useEffect(() => {
+    // Предотвращаем двойную загрузку в StrictMode
+    if (loadedRef.current) return
+    loadedRef.current = true
+
     let cancelled = false
 
     async function load() {
@@ -169,6 +299,8 @@ export default function AchievementsGrid({ className }: AchievementsGridProps) {
 
     return () => {
       cancelled = true
+      // Сбрасываем ref при размонтировании, чтобы при следующем монтировании загрузка произошла
+      loadedRef.current = false
     }
   }, [])
 
@@ -212,10 +344,9 @@ export default function AchievementsGrid({ className }: AchievementsGridProps) {
     setCelebration(null)
   }, [celebration])
 
-  // Клик по карточке достижения (будущий modal)
+  // Клик по карточке достижения — открываем модальное окно
   const handleCardClick = useCallback((achievement: UserAchievementSummaryItem) => {
-    // TODO: Открыть модальное окно с деталями достижения
-    console.log('Achievement clicked:', achievement.achievementId)
+    setSelectedAchievement(achievement)
   }, [])
 
   if (loading) {
@@ -313,9 +444,12 @@ export default function AchievementsGrid({ className }: AchievementsGridProps) {
         </button>
       )}
 
-      <div className="achievements-summary">
-        <span>{achievements.totalUnlocked} разблокировано</span>
-      </div>
+      {selectedAchievement && (
+        <AchievementModal
+          achievement={selectedAchievement}
+          onClose={() => setSelectedAchievement(null)}
+        />
+      )}
     </div>
   )
 }

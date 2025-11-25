@@ -175,7 +175,6 @@ const buildSummary = async (userId: number): Promise<DailyRewardSummary> => {
   const nextResetKey = keyForDate(tomorrow)
   const midnightUtc = timezoneMidnightUtc(todayKey)
   const cooldownEndsAt = midnightUtc !== null ? new Date(midnightUtc + 86400000).toISOString() : tomorrow.toISOString()
-  const cooldownSeconds = Math.max(0, Math.floor((new Date(cooldownEndsAt).getTime() - now.getTime()) / 1000))
 
   const totalClaims = aggregates._count._all ?? 0
   const totalPointsEarned = aggregates._sum.pointsAwarded ?? 0
@@ -203,7 +202,6 @@ const buildSummary = async (userId: number): Promise<DailyRewardSummary> => {
     todayKey,
     nextResetKey,
     cooldownEndsAt,
-    cooldownSeconds,
     timezone: DAILY_REWARD_TIMEZONE,
     missed,
     message,

@@ -226,6 +226,17 @@
   vertical-align: middle;
 }
 
+/* Колонка очков — центрированный текст, не flex */
+.col-points {
+  text-align: center !important;
+  display: table-cell !important;
+}
+
+.col-points .cell-value {
+  display: inline;
+  text-align: center;
+}
+
 .col-date {
   white-space: nowrap;
 }

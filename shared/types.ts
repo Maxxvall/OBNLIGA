@@ -703,7 +703,8 @@ export interface DailyRewardSummary {
   todayKey: string
   nextResetKey: string
   cooldownEndsAt: string
-  cooldownSeconds: number
+  /** @deprecated Use cooldownEndsAt and compute on client */
+  cooldownSeconds?: number
   timezone: string
   missed: boolean
   message?: string | null

@@ -1,5 +1,6 @@
 import React, { useCallback, useState, useEffect } from 'react'
 import type { UserAchievementSummaryItem, UserAchievementsResponse } from '@shared/types'
+import type { AchievementsResult } from '../api/achievementsApi'
 import { fetchMyAchievementsPaginated, markRewardNotified, invalidateAchievementsCache } from '../api/achievementsApi'
 import AchievementCelebration from './AchievementCelebration'
 import './AchievementsGrid.css'
@@ -37,6 +38,68 @@ const ACHIEVEMENT_GROUP_LABELS: Record<string, string> = {
   credits: 'Очки сезона',
 }
 
+const DEFAULT_ACHIEVEMENTS: UserAchievementSummaryItem[] = [
+  {
+    achievementId: -1,
+    group: 'streak',
+    currentLevel: 0,
+    currentProgress: 0,
+    nextThreshold: 7,
+    iconSrc: '/achievements/streak-locked.png',
+    shortTitle: 'Скамейка',
+    shouldPlayAnimation: false,
+    animationRewardId: null,
+    animationPoints: null,
+  },
+  {
+    achievementId: -2,
+    group: 'predictions',
+    currentLevel: 0,
+    currentProgress: 0,
+    nextThreshold: 20,
+    iconSrc: '/achievements/betcount-locked.png',
+    shortTitle: 'Новичок',
+    shouldPlayAnimation: false,
+    animationRewardId: null,
+    animationPoints: null,
+  },
+  {
+    achievementId: -3,
+    group: 'credits',
+    currentLevel: 0,
+    currentProgress: 0,
+    nextThreshold: 200,
+    iconSrc: '/achievements/credits-locked.png',
+    shortTitle: 'Дебютант',
+    shouldPlayAnimation: false,
+    animationRewardId: null,
+    animationPoints: null,
+  },
+]
+
+function createDefaultAchievementsResponse(timestamp?: string): UserAchievementsResponse {
+  return {
+    achievements: DEFAULT_ACHIEVEMENTS,
+    total: DEFAULT_ACHIEVEMENTS.length,
+    hasMore: false,
+    totalUnlocked: 0,
+    generatedAt: timestamp ?? new Date().toISOString(),
+  }
+}
+
+function normalizeAchievementsResult(result?: AchievementsResult) {
+  const responseData = result?.data
+  const hasRealData = Boolean(responseData?.achievements.length)
+
+  return {
+    response:
+      hasRealData && responseData
+        ? responseData
+        : createDefaultAchievementsResponse(responseData?.generatedAt),
+    hasRealData,
+  }
+}
+
 function getAchievementLevelName(group: string, level: number): string {
   return ACHIEVEMENT_LEVEL_NAMES[group]?.[level] ?? `Уровень ${level}`
 }
@@ -69,24 +132,32 @@ export default function AchievementsGrid({ className }: AchievementsGridProps) {
         })
 
         if (!cancelled) {
-          setAchievements(result.data)
-          setOffset(BATCH_SIZE)
+          const { response, hasRealData } = normalizeAchievementsResult(result)
 
-          // Проверяем, есть ли награды для анимации
-          const rewardToAnimate = result.data.achievements.find(
-            a => a.shouldPlayAnimation && a.animationRewardId
-          )
-          if (rewardToAnimate) {
-            setCelebration({
-              iconSrc: rewardToAnimate.iconSrc ?? '/achievements/streak-locked.png',
-              levelName: rewardToAnimate.shortTitle,
-              points: rewardToAnimate.animationPoints ?? 0,
-              rewardId: rewardToAnimate.animationRewardId ?? '',
-            })
+          setAchievements(response)
+          setOffset(response.achievements.length)
+
+          if (hasRealData && result?.data) {
+            const rewardToAnimate = result.data.achievements.find(
+              a => a.shouldPlayAnimation && a.animationRewardId
+            )
+            if (rewardToAnimate) {
+              setCelebration({
+                iconSrc: rewardToAnimate.iconSrc ?? '/achievements/streak-locked.png',
+                levelName: rewardToAnimate.shortTitle,
+                points: rewardToAnimate.animationPoints ?? 0,
+                rewardId: rewardToAnimate.animationRewardId ?? '',
+              })
+            }
           }
         }
       } catch (err) {
         console.error('Failed to load achievements:', err)
+        if (!cancelled) {
+          const { response } = normalizeAchievementsResult()
+          setAchievements(response)
+          setOffset(response.achievements.length)
+        }
       } finally {
         if (!cancelled) {
           setLoading(false)
@@ -113,6 +184,10 @@ export default function AchievementsGrid({ className }: AchievementsGridProps) {
         summary: true,
       })
 
+      if (!result?.data) {
+        return
+      }
+
       setAchievements(prev => {
         if (!prev) return result.data
         return {
@@ -120,7 +195,7 @@ export default function AchievementsGrid({ className }: AchievementsGridProps) {
           achievements: [...prev.achievements, ...result.data.achievements],
         }
       })
-      setOffset(o => o + BATCH_SIZE)
+      setOffset(o => o + result.data.achievements.length)
     } catch (err) {
       console.error('Failed to load more achievements:', err)
     } finally {

@@ -6,6 +6,7 @@ import {
 import prisma from '../db'
 import { defaultCache } from '../cache'
 import { incrementAchievementProgress } from './achievementProgress'
+import { processPendingAchievementJobs } from './achievementJobProcessor'
 import type { DailyRewardSummary } from '@shared/types'
 import { recalculateUserRatings, ratingPublicCacheKey } from './ratingAggregation'
 import { RATING_DEFAULT_PAGE_SIZE } from './ratingConstants'
@@ -241,29 +242,16 @@ const createPointAdjustments = (
   day: number
 ) => {
   const reason = `daily_reward_day_${day}`
-  return tx.adminPointAdjustment.createMany({
-    data: [
-      {
-        userId,
-        adminIdentifier: 'daily_reward',
-        delta: points,
-        reason,
-      },
-      {
-        userId,
-        adminIdentifier: 'daily_reward',
-        delta: points,
-        scope: RatingScope.CURRENT,
-        reason,
-      },
-      {
-        userId,
-        adminIdentifier: 'daily_reward',
-        delta: points,
-        scope: RatingScope.YEARLY,
-        reason,
-      },
-    ],
+  // Create a single global adjustment. Rating aggregation already applies
+  // global adjustments to seasonal and yearly totals, so creating scoped
+  // duplicates would double-count the same points in seasonal/yearly views.
+  return tx.adminPointAdjustment.create({
+    data: {
+      userId,
+      adminIdentifier: 'daily_reward',
+      delta: points,
+      reason,
+    },
   })
 }
 
@@ -375,6 +363,9 @@ export const claimDailyReward = async (userId: number) => {
   ).catch(() => undefined)
 
   await recalculateUserRatings({ userIds: [userId] })
+
+  // Opportunistic processing: обрабатываем pending задачи на выдачу наград
+  await processPendingAchievementJobs(5).catch(() => undefined)
 
   const { value: summary, version } = await getDailyRewardSummary(userId)
   return { summary, awarded, version }

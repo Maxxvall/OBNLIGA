@@ -452,18 +452,19 @@ model AppUser {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  predictions         Prediction[]
-  predictionEntries   PredictionEntry[]
-  achievements        UserAchievement[]
-  achievementProgress UserAchievementProgress[]
-  predictionStreak    PredictionStreak?
-  userRating          UserRating?
-  ratingSnapshots     RatingSnapshot[]
-  pointAdjustments    AdminPointAdjustment[]
-  actionLogs          AdminActionLog[]
-  dailyRewardClaims   DailyRewardClaim[]
-  leaguePlayer        Person?                   @relation("AppUserLeaguePlayer", fields: [leaguePlayerId], references: [id])
-  shopOrders          ShopOrder[]
+  predictions           Prediction[]
+  predictionEntries     PredictionEntry[]
+  achievements          UserAchievement[]
+  achievementProgress   UserAchievementProgress[]
+  achievementRewards    UserAchievementReward[]
+  predictionStreak      PredictionStreak?
+  userRating            UserRating?
+  ratingSnapshots       RatingSnapshot[]
+  pointAdjustments      AdminPointAdjustment[]
+  actionLogs            AdminActionLog[]
+  dailyRewardClaims     DailyRewardClaim[]
+  leaguePlayer          Person?                   @relation("AppUserLeaguePlayer", fields: [leaguePlayerId], references: [id])
+  shopOrders            ShopOrder[]
 
   @@map("app_user")
 }
@@ -917,4 +918,49 @@ enum DisqualificationReason {
   SECOND_YELLOW
   ACCUMULATED_CARDS
   OTHER
+}
+
+// ============================================================
+// Achievement Rewards (idempotency log for reward distribution)
+// ============================================================
+
+model UserAchievementReward {
+  id        BigInt   @id @default(autoincrement()) @map("user_achievement_reward_id")
+  userId    Int      @map("user_id")
+  group     String   @map("group")
+  tier      Int      @map("tier")
+  seasonId  Int?     @map("season_id")
+  points    Int      @map("points")
+  notified  Boolean  @default(false) @map("notified")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, group, tier, seasonId], name: "user_achievement_reward_unique")
+  @@index([userId, notified], map: "user_achievement_reward_user_notified_idx")
+  @@map("user_achievement_rewards")
+}
+
+// ============================================================
+// Achievement Jobs (DB-backed queue for async reward processing)
+// ============================================================
+
+enum AchievementJobStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+model AchievementJob {
+  id        BigInt               @id @default(autoincrement()) @map("achievement_job_id")
+  status    AchievementJobStatus @default(PENDING)
+  payload   Json                 @map("payload")
+  attempts  Int                  @default(0) @map("attempts")
+  error     String?              @map("error")
+  createdAt DateTime             @default(now()) @map("created_at")
+  updatedAt DateTime             @updatedAt @map("updated_at")
+
+  @@index([status, createdAt], map: "achievement_job_status_created_idx")
+  @@map("achievement_jobs")
 }

@@ -83,6 +83,10 @@ import {
   updateMatchEvent,
   applyStatisticDelta,
 } from './matchModerationHelpers'
+import {
+  processPendingAchievementJobs,
+  getAchievementJobsStats,
+} from '../services/achievementJobProcessor'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -5466,6 +5470,41 @@ export default async function (server: FastifyInstance) {
         )
         await prisma.disqualification.delete({ where: { id: disqualificationId } })
         return reply.send({ ok: true })
+      })
+
+      // ============================================================
+      // Achievement Jobs Processing (для ручного запуска обработки)
+      // ============================================================
+
+      admin.post('/achievement-jobs/process', async (request, reply) => {
+        const body = request.body as { limit?: number } | undefined
+        const limit = Math.min(100, Math.max(1, body?.limit ?? 20))
+
+        try {
+          const processed = await processPendingAchievementJobs(limit)
+          const stats = await getAchievementJobsStats()
+
+          return reply.send({
+            ok: true,
+            data: {
+              processed,
+              stats,
+            },
+          })
+        } catch (err) {
+          request.log.error({ err }, 'achievement jobs processing failed')
+          return reply.status(500).send({ ok: false, error: 'internal' })
+        }
+      })
+
+      admin.get('/achievement-jobs/stats', async (request, reply) => {
+        try {
+          const stats = await getAchievementJobsStats()
+          return reply.send({ ok: true, data: stats })
+        } catch (err) {
+          request.log.error({ err }, 'achievement jobs stats failed')
+          return reply.status(500).send({ ok: false, error: 'internal' })
+        }
       })
     },
     { prefix: '/api/admin' }

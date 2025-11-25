@@ -1,5 +1,10 @@
 import { AchievementMetric, Prisma, PrismaClient } from '@prisma/client'
 import prisma from '../db'
+import {
+  createAchievementRewardJob,
+  getCurrentYearSeasonId,
+  STREAK_REWARD_CONFIG,
+} from './achievementJobProcessor'
 
 const DEFAULT_CLIENT = prisma
 
@@ -93,6 +98,15 @@ export const incrementAchievementProgress = async (
           achievedDate: now,
         },
       })
+
+      // Создаём job для асинхронного начисления наград только для DAILY_LOGIN (streak)
+      if (metric === AchievementMetric.DAILY_LOGIN) {
+        const points = STREAK_REWARD_CONFIG[unlockedLevel]
+        if (points) {
+          const seasonId = getCurrentYearSeasonId()
+          await createAchievementRewardJob(userId, 'streak', unlockedLevel, points, seasonId, client)
+        }
+      }
     }
   }
 }

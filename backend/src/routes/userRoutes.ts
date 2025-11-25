@@ -11,6 +11,7 @@ import {
   claimDailyReward,
   DailyRewardError,
 } from '../services/dailyRewards'
+import { STREAK_REWARD_CONFIG } from '../services/achievementJobProcessor'
 
 type UserUpsertBody = {
   userId?: string | number | bigint
@@ -242,7 +243,7 @@ export default async function (server: FastifyInstance) {
     }
   })
 
-  // Get user achievements progress
+  // Get user achievements progress with pagination and summary support
   server.get('/api/users/me/achievements', async (request, reply) => {
     const token = extractSessionToken(request)
     if (!token) {
@@ -255,7 +256,16 @@ export default async function (server: FastifyInstance) {
       return reply.status(401).send({ ok: false, error: 'invalid_token' })
     }
 
-    const cacheKey = `user:achievements:${subject}`
+    const query = request.query as {
+      limit?: string
+      offset?: string
+      summary?: string
+    }
+    const limit = Math.min(50, Math.max(1, parseInt(query.limit ?? '50', 10) || 50))
+    const offset = Math.max(0, parseInt(query.offset ?? '0', 10) || 0)
+    const isSummary = query.summary === 'true'
+
+    const cacheKey = `user:achievements:${subject}:${limit}:${offset}:${isSummary}`
 
     try {
       const achievements = await defaultCache.get(
@@ -269,35 +279,112 @@ export default async function (server: FastifyInstance) {
             return null
           }
 
-          const progress = await prisma.userAchievementProgress.findMany({
-            where: { userId: user.id },
-            include: {
-              achievement: {
-                include: {
-                  levels: {
-                    orderBy: { level: 'asc' },
+          // Получаем прогресс достижений с пагинацией
+          const [progress, total] = await Promise.all([
+            prisma.userAchievementProgress.findMany({
+              where: { userId: user.id },
+              include: {
+                achievement: {
+                  include: {
+                    levels: {
+                      orderBy: { level: 'asc' },
+                    },
                   },
                 },
               },
-            },
+              skip: offset,
+              take: limit,
+              orderBy: { achievementId: 'asc' },
+            }),
+            prisma.userAchievementProgress.count({ where: { userId: user.id } }),
+          ])
+
+          // Получаем непрочитанные награды для анимации (за последние 24 часа)
+          // Gracefully handle case when table doesn't exist yet
+          let unnotifiedRewards: { id: bigint; group: string; tier: number; points: number }[] = []
+          try {
+            const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+            unnotifiedRewards = await prisma.userAchievementReward.findMany({
+              where: {
+                userId: user.id,
+                notified: false,
+                createdAt: { gte: oneDayAgo },
+              },
+              select: {
+                id: true,
+                group: true,
+                tier: true,
+                points: true,
+              },
+            })
+          } catch {
+            // Table may not exist yet — ignore and return empty
+          }
+
+          // Создаём map для быстрого поиска анимаций
+          const animationMap = new Map(
+            unnotifiedRewards.map(r => [`${r.group}:${r.tier}`, { rewardId: r.id.toString(), points: r.points }])
+          )
+
+          const items = progress.map(p => {
+            const currentLevelData = p.achievement.levels.find(l => l.level === p.currentLevel)
+            const nextLevelData = p.achievement.levels.find(l => l.level === p.currentLevel + 1)
+            const maxLevel = Math.max(...p.achievement.levels.map(l => l.level), 0)
+
+            // Проверяем, есть ли непрочитанная награда для этого достижения
+            // Для streak группа = 'streak', tier = currentLevel
+            const group = p.achievement.metric === 'DAILY_LOGIN' ? 'streak' : p.achievement.name.toLowerCase()
+            const animationInfo = animationMap.get(`${group}:${p.currentLevel}`)
+
+            // Вычисляем иконку для streak на основе уровня
+            let iconUrl = currentLevelData?.iconUrl ?? null
+            if (p.achievement.metric === 'DAILY_LOGIN') {
+              iconUrl = getStreakIconUrl(p.currentLevel)
+            }
+
+            const baseResult = {
+              achievementId: p.achievementId,
+              group,
+              currentLevel: p.currentLevel,
+              currentProgress: p.progressCount,
+              nextThreshold: nextLevelData?.threshold ?? (currentLevelData?.threshold ?? 0),
+              iconSrc: iconUrl,
+              shortTitle: currentLevelData?.title ?? getStreakLevelTitle(p.currentLevel),
+              shouldPlayAnimation: !!animationInfo,
+              animationRewardId: animationInfo?.rewardId ?? null,
+              animationPoints: animationInfo?.points ?? null,
+            }
+
+            if (isSummary) {
+              return baseResult
+            }
+
+            // Полная информация для не-summary запросов
+            return {
+              ...baseResult,
+              achievementName: p.achievement.name,
+              achievementDescription: p.achievement.description,
+              lastUnlockedAt: p.lastUnlockedAt?.toISOString() ?? null,
+              maxLevel,
+              isMaxLevel: p.currentLevel >= maxLevel && maxLevel > 0,
+              levels: p.achievement.levels.map(l => ({
+                id: l.id,
+                level: l.level,
+                threshold: l.threshold,
+                iconUrl: p.achievement.metric === 'DAILY_LOGIN' ? getStreakIconUrl(l.level) : l.iconUrl,
+                title: l.title || getStreakLevelTitle(l.level),
+                description: l.description,
+                points: p.achievement.metric === 'DAILY_LOGIN' ? (STREAK_REWARD_CONFIG[l.level] ?? 0) : 0,
+              })),
+            }
           })
 
-          return progress.map(p => ({
-            achievementId: p.achievementId,
-            achievementName: p.achievement.name,
-            achievementDescription: p.achievement.description,
-            currentLevel: p.currentLevel,
-            progressCount: p.progressCount,
-            lastUnlockedAt: p.lastUnlockedAt?.toISOString() || null,
-            levels: p.achievement.levels.map(l => ({
-              id: l.id,
-              level: l.level,
-              threshold: l.threshold,
-              iconUrl: l.iconUrl,
-              title: l.title,
-              description: l.description,
-            })),
-          }))
+          return {
+            achievements: items,
+            total,
+            hasMore: offset + limit < total,
+            totalUnlocked: progress.reduce((sum, p) => sum + p.currentLevel, 0),
+          }
         },
         300 // 5 min fresh
       )
@@ -306,13 +393,10 @@ export default async function (server: FastifyInstance) {
         return reply.status(404).send({ ok: false, error: 'user_not_found' })
       }
 
-      const totalUnlocked = achievements.reduce((sum, a) => sum + a.currentLevel, 0)
-
       return reply.send({
         ok: true,
         data: {
-          achievements,
-          totalUnlocked,
+          ...achievements,
           generatedAt: new Date().toISOString(),
         },
       })
@@ -321,4 +405,93 @@ export default async function (server: FastifyInstance) {
       return reply.status(500).send({ ok: false, error: 'internal' })
     }
   })
+
+  // Mark achievement reward as notified (для анимации)
+  server.post<{ Params: { rewardId: string } }>(
+    '/api/users/me/achievements/:rewardId/mark-notified',
+    async (request, reply) => {
+      const token = extractSessionToken(request)
+      if (!token) {
+        return reply.status(401).send({ ok: false, error: 'no_token' })
+      }
+
+      const subject = resolveSessionSubject(token)
+      if (!subject) {
+        return reply.status(401).send({ ok: false, error: 'invalid_token' })
+      }
+
+      const rewardIdParam = request.params.rewardId
+      const rewardId = BigInt(rewardIdParam)
+
+      try {
+        const user = await prisma.appUser.findUnique({
+          where: { telegramId: BigInt(subject) },
+          select: { id: true },
+        })
+
+        if (!user) {
+          return reply.status(404).send({ ok: false, error: 'user_not_found' })
+        }
+
+        // Обновляем только если награда принадлежит пользователю
+        // Gracefully handle case when table doesn't exist yet
+        try {
+          const updated = await prisma.userAchievementReward.updateMany({
+            where: {
+              id: rewardId,
+              userId: user.id,
+              notified: false,
+            },
+            data: { notified: true },
+          })
+
+          if (updated.count === 0) {
+            return reply.status(404).send({ ok: false, error: 'reward_not_found' })
+          }
+        } catch {
+          // Table may not exist yet
+          return reply.status(404).send({ ok: false, error: 'reward_not_found' })
+        }
+
+        // Инвалидируем кэш достижений
+        await defaultCache.invalidate(`user:achievements:${subject}`).catch(() => undefined)
+
+        return reply.send({ ok: true })
+      } catch (err) {
+        request.log.error({ err }, 'mark reward notified failed')
+        return reply.status(500).send({ ok: false, error: 'internal' })
+      }
+    }
+  )
+}
+
+// Вспомогательные функции для streak достижений
+function getStreakIconUrl(level: number): string {
+  switch (level) {
+    case 0:
+      return '/achievements/streak-locked.png'
+    case 1:
+      return '/achievements/streak-bronze.png'
+    case 2:
+      return '/achievements/streak-silver.png'
+    case 3:
+      return '/achievements/streak-gold.png'
+    default:
+      return '/achievements/streak-locked.png'
+  }
+}
+
+function getStreakLevelTitle(level: number): string {
+  switch (level) {
+    case 0:
+      return 'Скамейка'
+    case 1:
+      return 'Запасной'
+    case 2:
+      return 'Основной'
+    case 3:
+      return 'Капитан'
+    default:
+      return 'Скамейка'
+  }
 }

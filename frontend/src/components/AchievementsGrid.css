@@ -1,0 +1,172 @@
+/* AchievementsGrid компонент — сетка достижений в профиле */
+
+.achievements-grid-container {
+  width: 100%;
+}
+
+.achievements-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+/* Компактная карточка достижения */
+.achievement-card-compact {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 12px;
+  background: linear-gradient(145deg, rgba(30, 50, 80, 0.6), rgba(20, 35, 60, 0.8));
+  border: 1px solid rgba(100, 180, 255, 0.15);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.achievement-card-compact:hover,
+.achievement-card-compact:focus {
+  transform: translateY(-2px);
+  border-color: rgba(100, 180, 255, 0.35);
+  box-shadow: 0 4px 16px rgba(100, 180, 255, 0.15);
+  outline: none;
+}
+
+.achievement-card-compact:focus-visible {
+  outline: 2px solid rgba(100, 180, 255, 0.6);
+  outline-offset: 2px;
+}
+
+/* Иконка достижения */
+.achievement-icon-wrapper {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+.achievement-icon {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+/* Прогресс-бар */
+.achievement-progress-wrapper {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.achievement-progress-bar {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.achievement-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4ecdc4, #45b7d1);
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+/* Название уровня */
+.achievement-level-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(230, 247, 255, 0.85);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* Кнопка "Ещё" */
+.achievements-load-more {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: linear-gradient(145deg, rgba(40, 60, 100, 0.5), rgba(30, 45, 75, 0.7));
+  border: 1px solid rgba(100, 180, 255, 0.2);
+  border-radius: 8px;
+  color: rgba(230, 247, 255, 0.9);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.achievements-load-more:hover:not(:disabled) {
+  background: linear-gradient(145deg, rgba(50, 75, 120, 0.6), rgba(35, 55, 90, 0.8));
+  border-color: rgba(100, 180, 255, 0.35);
+}
+
+.achievements-load-more:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Summary (количество разблокированных) */
+.achievements-summary {
+  text-align: center;
+  font-size: 12px;
+  color: rgba(230, 247, 255, 0.5);
+}
+
+/* Skeleton-загрузчик */
+.achievements-skeleton {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.achievement-skeleton-card {
+  height: 100px;
+  background: linear-gradient(
+    90deg,
+    rgba(30, 50, 80, 0.4) 25%,
+    rgba(40, 65, 100, 0.5) 50%,
+    rgba(30, 50, 80, 0.4) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s infinite;
+  border-radius: 12px;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Пустое состояние */
+.achievements-empty {
+  text-align: center;
+  padding: 24px 16px;
+  color: rgba(230, 247, 255, 0.5);
+  font-size: 14px;
+}
+
+.achievements-empty p {
+  margin: 0;
+}
+
+/* Адаптивность для маленьких экранов */
+@media (max-width: 320px) {
+  .achievements-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .achievement-card-compact {
+    padding: 14px 10px;
+  }
+}

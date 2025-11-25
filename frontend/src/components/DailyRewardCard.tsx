@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import type { DailyRewardClaimResponse, DailyRewardDayView, DailyRewardSummary } from '@shared/types'
 
 interface DailyRewardCardProps {
@@ -41,22 +41,6 @@ export const DailyRewardCard: React.FC<DailyRewardCardProps> = ({
     const timer = window.setTimeout(() => setAnimatingDay(null), 1400)
     return () => window.clearTimeout(timer)
   }, [lastAward])
-
-  const cooldownLabel = useMemo(() => {
-    if (!summary?.cooldownEndsAt) {
-      return null
-    }
-    try {
-      const formatter = new Intl.DateTimeFormat('ru-RU', {
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZone: summary.timezone,
-      })
-      return formatter.format(new Date(summary.cooldownEndsAt))
-    } catch {
-      return null
-    }
-  }, [summary?.cooldownEndsAt, summary?.timezone])
 
   const handleClaim = () => {
     if (claimLoading || loading || !summary?.claimAvailable) {

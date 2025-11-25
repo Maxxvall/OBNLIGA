@@ -9,6 +9,7 @@ import { fetchMyRating } from './api/ratingsApi'
 import { fetchMyAchievements } from './api/achievementsApi'
 import { fetchDailyRewardSummary, claimDailyReward } from './api/dailyRewardApi'
 import DailyRewardCard from './components/DailyRewardCard'
+import AchievementsGrid from './components/AchievementsGrid'
 import './profile.css'
 
 type LeaguePlayerStatus = 'NONE' | 'PENDING' | 'VERIFIED'
@@ -143,7 +144,7 @@ export default function Profile() {
   const [verifyError, setVerifyError] = useState<string | null>(null)
   const [activeSection, setActiveSection] = useState<ProfileSection>('overview')
   const [rating, setRating] = useState<UserRatingSummary | null>(null)
-  const [achievements, setAchievements] = useState<UserAchievementsSummary | null>(null)
+  const [, setAchievements] = useState<UserAchievementsSummary | null>(null)
   const [dailyReward, setDailyReward] = useState<DailyRewardSummary | null>(null)
   const [dailyRewardLoading, setDailyRewardLoading] = useState(false)
   const [dailyRewardError, setDailyRewardError] = useState<string | null>(null)
@@ -246,7 +247,6 @@ export default function Profile() {
     const cached = skipCache ? null : getCachedProfile()
     if (!isBackground && cached?.data) {
       setUser(cached.data)
-      console.log('Loaded profile from cache')
     }
 
     isFetchingRef.current = true
@@ -267,7 +267,7 @@ export default function Profile() {
         initDataOverride: string | undefined,
         source: 'telegram' | 'dev'
       ) => {
-        console.log(`[Profile] authenticateUsingPayload via ${source}`, userPayload)
+        // debug: authenticateUsingPayload called
         if (!userRef.current) {
           setUser(prev =>
             prev ?? {
@@ -314,7 +314,6 @@ export default function Profile() {
             setCachedProfile(cached.data, response.headers.get('ETag') ?? cached.etag)
             setUser(cached.data)
           }
-          console.log('[Profile] using cached profile (304 Not Modified)')
           return true
         }
 
@@ -354,7 +353,6 @@ export default function Profile() {
         const devConfig = resolveDevTelegramUser()
 
         if (tg && unsafe) {
-          console.log('Telegram user data:', unsafe)
           const success = await authenticateUsingPayload(unsafe, tg.initData, 'telegram')
           if (success) {
             return
@@ -395,11 +393,9 @@ export default function Profile() {
               setCachedProfile(cached.data, resp.headers.get('ETag') ?? cached.etag)
               setUser(cached.data)
             }
-            console.log('Using cached profile (304 Not Modified)')
             return
           } else if (resp.ok) {
             const payload = (await resp.json()) as unknown
-            console.log('Token-based profile load:', payload)
             const profileUser = readProfileUser(payload)
             if (profileUser) {
               const etag = resp.headers.get('ETag') ?? undefined
@@ -851,73 +847,19 @@ export default function Profile() {
     }
   }, [clearLongPress])
 
+  // Новый компактный блок достижений с поддержкой анимации
   const achievementsBlock = useMemo(() => {
-    if (!achievements) {
-      return null
-    }
-
     return (
       <section className="profile-section">
         <div className="profile-card">
           <header className="profile-card-header">
             <h2>Достижения</h2>
-            <span className="achievements-count">{achievements.totalUnlocked} разблокировано</span>
           </header>
-          <div className="achievements-grid">
-            {achievements.achievements.length > 0 ? (
-              achievements.achievements.map(achievement => {
-                const currentLevelData = achievement.levels.find(l => l.level === achievement.currentLevel)
-                const nextLevelData = achievement.levels.find(l => l.level === achievement.currentLevel + 1)
-                const progress = nextLevelData
-                  ? Math.min(100, (achievement.progressCount / nextLevelData.threshold) * 100)
-                  : 100
-
-                return (
-                  <div key={achievement.achievementId} className="achievement-card">
-                    <div className="achievement-icon">
-                      {currentLevelData?.iconUrl ? (
-                        <img src={currentLevelData.iconUrl} alt={currentLevelData.title} />
-                      ) : (
-                        <div className="achievement-icon-placeholder">🏆</div>
-                      )}
-                    </div>
-                    <div className="achievement-info">
-                      <h3 className="achievement-title">
-                        {currentLevelData?.title || achievement.achievementName}
-                      </h3>
-                      <p className="achievement-description">
-                        {currentLevelData?.description || achievement.achievementDescription}
-                      </p>
-                      {nextLevelData ? (
-                        <div className="achievement-progress">
-                          <div className="achievement-progress-bar">
-                            <div
-                              className="achievement-progress-fill"
-                              style={{ width: `${progress}%` }}
-                            />
-                          </div>
-                          <div className="achievement-progress-text">
-                            {achievement.progressCount} / {nextLevelData.threshold}
-                            {' — '} Уровень {nextLevelData.level}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="achievement-completed">✓ Максимальный уровень</div>
-                      )}
-                    </div>
-                  </div>
-                )
-              })
-            ) : (
-              <div className="profile-table-placeholder">
-                <p>Достижения появятся по мере участия в прогнозах и активности.</p>
-              </div>
-            )}
-          </div>
+          <AchievementsGrid />
         </div>
       </section>
     )
-  }, [achievements])
+  }, [])
 
   const shouldShowCareerSection = isVerified && (!isCompactLayout || activeSection === 'stats')
   const shouldShowAchievements = !isCompactLayout || activeSection === 'achievements'
@@ -1095,7 +1037,7 @@ export default function Profile() {
           lastAward={lastReward}
         />
 
-        {isCompactLayout && isVerified ? (
+        {isCompactLayout ? (
           <div className="profile-mobile-tabs" role="tablist" aria-label="Разделы профиля">
             <button
               type="button"
@@ -1106,15 +1048,17 @@ export default function Profile() {
             >
               Профиль
             </button>
-            <button
-              type="button"
-              className={activeSection === 'stats' ? 'active' : ''}
-              onClick={() => setActiveSection('stats')}
-              role="tab"
-              aria-selected={activeSection === 'stats'}
-            >
-              Карьера
-            </button>
+            {isVerified ? (
+              <button
+                type="button"
+                className={activeSection === 'stats' ? 'active' : ''}
+                onClick={() => setActiveSection('stats')}
+                role="tab"
+                aria-selected={activeSection === 'stats'}
+              >
+                Карьера
+              </button>
+            ) : null}
             <button
               type="button"
               className={activeSection === 'achievements' ? 'active' : ''}

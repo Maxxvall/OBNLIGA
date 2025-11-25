@@ -182,7 +182,7 @@ export const ShopTab = () => {
 
   const [itemForm, setItemForm] = useState<ItemFormState>(DEFAULT_ITEM_FORM)
   const [editingItemId, setEditingItemId] = useState<number | null>(null)
-  const [itemImagePreview, setItemImagePreview] = useState<string | null>(null)
+  const [, setItemImagePreview] = useState<string | null>(null)
   const [formFeedback, setFormFeedback] = useState<FeedbackState>(null)
   const [itemSaving, setItemSaving] = useState(false)
   const [itemStatusPendingId, setItemStatusPendingId] = useState<number | null>(null)

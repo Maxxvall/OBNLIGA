@@ -621,6 +621,7 @@ export interface UserAchievementLevel {
   iconUrl: string | null
   title: string
   description: string | null
+  points?: number // очки за уровень (для streak)
 }
 
 export interface UserAchievementProgress {
@@ -633,8 +634,40 @@ export interface UserAchievementProgress {
   levels: UserAchievementLevel[]
 }
 
+// Summary версия для компактного отображения в UI
+export interface UserAchievementSummaryItem {
+  achievementId: number
+  group: string
+  currentLevel: number
+  currentProgress: number
+  nextThreshold: number
+  iconSrc: string | null
+  shortTitle: string
+  shouldPlayAnimation: boolean
+  animationRewardId: string | null
+  animationPoints: number | null
+}
+
+// Полная версия с детальной информацией
+export interface UserAchievementFullItem extends UserAchievementSummaryItem {
+  achievementName: string
+  achievementDescription: string | null
+  lastUnlockedAt: string | null
+  maxLevel: number
+  isMaxLevel: boolean
+  levels: UserAchievementLevel[]
+}
+
 export interface UserAchievementsSummary {
   achievements: UserAchievementProgress[]
+  totalUnlocked: number
+  generatedAt: string
+}
+
+export interface UserAchievementsResponse {
+  achievements: Array<UserAchievementSummaryItem | UserAchievementFullItem>
+  total: number
+  hasMore: boolean
   totalUnlocked: number
   generatedAt: string
 }

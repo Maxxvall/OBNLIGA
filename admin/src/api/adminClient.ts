@@ -716,8 +716,14 @@ export interface SeasonGroupSlotAutomationPayload {
   clubId: number
 }
 
+export interface ImportDecision {
+  line: string
+  useExistingPersonId: number | null // null = создать нового
+}
+
 export interface ImportClubPlayersPayload {
   lines: string[]
+  decisions?: ImportDecision[]
 }
 
 export interface PlayoffCreationPayload {
@@ -801,7 +807,40 @@ export const importClubPlayers = async (
   payload: ImportClubPlayersPayload
 ) => adminPost<ClubPlayerLink[]>(token, `/api/admin/clubs/${clubId}/players/import`, payload)
 
-export const applyPlayerTransfers = async (
+// Типы для проверки похожих игроков
+export interface SimilarPersonMatch {
+  person: {
+    id: number
+    firstName: string
+    lastName: string
+  }
+  clubs: Array<{
+    id: number
+    name: string
+    shortName: string | null
+  }>
+  matchType: 'exact' | 'normalized' | 'fuzzy'
+}
+
+export interface CheckSimilarEntry {
+  input: { firstName: string; lastName: string }
+  similar: SimilarPersonMatch[]
+  exactMatch: SimilarPersonMatch | null
+  alreadyInClub: boolean
+}
+
+export interface CheckSimilarPlayersResult {
+  entries: CheckSimilarEntry[]
+  hasSimilar: boolean
+}
+
+export const checkSimilarPlayers = async (
+  token: string | undefined,
+  clubId: number,
+  payload: ImportClubPlayersPayload
+) => adminPost<CheckSimilarPlayersResult>(token, `/api/admin/clubs/${clubId}/players/check-similar`, payload)
+
+export const applyPlayerTransfers = async(
   token: string | undefined,
   payload: { transfers: PlayerTransferInput[] }
 ) => adminPost<PlayerTransfersResult>(token, '/api/admin/player-transfers', payload)

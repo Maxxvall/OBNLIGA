@@ -388,6 +388,87 @@ const parseFullNameLine = (line: string): { firstName: string; lastName: string 
   return { firstName, lastName }
 }
 
+/**
+ * Нормализует строку для нечёткого сравнения имён:
+ * - Приводит к нижнему регистру
+ * - Убирает лишние пробелы
+ * - Убирает дефисы и апострофы (О'Коннор -> оконнор)
+ * - Транслитерирует ё → е
+ */
+const normalizeForFuzzyMatch = (value: string): string => {
+  return value
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/[-'`'']/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * Вычисляет расстояние Левенштейна между двумя строками
+ */
+const levenshteinDistance = (a: string, b: string): number => {
+  const matrix: number[][] = []
+
+  for (let i = 0; i <= b.length; i++) {
+    matrix[i] = [i]
+  }
+  for (let j = 0; j <= a.length; j++) {
+    matrix[0][j] = j
+  }
+
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1]
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        )
+      }
+    }
+  }
+
+  return matrix[b.length][a.length]
+}
+
+/**
+ * Проверяет похожесть двух имён
+ * Возвращает true если:
+ * - Нормализованные строки совпадают
+ * - Или расстояние Левенштейна <= 2 для коротких имён или <= 3 для длинных
+ */
+const isSimilarName = (name1: string, name2: string): boolean => {
+  const n1 = normalizeForFuzzyMatch(name1)
+  const n2 = normalizeForFuzzyMatch(name2)
+
+  if (n1 === n2) return true
+
+  const maxLen = Math.max(n1.length, n2.length)
+  const threshold = maxLen <= 5 ? 1 : maxLen <= 10 ? 2 : 3
+
+  return levenshteinDistance(n1, n2) <= threshold
+}
+
+/**
+ * Ищет похожие персоны по ФИО
+ */
+interface SimilarPersonMatch {
+  person: {
+    id: number
+    firstName: string
+    lastName: string
+  }
+  clubs: Array<{
+    id: number
+    name: string
+    shortName: string | null
+  }>
+  matchType: 'exact' | 'normalized' | 'fuzzy'
+}
+
 const sendSerialized = <T>(reply: FastifyReply, data: T) =>
   reply.send({ ok: true, data: serializePrisma(data) })
 
@@ -2809,7 +2890,11 @@ export default async function (server: FastifyInstance) {
 
       admin.post<{
         Params: ClubIdParams
-        Body: { lines?: unknown; text?: unknown }
+        Body: {
+          lines?: unknown
+          text?: unknown
+          decisions?: Array<{ line: string; useExistingPersonId: number | null }>
+        }
       }>('/clubs/:clubId/players/import', async (request, reply) => {
         const clubId = parseNumericId(request.params.clubId, 'clubId')
         const body = request.body ?? {}
@@ -2827,6 +2912,24 @@ export default async function (server: FastifyInstance) {
               .map(line => line.trim())
               .filter(line => line.length > 0)
           )
+        }
+
+        // Парсим decisions - решения пользователя по похожим
+        const decisionsMap = new Map<string, number | null>()
+        if (Array.isArray(body?.decisions)) {
+          for (const decision of body.decisions) {
+            if (typeof decision?.line === 'string') {
+              // Нормализуем ключ решения
+              const parsed = parseFullNameLine(decision.line)
+              const key = `${parsed.lastName.toLowerCase()}|${parsed.firstName.toLowerCase()}`
+              decisionsMap.set(
+                key,
+                typeof decision.useExistingPersonId === 'number'
+                  ? decision.useExistingPersonId
+                  : null
+              )
+            }
+          }
         }
 
         const normalizedLines = rawLines.map(line => line.trim()).filter(line => line.length > 0)
@@ -2904,8 +3007,26 @@ export default async function (server: FastifyInstance) {
             }
 
             for (const entry of uniqueEntries) {
-              let person = personsByKey.get(entry.key)
+              // Проверяем, есть ли решение пользователя для этой записи
+              const decision = decisionsMap.get(entry.key)
+
+              let person: { id: number } | undefined
+
+              if (decision !== undefined && decision !== null) {
+                // Пользователь выбрал использовать существующего игрока
+                const existingPerson = await tx.person.findUnique({ where: { id: decision } })
+                if (existingPerson) {
+                  person = existingPerson
+                }
+              }
+
               if (!person) {
+                // Ищем точное совпадение по имени
+                person = personsByKey.get(entry.key)
+              }
+
+              if (!person) {
+                // Создаём нового игрока
                 person = await tx.person.create({
                   data: {
                     firstName: entry.firstName,
@@ -2958,6 +3079,170 @@ export default async function (server: FastifyInstance) {
 
         return sendSerialized(reply, players)
       })
+
+      // Check for similar players before import (для предупреждения о возможных дубликатах)
+      admin.post<{ Params: { clubId: string } }>(
+        '/clubs/:clubId/players/check-similar',
+        async (request, reply) => {
+          const clubIdParam = request.params.clubId
+          const clubId = parseNumericId(clubIdParam, 'clubId')
+
+          const body = request.body as { lines?: string[]; text?: string }
+          const rawLines: string[] = []
+          if (Array.isArray(body?.lines)) {
+            for (const item of body.lines) {
+              if (typeof item === 'string') rawLines.push(item)
+            }
+          }
+          if (typeof body?.text === 'string') {
+            rawLines.push(
+              ...body.text
+                .split(/\r?\n/)
+                .map(line => line.trim())
+                .filter(line => line.length > 0)
+            )
+          }
+
+          const normalizedLines = rawLines.map(line => line.trim()).filter(line => line.length > 0)
+          if (!normalizedLines.length) {
+            return reply.send({ ok: true, data: { entries: [], hasSimilar: false } })
+          }
+
+          const parsedNames: Array<{ firstName: string; lastName: string }> = []
+          try {
+            for (const line of normalizedLines) {
+              parsedNames.push(parseFullNameLine(line))
+            }
+          } catch (err) {
+            return reply.status(400).send({ ok: false, error: 'invalid_full_name' })
+          }
+
+          // Получаем всех игроков с их клубами для поиска похожих
+          const allPersons = await prisma.person.findMany({
+            where: { isPlayer: true },
+            include: {
+              clubAffiliations: {
+                include: {
+                  club: {
+                    select: {
+                      id: true,
+                      name: true,
+                      shortName: true,
+                    },
+                  },
+                },
+              },
+            },
+          })
+
+          // Получаем текущий состав клуба для исключения уже добавленных
+          const clubPlayers = await prisma.clubPlayer.findMany({
+            where: { clubId },
+            select: { personId: true },
+          })
+          const clubPersonIds = new Set(clubPlayers.map(p => p.personId))
+
+          const entries: Array<{
+            input: { firstName: string; lastName: string }
+            similar: SimilarPersonMatch[]
+            exactMatch: SimilarPersonMatch | null
+            alreadyInClub: boolean
+          }> = []
+
+          for (const input of parsedNames) {
+            const inputNormalized = normalizeForFuzzyMatch(`${input.lastName} ${input.firstName}`)
+
+            let exactMatch: SimilarPersonMatch | null = null
+            const similar: SimilarPersonMatch[] = []
+
+            for (const person of allPersons) {
+              // Проверяем точное совпадение (после нормализации normalizePersonName)
+              if (
+                person.firstName.toLowerCase() === input.firstName.toLowerCase() &&
+                person.lastName.toLowerCase() === input.lastName.toLowerCase()
+              ) {
+                exactMatch = {
+                  person: {
+                    id: person.id,
+                    firstName: person.firstName,
+                    lastName: person.lastName,
+                  },
+                  clubs: person.clubAffiliations.map(a => ({
+                    id: a.club.id,
+                    name: a.club.name,
+                    shortName: a.club.shortName,
+                  })),
+                  matchType: 'exact',
+                }
+                continue
+              }
+
+              // Проверяем нечёткое совпадение
+              const personNormalized = normalizeForFuzzyMatch(
+                `${person.lastName} ${person.firstName}`
+              )
+
+              // Проверка normalized match (одинаковые после полной нормализации)
+              if (personNormalized === inputNormalized) {
+                similar.push({
+                  person: {
+                    id: person.id,
+                    firstName: person.firstName,
+                    lastName: person.lastName,
+                  },
+                  clubs: person.clubAffiliations.map(a => ({
+                    id: a.club.id,
+                    name: a.club.name,
+                    shortName: a.club.shortName,
+                  })),
+                  matchType: 'normalized',
+                })
+                continue
+              }
+
+              // Fuzzy match по фамилии и имени отдельно
+              const lastNameSimilar = isSimilarName(person.lastName, input.lastName)
+              const firstNameSimilar = isSimilarName(person.firstName, input.firstName)
+
+              if (lastNameSimilar && firstNameSimilar) {
+                similar.push({
+                  person: {
+                    id: person.id,
+                    firstName: person.firstName,
+                    lastName: person.lastName,
+                  },
+                  clubs: person.clubAffiliations.map(a => ({
+                    id: a.club.id,
+                    name: a.club.name,
+                    shortName: a.club.shortName,
+                  })),
+                  matchType: 'fuzzy',
+                })
+              }
+            }
+
+            // Проверяем, уже ли игрок в клубе
+            const alreadyInClub = exactMatch ? clubPersonIds.has(exactMatch.person.id) : false
+
+            entries.push({
+              input,
+              exactMatch,
+              similar: similar.slice(0, 5), // Ограничиваем до 5 похожих
+              alreadyInClub,
+            })
+          }
+
+          const hasSimilar = entries.some(e => e.similar.length > 0 && !e.exactMatch)
+
+          return reply.send({
+            ok: true,
+            data: {
+              entries,
+              hasSimilar,
+            },
+          })
+        }
+      )
 
       // Persons CRUD
       admin.get('/persons', async (request, reply) => {

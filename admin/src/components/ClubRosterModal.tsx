@@ -1,5 +1,12 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { fetchClubPlayers, importClubPlayers, updateClubPlayers } from '../api/adminClient'
+import {
+  checkSimilarPlayers,
+  CheckSimilarEntry,
+  fetchClubPlayers,
+  importClubPlayers,
+  ImportDecision,
+  updateClubPlayers,
+} from '../api/adminClient'
 import { Club, ClubPlayerLink, Person } from '../types'
 
 type ClubRosterModalProps = {
@@ -15,6 +22,18 @@ type EditablePlayer = {
   person: Person
 }
 
+/** Для каждой записи с похожими — выбор пользователя */
+type ConfirmChoice = {
+  entry: CheckSimilarEntry
+  /** null = создать нового, number = использовать существующего personId */
+  selectedPersonId: number | null
+}
+
+type ConfirmDialogState = {
+  entries: CheckSimilarEntry[]
+  hasSimilar: boolean
+}
+
 export const ClubRosterModal = ({ club, token, onClose, onSaved }: ClubRosterModalProps) => {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -23,6 +42,10 @@ export const ClubRosterModal = ({ club, token, onClose, onSaved }: ClubRosterMod
   const [bulkValue, setBulkValue] = useState('')
   const [bulkLoading, setBulkLoading] = useState(false)
   const [roster, setRoster] = useState<EditablePlayer[]>([])
+
+  // Состояние диалога подтверждения похожих
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null)
+  const [confirmChoices, setConfirmChoices] = useState<ConfirmChoice[]>([])
 
   useEffect(() => {
     let mounted = true
@@ -75,8 +98,44 @@ export const ClubRosterModal = ({ club, token, onClose, onSaved }: ClubRosterMod
       setBulkLoading(true)
       setError(null)
       setFeedback(null)
+
+      // 1. Сначала проверяем на похожие записи
+      const checkResult = await checkSimilarPlayers(token, club.id, { lines })
+
+      // 2. Если есть записи с похожими (но не точное совпадение) — показываем диалог
+      // Фильтруем записи: показываем только те, где есть similar И нет exactMatch
+      const entriesNeedingConfirm = checkResult.entries.filter(
+        e => e.similar.length > 0 && !e.exactMatch && !e.alreadyInClub
+      )
+
+      if (entriesNeedingConfirm.length > 0) {
+        setConfirmDialog(checkResult)
+        // По умолчанию выбираем "создать нового" для всех
+        setConfirmChoices(
+          entriesNeedingConfirm.map(entry => ({
+            entry,
+            selectedPersonId: null, // null = создать нового
+          }))
+        )
+        setBulkLoading(false)
+        return
+      }
+
+      // 3. Если подтверждение не нужно — импортируем сразу
+      await performImport(lines, [])
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Не удалось проверить игроков'
+      setError(message)
+      setBulkLoading(false)
+    }
+  }
+
+  /** Выполняет импорт с учётом решений по похожим записям */
+  const performImport = async (lines: string[], decisions: ImportDecision[]) => {
+    try {
+      setBulkLoading(true)
       const previousCount = roster.length
-      const data = await importClubPlayers(token, club.id, { lines })
+      const data = await importClubPlayers(token, club.id, { lines, decisions })
       const next = data.map(entry => ({
         personId: entry.personId,
         defaultShirtNumber: entry.defaultShirtNumber ?? null,
@@ -101,6 +160,42 @@ export const ClubRosterModal = ({ club, token, onClose, onSaved }: ClubRosterMod
     } finally {
       setBulkLoading(false)
     }
+  }
+
+  /** Обработчик подтверждения диалога */
+  const handleConfirmImport = async () => {
+    if (!confirmDialog) return
+
+    // Собираем решения пользователя: строка = "Фамилия Имя" из input
+    const decisions: ImportDecision[] = confirmChoices.map(choice => ({
+      line: `${choice.entry.input.lastName} ${choice.entry.input.firstName}`,
+      useExistingPersonId: choice.selectedPersonId,
+    }))
+
+    // Собираем все строки для импорта
+    const allLines = bulkValue
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(Boolean)
+
+    setConfirmDialog(null)
+    setConfirmChoices([])
+
+    await performImport(allLines, decisions)
+  }
+
+  /** Закрытие диалога без импорта */
+  const handleCancelConfirm = () => {
+    setConfirmDialog(null)
+    setConfirmChoices([])
+    setBulkLoading(false)
+  }
+
+  /** Изменение выбора для записи */
+  const handleChoiceChange = (index: number, personId: number | null) => {
+    setConfirmChoices(prev =>
+      prev.map((choice, i) => (i === index ? { ...choice, selectedPersonId: personId } : choice))
+    )
   }
 
   const handleRemove = (personId: number) => {
@@ -277,6 +372,168 @@ export const ClubRosterModal = ({ club, token, onClose, onSaved }: ClubRosterMod
           </footer>
         </form>
       </div>
+
+      {/* Диалог подтверждения похожих игроков */}
+      {confirmDialog && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirm-similar-title"
+          style={{ zIndex: 1001 }}
+        >
+          <div className="modal-card" style={{ maxWidth: 700 }}>
+            <header className="modal-header">
+              <div>
+                <h4 id="confirm-similar-title">⚠️ Найдены похожие игроки</h4>
+                <p>
+                  Для некоторых строк найдены похожие записи в базе. Выберите действие для каждой.
+                </p>
+              </div>
+            </header>
+            <div className="modal-body" style={{ maxHeight: 400, overflowY: 'auto' }}>
+              {confirmChoices.map((choice, index) => (
+                <div
+                  key={`${choice.entry.input.lastName}-${choice.entry.input.firstName}`}
+                  style={{
+                    marginBottom: 16,
+                    padding: 12,
+                    border: '1px solid var(--border)',
+                    borderRadius: 8,
+                    background: 'var(--surface)',
+                  }}
+                >
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>
+                    Строка: «{choice.entry.input.lastName} {choice.entry.input.firstName}»
+                  </div>
+                  <div style={{ marginBottom: 8, fontSize: 14, color: 'var(--text-muted)' }}>
+                    Похожие записи в базе:
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {choice.entry.similar.map(match => (
+                      <label
+                        key={match.person.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: 8,
+                          borderRadius: 4,
+                          background:
+                            choice.selectedPersonId === match.person.id
+                              ? 'var(--primary-light)'
+                              : 'var(--background)',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name={`choice-${index}`}
+                          checked={choice.selectedPersonId === match.person.id}
+                          onChange={() => handleChoiceChange(index, match.person.id)}
+                        />
+                        <span>
+                          <strong>
+                            {match.person.lastName} {match.person.firstName}
+                          </strong>
+                          {match.clubs.length > 0 && (
+                            <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>
+                              (клубы: {match.clubs.map(c => c.name).join(', ')})
+                            </span>
+                          )}
+                          <span
+                            style={{
+                              marginLeft: 8,
+                              fontSize: 12,
+                              color:
+                                match.matchType === 'exact'
+                                  ? 'var(--success)'
+                                  : match.matchType === 'normalized'
+                                    ? 'var(--warning)'
+                                    : 'var(--text-muted)',
+                            }}
+                          >
+                            {match.matchType === 'exact'
+                              ? '✓ точное совпадение'
+                              : match.matchType === 'normalized'
+                                ? '≈ нормализованное'
+                                : '~ похожее'}
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: 8,
+                        borderRadius: 4,
+                        background:
+                          choice.selectedPersonId === null
+                            ? 'var(--primary-light)'
+                            : 'var(--background)',
+                        cursor: 'pointer',
+                        borderTop: '1px dashed var(--border)',
+                        marginTop: 4,
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name={`choice-${index}`}
+                        checked={choice.selectedPersonId === null}
+                        onChange={() => handleChoiceChange(index, null)}
+                      />
+                      <span>
+                        <strong>➕ Создать нового игрока</strong>
+                        <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>
+                          ({choice.entry.input.lastName} {choice.entry.input.firstName})
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              ))}
+
+              {/* Показываем записи без похожих */}
+              {confirmDialog.entries.filter(e => e.similar.length === 0 && !e.alreadyInClub)
+                .length > 0 && (
+                <div
+                  style={{
+                    marginTop: 16,
+                    padding: 12,
+                    background: 'var(--success-light)',
+                    borderRadius: 8,
+                  }}
+                >
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                    ✓ Без дубликатов (
+                    {
+                      confirmDialog.entries.filter(e => e.similar.length === 0 && !e.alreadyInClub)
+                        .length
+                    }
+                    ):
+                  </div>
+                  <div style={{ fontSize: 14 }}>
+                    {confirmDialog.entries
+                      .filter(e => e.similar.length === 0 && !e.alreadyInClub)
+                      .map(e => `${e.input.lastName} ${e.input.firstName}`)
+                      .join(', ')}
+                  </div>
+                </div>
+              )}
+            </div>
+            <footer className="modal-footer">
+              <button className="button-secondary" type="button" onClick={handleCancelConfirm}>
+                Отмена
+              </button>
+              <button className="button-primary" type="button" onClick={handleConfirmImport}>
+                Подтвердить и импортировать
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

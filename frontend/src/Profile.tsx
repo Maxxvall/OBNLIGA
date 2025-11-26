@@ -6,7 +6,7 @@ import type {
   DailyRewardClaimResponse,
 } from '@shared/types'
 import { fetchMyRating } from './api/ratingsApi'
-import { fetchMyAchievements } from './api/achievementsApi'
+import { fetchMyAchievements, invalidateAchievementsCache } from './api/achievementsApi'
 import { fetchDailyRewardSummary, claimDailyReward } from './api/dailyRewardApi'
 import DailyRewardCard from './components/DailyRewardCard'
 import AchievementsGrid from './components/AchievementsGrid'
@@ -133,6 +133,10 @@ const CACHE_TTL = 5 * 60 * 1000 // 5 минут
 const CACHE_KEY = 'obnliga_profile_cache'
 const PROFILE_REFRESH_INTERVAL_MS = 90_000
 const VERIFY_PROMPT_STORAGE_KEY = 'profile_verify_prompt_hidden'
+// Минимальный интервал между запросами к API (защита от частых переключений)
+const MIN_REQUEST_INTERVAL_MS = 3000
+// Храним timestamp последнего запроса в модуле (сохраняется между монтированиями)
+let lastRequestTimestamp = 0
 
 type ProfileSection = 'overview' | 'stats' | 'achievements'
 
@@ -237,21 +241,41 @@ export default function Profile() {
     updateVerifyPromptHidden(false)
   }, [updateVerifyPromptHidden])
 
-  const loadProfile = useCallback(async (opts?: { background?: boolean; skipCache?: boolean }) => {
+  const loadProfile = useCallback(async (opts?: { background?: boolean; skipCache?: boolean; force?: boolean }) => {
     if (isFetchingRef.current) {
       return
     }
 
     const isBackground = Boolean(opts?.background)
     const skipCache = Boolean(opts?.skipCache)
+    const force = Boolean(opts?.force)
     const cached = skipCache ? null : getCachedProfile()
+    
+    // Throttle: если недавно делали запрос и есть кэш — показываем кэш без запроса
+    const now = Date.now()
+    const timeSinceLastRequest = now - lastRequestTimestamp
+    const shouldThrottle = !force && timeSinceLastRequest < MIN_REQUEST_INTERVAL_MS
+    
+    if (shouldThrottle && cached?.data) {
+      // Показываем кэш без запроса к серверу
+      if (!isBackground) {
+        setUser(cached.data)
+      }
+      return
+    }
+    
     if (!isBackground && cached?.data) {
       setUser(cached.data)
     }
 
     isFetchingRef.current = true
+    lastRequestTimestamp = now
+    
     if (!isBackground) {
-      setLoading(true)
+      // Показываем "Загрузка" только если нет кэша
+      if (!cached?.data) {
+        setLoading(true)
+      }
     }
 
     try {
@@ -628,6 +652,9 @@ export default function Profile() {
       setDailyReward(result.summary)
       setLastReward(result.awarded)
 
+      // Инвалидируем кэш достижений, чтобы AchievementsGrid получил актуальные данные
+      invalidateAchievementsCache()
+
       const [ratingResult, achievementsResult] = await Promise.all([
         fetchMyRating(),
         fetchMyAchievements({ force: true }),
@@ -863,21 +890,21 @@ export default function Profile() {
   const shouldShowDailyReward = !isCompactLayout || activeSection === 'overview'
 
   const statusMessage = (() => {
-    if (status === 'PENDING') {
-      return 'Заявка на подтверждение отправлена. Ожидайте решения администратора.'
-    }
     if (status === 'NONE') {
       return 'Подтвердите статус игрока лиги, чтобы открыть персональную статистику.'
     }
     return null
   })()
-  const canHideVerifyPrompt = status === 'NONE' && Boolean(statusMessage) && !verifyPromptHidden
 
   useEffect(() => {
+    // Сбрасываем состояние модалки при изменении статуса
     if (status !== 'NONE') {
       setShowVerifyModal(false)
       setVerifyLoading(false)
       setVerifyError(null)
+    }
+    // Сбрасываем скрытие подсказки только при подтверждении
+    if (status === 'VERIFIED') {
       updateVerifyPromptHidden(false)
     }
   }, [status, updateVerifyPromptHidden])
@@ -949,7 +976,7 @@ export default function Profile() {
       <div className="profile-wrapper">
         <div className="profile-header">
           <div className="profile-hero-card">
-            {status === 'NONE' && verifyPromptHidden ? (
+            {(status === 'NONE' || status === 'PENDING') && verifyPromptHidden ? (
               <button
                 type="button"
                 className="verify-info-toggle"
@@ -983,15 +1010,43 @@ export default function Profile() {
               </div>
             </div>
 
-            <div
-              className={`profile-info${
-                isCompactLayout && activeSection !== 'overview' ? ' hidden-on-compact' : ''
-              }`}
-            >
-              {statusMessage && !(status === 'NONE' && verifyPromptHidden) ? (
-                <div className={`profile-status-message status-${status.toLowerCase()}`}>
-                  <span>{statusMessage}</span>
-                  {canHideVerifyPrompt ? (
+            {/* Блок profile-info показывается только если есть что отображать */}
+            {((status === 'NONE' && !verifyPromptHidden) || (status === 'PENDING' && !verifyPromptHidden)) ? (
+              <div
+                className={`profile-info${
+                  isCompactLayout && activeSection !== 'overview' ? ' hidden-on-compact' : ''
+                }`}
+              >
+                {status === 'NONE' ? (
+                  <>
+                    <div className="profile-status-message status-none">
+                      <span>{statusMessage}</span>
+                      <button
+                        type="button"
+                        className="verify-info-hide-btn"
+                        onClick={handleHideVerifyPrompt}
+                      >
+                        Скрыть
+                      </button>
+                    </div>
+                    <div className="verification-actions">
+                      <button
+                        type="button"
+                        className="verify-button"
+                        onClick={() => {
+                          setVerifyError(null)
+                          setShowVerifyModal(true)
+                        }}
+                        disabled={verifyLoading}
+                      >
+                        {verifyLoading ? 'Отправляем…' : 'Подтвердить статус игрока'}
+                      </button>
+                    </div>
+                  </>
+                ) : null}
+                {status === 'PENDING' ? (
+                  <div className="verification-note">
+                    <span>Запрос отправлен. Мы сообщим, когда администратор подтвердит статус.</span>
                     <button
                       type="button"
                       className="verify-info-hide-btn"
@@ -999,30 +1054,10 @@ export default function Profile() {
                     >
                       Скрыть
                     </button>
-                  ) : null}
-                </div>
-              ) : null}
-              {status === 'NONE' && !verifyPromptHidden ? (
-                <div className="verification-actions">
-                  <button
-                    type="button"
-                    className="verify-button"
-                    onClick={() => {
-                      setVerifyError(null)
-                      setShowVerifyModal(true)
-                    }}
-                    disabled={verifyLoading}
-                  >
-                    {verifyLoading ? 'Отправляем…' : 'Подтвердить статус игрока'}
-                  </button>
-                </div>
-              ) : null}
-              {status === 'PENDING' ? (
-                <div className="verification-note">
-                  Запрос отправлен. Мы сообщим, когда администратор подтвердит статус.
-                </div>
-              ) : null}
-            </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
 

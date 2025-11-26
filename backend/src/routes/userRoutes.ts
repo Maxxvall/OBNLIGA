@@ -268,7 +268,7 @@ export default async function (server: FastifyInstance) {
     const cacheKey = `user:achievements:${subject}:${limit}:${offset}:${isSummary}`
 
     try {
-      const achievements = await defaultCache.get(
+      const { value: achievements, version } = await defaultCache.getWithMeta(
         cacheKey,
         async () => {
           const user = await prisma.appUser.findUnique({
@@ -400,9 +400,28 @@ export default async function (server: FastifyInstance) {
         return reply.status(404).send({ ok: false, error: 'user_not_found' })
       }
 
+      // Добавляем поле generatedAt для клиентского кэша
+      const generatedAt = new Date().toISOString()
+      const dataWithTimestamp = { ...achievements, generatedAt }
+
+      // Формируем ETag на основе ключа кэша и версии
+      const etag = buildWeakEtag(cacheKey, version)
+
+      // Проверяем If-None-Match для возврата 304
+      if (matchesIfNoneMatch(request.headers, etag)) {
+        return reply
+          .status(304)
+          .header('ETag', etag)
+          .header('X-Resource-Version', String(version))
+          .send()
+      }
+
+      reply.header('ETag', etag)
+      reply.header('X-Resource-Version', String(version))
+
       return reply.send({
         ok: true,
-        data: achievements,
+        data: dataWithTimestamp,
       })
     } catch (err) {
       request.log.error({ err }, 'user achievements fetch failed')
@@ -457,8 +476,8 @@ export default async function (server: FastifyInstance) {
           return reply.status(404).send({ ok: false, error: 'reward_not_found' })
         }
 
-        // Инвалидируем кэш достижений
-        await defaultCache.invalidate(`user:achievements:${subject}`).catch(() => undefined)
+        // Инвалидируем кэш достижений (все вариации с limit/offset/summary)
+        await defaultCache.invalidatePrefix(`user:achievements:${subject}`).catch(() => undefined)
 
         return reply.send({ ok: true })
       } catch (err) {

@@ -127,6 +127,40 @@ export class MultiLevelCache {
     this.versions.set(key, nextVersion)
   }
 
+  /**
+   * Инвалидация всех ключей с заданным префиксом.
+   * Удаляет из LRU-кэша и Redis все ключи, начинающиеся с prefix.
+   */
+  async invalidatePrefix(prefix: string) {
+    // Удаляем из LRU-кэша
+    for (const key of this.lru.keys()) {
+      if (key.startsWith(prefix)) {
+        this.lru.delete(key)
+        this.localLocks.delete(this.lockKey(key))
+        const nextVersion = (this.versions.get(key) ?? 0) + 1
+        this.versions.set(key, nextVersion)
+      }
+    }
+
+    // Удаляем из Redis (если доступен)
+    if (this.redis) {
+      try {
+        const keys = await this.redis.keys(`${prefix}*`)
+        if (keys.length > 0) {
+          await this.redis.del(...keys)
+          // Инкрементируем версии для всех найденных ключей
+          const pipeline = this.redis.pipeline()
+          for (const key of keys) {
+            pipeline.incr(this.versionKey(key))
+          }
+          await pipeline.exec()
+        }
+      } catch (err) {
+        // ignore redis errors on invalidate
+      }
+    }
+  }
+
   async getWithMeta<T>(
     key: string,
     loader: Loader<T>,

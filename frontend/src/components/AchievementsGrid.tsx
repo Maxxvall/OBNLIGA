@@ -255,10 +255,12 @@ export default function AchievementsGrid({ className }: AchievementsGridProps) {
     async function load() {
       setLoading(true)
       try {
+        // force: true — всегда делаем запрос к серверу (но с ETag для 304)
         const result = await fetchMyAchievementsPaginated({
           limit: BATCH_SIZE,
           offset: 0,
           summary: true,
+          force: true,
         })
 
         if (!cancelled) {

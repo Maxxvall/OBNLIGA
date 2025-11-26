@@ -263,6 +263,7 @@ export const claimDailyReward = async (userId: number) => {
         where: { id: userId },
         select: {
           id: true,
+          telegramId: true,
           currentStreak: true,
           lastLoginDate: true,
         },
@@ -350,8 +351,19 @@ export const claimDailyReward = async (userId: number) => {
     throw new DailyRewardError('config_missing', 500)
   }
 
+  // Получаем telegramId для инвалидации кэша достижений
+  const userForCache = await prisma.appUser.findUnique({
+    where: { id: userId },
+    select: { telegramId: true },
+  })
+  const telegramId = userForCache?.telegramId?.toString()
+
   await defaultCache.invalidate(cacheKey(userId)).catch(() => undefined)
   await defaultCache.invalidate(`user:rating:${userId}`).catch(() => undefined)
+  // Инвалидируем кэш достижений (все вариации с limit/offset/summary)
+  if (telegramId) {
+    await defaultCache.invalidatePrefix(`user:achievements:${telegramId}`).catch(() => undefined)
+  }
   await defaultCache.invalidate(
     ratingPublicCacheKey(RatingScope.CURRENT, 1, RATING_DEFAULT_PAGE_SIZE)
   ).catch(() => undefined)

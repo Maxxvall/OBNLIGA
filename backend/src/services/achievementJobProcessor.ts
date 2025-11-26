@@ -194,7 +194,7 @@ export async function processPendingAchievementJobs(limit = JOB_BATCH_SIZE): Pro
       })
 
       if (user) {
-        await defaultCache.invalidate(`user:achievements:${user.telegramId}`).catch(() => undefined)
+        await defaultCache.invalidatePrefix(`user:achievements:${user.telegramId}`).catch(() => undefined)
         await defaultCache.invalidate(`user:rating:${payload.userId}`).catch(() => undefined)
         await defaultCache
           .invalidate(ratingPublicCacheKey(RatingScope.CURRENT, 1, RATING_DEFAULT_PAGE_SIZE))

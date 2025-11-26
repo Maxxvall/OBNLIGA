@@ -102,19 +102,21 @@ export const ClubRosterModal = ({ club, token, onClose, onSaved }: ClubRosterMod
       // 1. Сначала проверяем на похожие записи
       const checkResult = await checkSimilarPlayers(token, club.id, { lines })
 
-      // 2. Если есть записи с похожими (но не точное совпадение) — показываем диалог
-      // Фильтруем записи: показываем только те, где есть similar И нет exactMatch
+      // 2. Если есть записи требующие подтверждения — показываем диалог
+      // Показываем диалог если:
+      // - есть exactMatch (точное совпадение) и игрок ещё не в этом клубе
+      // - ИЛИ есть similar (похожие)
       const entriesNeedingConfirm = checkResult.entries.filter(
-        e => e.similar.length > 0 && !e.exactMatch && !e.alreadyInClub
+        e => !e.alreadyInClub && (e.exactMatch !== null || e.similar.length > 0)
       )
 
       if (entriesNeedingConfirm.length > 0) {
         setConfirmDialog(checkResult)
-        // По умолчанию выбираем "создать нового" для всех
+        // По умолчанию: если есть exactMatch - выбираем его, иначе создать нового
         setConfirmChoices(
           entriesNeedingConfirm.map(entry => ({
             entry,
-            selectedPersonId: null, // null = создать нового
+            selectedPersonId: entry.exactMatch?.person.id ?? null,
           }))
         )
         setBulkLoading(false)
@@ -392,27 +394,90 @@ export const ClubRosterModal = ({ club, token, onClose, onSaved }: ClubRosterMod
               </div>
             </header>
             <div className="modal-body" style={{ maxHeight: 400, overflowY: 'auto' }}>
-              {confirmChoices.map((choice, index) => (
-                <div
-                  key={`${choice.entry.input.lastName}-${choice.entry.input.firstName}`}
-                  style={{
-                    marginBottom: 16,
-                    padding: 12,
-                    border: '1px solid var(--border)',
-                    borderRadius: 8,
-                    background: 'var(--surface)',
-                  }}
-                >
-                  <div style={{ fontWeight: 600, marginBottom: 8 }}>
-                    Строка: «{choice.entry.input.lastName} {choice.entry.input.firstName}»
-                  </div>
-                  <div style={{ marginBottom: 8, fontSize: 14, color: 'var(--text-muted)' }}>
-                    Похожие записи в базе:
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {choice.entry.similar.map(match => (
+              {confirmChoices.map((choice, index) => {
+                // Собираем все варианты: exactMatch + similar
+                const allMatches = [
+                  ...(choice.entry.exactMatch ? [choice.entry.exactMatch] : []),
+                  ...choice.entry.similar,
+                ]
+
+                return (
+                  <div
+                    key={`${choice.entry.input.lastName}-${choice.entry.input.firstName}`}
+                    style={{
+                      marginBottom: 16,
+                      padding: 12,
+                      border: '1px solid var(--border)',
+                      borderRadius: 8,
+                      background: 'var(--surface)',
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, marginBottom: 8 }}>
+                      Строка: «{choice.entry.input.lastName} {choice.entry.input.firstName}»
+                    </div>
+                    <div style={{ marginBottom: 8, fontSize: 14, color: 'var(--text-muted)' }}>
+                      {choice.entry.exactMatch
+                        ? '⚠️ Найдено точное совпадение в базе:'
+                        : 'Похожие записи в базе:'}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {allMatches.map(match => (
+                        <label
+                          key={match.person.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: 8,
+                            borderRadius: 4,
+                            background:
+                              choice.selectedPersonId === match.person.id
+                                ? 'var(--primary-light)'
+                                : 'var(--background)',
+                            cursor: 'pointer',
+                            border:
+                              match.matchType === 'exact'
+                                ? '2px solid var(--success)'
+                                : undefined,
+                          }}
+                        >
+                          <input
+                            type="radio"
+                            name={`choice-${index}`}
+                            checked={choice.selectedPersonId === match.person.id}
+                            onChange={() => handleChoiceChange(index, match.person.id)}
+                          />
+                          <span>
+                            <strong>
+                              {match.person.lastName} {match.person.firstName}
+                            </strong>
+                            {match.clubs.length > 0 && (
+                              <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>
+                                (клубы: {match.clubs.map(c => c.name).join(', ')})
+                              </span>
+                            )}
+                            <span
+                              style={{
+                                marginLeft: 8,
+                                fontSize: 12,
+                                color:
+                                  match.matchType === 'exact'
+                                    ? 'var(--success)'
+                                    : match.matchType === 'normalized'
+                                      ? 'var(--warning)'
+                                      : 'var(--text-muted)',
+                              }}
+                            >
+                              {match.matchType === 'exact'
+                                ? '✓ точное совпадение'
+                                : match.matchType === 'normalized'
+                                  ? '≈ нормализованное'
+                                  : '~ похожее'}
+                            </span>
+                          </span>
+                        </label>
+                      ))}
                       <label
-                        key={match.person.id}
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -420,84 +485,36 @@ export const ClubRosterModal = ({ club, token, onClose, onSaved }: ClubRosterMod
                           padding: 8,
                           borderRadius: 4,
                           background:
-                            choice.selectedPersonId === match.person.id
+                            choice.selectedPersonId === null
                               ? 'var(--primary-light)'
                               : 'var(--background)',
                           cursor: 'pointer',
+                          borderTop: '1px dashed var(--border)',
+                          marginTop: 4,
                         }}
                       >
                         <input
                           type="radio"
                           name={`choice-${index}`}
-                          checked={choice.selectedPersonId === match.person.id}
-                          onChange={() => handleChoiceChange(index, match.person.id)}
+                          checked={choice.selectedPersonId === null}
+                          onChange={() => handleChoiceChange(index, null)}
                         />
                         <span>
-                          <strong>
-                            {match.person.lastName} {match.person.firstName}
-                          </strong>
-                          {match.clubs.length > 0 && (
-                            <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>
-                              (клубы: {match.clubs.map(c => c.name).join(', ')})
-                            </span>
-                          )}
-                          <span
-                            style={{
-                              marginLeft: 8,
-                              fontSize: 12,
-                              color:
-                                match.matchType === 'exact'
-                                  ? 'var(--success)'
-                                  : match.matchType === 'normalized'
-                                    ? 'var(--warning)'
-                                    : 'var(--text-muted)',
-                            }}
-                          >
-                            {match.matchType === 'exact'
-                              ? '✓ точное совпадение'
-                              : match.matchType === 'normalized'
-                                ? '≈ нормализованное'
-                                : '~ похожее'}
+                          <strong>➕ Создать нового игрока</strong>
+                          <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>
+                            ({choice.entry.input.lastName} {choice.entry.input.firstName})
                           </span>
                         </span>
                       </label>
-                    ))}
-                    <label
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        padding: 8,
-                        borderRadius: 4,
-                        background:
-                          choice.selectedPersonId === null
-                            ? 'var(--primary-light)'
-                            : 'var(--background)',
-                        cursor: 'pointer',
-                        borderTop: '1px dashed var(--border)',
-                        marginTop: 4,
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name={`choice-${index}`}
-                        checked={choice.selectedPersonId === null}
-                        onChange={() => handleChoiceChange(index, null)}
-                      />
-                      <span>
-                        <strong>➕ Создать нового игрока</strong>
-                        <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>
-                          ({choice.entry.input.lastName} {choice.entry.input.firstName})
-                        </span>
-                      </span>
-                    </label>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
 
-              {/* Показываем записи без похожих */}
-              {confirmDialog.entries.filter(e => e.similar.length === 0 && !e.alreadyInClub)
-                .length > 0 && (
+              {/* Показываем записи без дубликатов (нет exactMatch и нет similar) */}
+              {confirmDialog.entries.filter(
+                e => e.similar.length === 0 && !e.exactMatch && !e.alreadyInClub
+              ).length > 0 && (
                 <div
                   style={{
                     marginTop: 16,
@@ -509,14 +526,15 @@ export const ClubRosterModal = ({ club, token, onClose, onSaved }: ClubRosterMod
                   <div style={{ fontWeight: 600, marginBottom: 4 }}>
                     ✓ Без дубликатов (
                     {
-                      confirmDialog.entries.filter(e => e.similar.length === 0 && !e.alreadyInClub)
-                        .length
+                      confirmDialog.entries.filter(
+                        e => e.similar.length === 0 && !e.exactMatch && !e.alreadyInClub
+                      ).length
                     }
                     ):
                   </div>
                   <div style={{ fontSize: 14 }}>
                     {confirmDialog.entries
-                      .filter(e => e.similar.length === 0 && !e.alreadyInClub)
+                      .filter(e => e.similar.length === 0 && !e.exactMatch && !e.alreadyInClub)
                       .map(e => `${e.input.lastName} ${e.input.firstName}`)
                       .join(', ')}
                   </div>

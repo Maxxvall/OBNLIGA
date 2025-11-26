@@ -2918,16 +2918,21 @@ export default async function (server: FastifyInstance) {
         const decisionsMap = new Map<string, number | null>()
         if (Array.isArray(body?.decisions)) {
           for (const decision of body.decisions) {
-            if (typeof decision?.line === 'string') {
-              // Нормализуем ключ решения
-              const parsed = parseFullNameLine(decision.line)
-              const key = `${parsed.lastName.toLowerCase()}|${parsed.firstName.toLowerCase()}`
-              decisionsMap.set(
-                key,
-                typeof decision.useExistingPersonId === 'number'
-                  ? decision.useExistingPersonId
-                  : null
-              )
+            if (typeof decision?.line === 'string' && decision.line.trim()) {
+              try {
+                // Нормализуем ключ решения
+                const parsed = parseFullNameLine(decision.line)
+                const key = `${parsed.lastName.toLowerCase()}|${parsed.firstName.toLowerCase()}`
+                decisionsMap.set(
+                  key,
+                  typeof decision.useExistingPersonId === 'number'
+                    ? decision.useExistingPersonId
+                    : null
+                )
+              } catch {
+                // Игнорируем некорректные строки в decisions
+                request.server.log.warn({ line: decision.line }, 'Skipping invalid decision line')
+              }
             }
           }
         }

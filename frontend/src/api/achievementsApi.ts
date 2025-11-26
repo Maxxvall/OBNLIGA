@@ -10,6 +10,15 @@ import type {
   UserAchievementsResponse,
 } from '@shared/types'
 
+// Включить логирование достижений для отладки
+const DEBUG_ACHIEVEMENTS = true
+
+function logAchievements(message: string, data?: unknown) {
+  if (DEBUG_ACHIEVEMENTS) {
+    console.log(`[AchievementsAPI] ${message}`, data ?? '')
+  }
+}
+
 // TTL для кэша достижений (5m fresh / 15m stale)
 const ACHIEVEMENTS_TTL_MS = 5 * 60 * 1000
 const ACHIEVEMENTS_STALE_MS = 15 * 60 * 1000
@@ -75,13 +84,24 @@ export async function fetchMyAchievementsPaginated(options: {
   const cache = getCachedAchievements(cacheKey)
   const now = Date.now()
 
+  logAchievements('fetchMyAchievementsPaginated called', { limit, offset, summary, force, cacheKey })
+
   // Проверка: данные свежие
   const isFresh = cache && cache.expiresAt > now
   // Проверка: данные устаревшие, но ещё можно показать (SWR)
   const isStale = cache && cache.staleUntil > now && cache.expiresAt <= now
 
+  logAchievements('Cache state', {
+    hasCache: !!cache,
+    isFresh,
+    isStale,
+    cacheExpiresAt: cache?.expiresAt ? new Date(cache.expiresAt).toISOString() : null,
+    cachedProgress: cache?.data?.achievements?.map(a => ({ group: a.group, progress: a.currentProgress })),
+  })
+
   // Если force=false и данные свежие - вернуть из кэша
   if (!force && isFresh) {
+    logAchievements('Returning FRESH cache')
     return {
       data: cache.data,
       fromCache: true,
@@ -91,6 +111,7 @@ export async function fetchMyAchievementsPaginated(options: {
 
   // Если данные устаревшие, но показываемые - запустить фоновое обновление и вернуть старые данные
   if (!force && isStale) {
+    logAchievements('Returning STALE cache, starting background refresh')
     // Фоновое обновление (не блокируем)
     fetchMyAchievementsPaginated({ limit, offset, summary, force: true }).catch(err => {
       console.warn('achievementsApi: background refresh failed', err)
@@ -103,17 +124,26 @@ export async function fetchMyAchievementsPaginated(options: {
     }
   }
 
+  logAchievements('Making HTTP request to server')
+
   const url = buildApiUrl(
     `/api/users/me/achievements?limit=${limit}&offset=${offset}&summary=${summary}`
   )
 
-  const response = await httpRequest<{ data: UserAchievementsResponse }>(url, {
+  const response = await httpRequest<UserAchievementsResponse>(url, {
     version: cache?.etag,
     credentials: 'include',
     headers: authHeader(),
   })
 
+  logAchievements('Server response', {
+    ok: response.ok,
+    notModified: 'notModified' in response ? response.notModified : false,
+    hasData: 'data' in response && !!response.data,
+  })
+
   if (!response.ok) {
+    logAchievements('Request failed, returning cache or empty')
     // При ошибке - вернуть кэш если есть (даже если stale)
     if (cache) {
       return { data: cache.data, fromCache: true, etag: cache.etag }
@@ -132,8 +162,9 @@ export async function fetchMyAchievementsPaginated(options: {
   }
 
   if ('notModified' in response && response.notModified) {
+    logAchievements('Server returned 304 Not Modified')
     // Сервер вернул 304 - данные не изменились, обновить TTL
-    if (cache) {
+    if (cache && cache.data && cache.data.achievements && cache.data.achievements.length > 0) {
       const updatedNow = Date.now()
       setCachedAchievements(cacheKey, {
         ...cache,
@@ -141,19 +172,62 @@ export async function fetchMyAchievementsPaginated(options: {
         staleUntil: updatedNow + ACHIEVEMENTS_STALE_MS,
         lastAccess: updatedNow,
       })
+      logAchievements('Using cached data after 304', {
+        achievementsCount: cache.data.achievements.length,
+        progress: cache.data.achievements.map(a => ({ group: a.group, progress: a.currentProgress })),
+      })
       return {
         data: cache.data,
         fromCache: true,
         etag: cache.etag,
       }
     }
+    // Кэш пустой или некорректный - нужно очистить его и запросить заново без ETag
+    logAchievements('Cache invalid after 304, clearing and refetching without ETag')
+    try {
+      window.localStorage.removeItem(cacheKey)
+    } catch {}
+    // Повторный запрос без ETag
+    const freshResponse = await httpRequest<UserAchievementsResponse>(url, {
+      credentials: 'include',
+      headers: authHeader(),
+    })
+    if (!freshResponse.ok || !('data' in freshResponse)) {
+      return {
+        data: {
+          achievements: [],
+          total: 0,
+          hasMore: false,
+          totalUnlocked: 0,
+          generatedAt: new Date().toISOString(),
+        },
+        fromCache: false,
+      }
+    }
+    const freshData = freshResponse.data
+    const freshEtag = freshResponse.version
+    const freshNow = Date.now()
+    setCachedAchievements(cacheKey, {
+      data: freshData,
+      etag: freshEtag,
+      expiresAt: freshNow + ACHIEVEMENTS_TTL_MS,
+      staleUntil: freshNow + ACHIEVEMENTS_STALE_MS,
+      lastAccess: freshNow,
+    })
+    logAchievements('Fetched fresh data after invalid 304 cache', {
+      achievementsCount: freshData.achievements.length,
+      progress: freshData.achievements.map(a => ({ group: a.group, progress: a.currentProgress })),
+    })
+    return {
+      data: freshData,
+      fromCache: false,
+      etag: freshEtag,
+    }
   }
 
-  if (!('data' in response)) {
-    // Неожиданный ответ - вернуть кэш или пустые данные
-    if (cache) {
-      return { data: cache.data, fromCache: true, etag: cache.etag }
-    }
+  // Проверяем что response.data существует
+  if (!('data' in response) || !response.data) {
+    logAchievements('No data in response')
     return {
       data: {
         achievements: [],
@@ -166,8 +240,13 @@ export async function fetchMyAchievementsPaginated(options: {
     }
   }
 
-  const data = response.data.data
+  const data = response.data
   const etag = response.version
+
+  logAchievements('Server returned fresh data', {
+    achievementsCount: data.achievements.length,
+    progress: data.achievements.map(a => ({ group: a.group, progress: a.currentProgress, nextThreshold: a.nextThreshold })),
+  })
 
   const cacheNow = Date.now()
   setCachedAchievements(cacheKey, {
@@ -280,7 +359,7 @@ export async function fetchMyAchievements(options: { force?: boolean } = {}): Pr
     }
   }
 
-  const response = await httpRequest<{ data: UserAchievementsSummary }>(
+  const response = await httpRequest<UserAchievementsSummary>(
     buildApiUrl('/api/users/me/achievements'),
     {
       version: cache?.etag,
@@ -323,22 +402,7 @@ export async function fetchMyAchievements(options: { force?: boolean } = {}): Pr
     }
   }
 
-  if (!('data' in response)) {
-    // Неожиданный ответ - вернуть кэш или пустые данные
-    if (cache) {
-      return { data: cache.data, fromCache: true, etag: cache.etag }
-    }
-    return {
-      data: {
-        achievements: [],
-        totalUnlocked: 0,
-        generatedAt: new Date().toISOString(),
-      },
-      fromCache: false,
-    }
-  }
-
-  const data = response.data.data
+  const data = response.data
   const etag = response.version
 
   const cacheNow = Date.now()
@@ -361,15 +425,19 @@ export async function fetchMyAchievements(options: { force?: boolean } = {}): Pr
  * Инвалидация кэша достижений (для вызова после изменения прогресса)
  */
 export function invalidateAchievementsCache(): void {
+  logAchievements('Invalidating achievements cache')
   try {
     if (typeof window === 'undefined') return
     // Удаляем все ключи кэша достижений
     const keys = Object.keys(window.localStorage)
+    let removedCount = 0
     for (const key of keys) {
       if (key.startsWith('achievements:my:')) {
         window.localStorage.removeItem(key)
+        removedCount++
       }
     }
+    logAchievements(`Removed ${removedCount} cache keys`)
   } catch (err) {
     console.warn('Failed to invalidate achievements cache:', err)
   }

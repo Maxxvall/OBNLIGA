@@ -267,10 +267,13 @@ export default async function (server: FastifyInstance) {
 
     const cacheKey = `user:achievements:${subject}:${limit}:${offset}:${isSummary}`
 
+    console.log('[Achievements API] Request:', { subject, limit, offset, isSummary, cacheKey })
+
     try {
       const { value: achievements, version } = await defaultCache.getWithMeta(
         cacheKey,
         async () => {
+          console.log('[Achievements API] Cache MISS - fetching from DB')
           const user = await prisma.appUser.findUnique({
             where: { telegramId: BigInt(subject) },
           })
@@ -293,6 +296,12 @@ export default async function (server: FastifyInstance) {
           const userProgress = await prisma.userAchievementProgress.findMany({
             where: { userId: user.id },
           })
+
+          console.log('[Achievements API] User progress from DB:', userProgress.map(p => ({
+            achievementId: p.achievementId,
+            progressCount: p.progressCount,
+            currentLevel: p.currentLevel,
+          })))
 
           // Создаём map прогресса для быстрого поиска
           const progressMap = new Map(userProgress.map(p => [p.achievementId, p]))

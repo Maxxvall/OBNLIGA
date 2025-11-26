@@ -358,10 +358,13 @@ export const claimDailyReward = async (userId: number) => {
   })
   const telegramId = userForCache?.telegramId?.toString()
 
+  console.log('[DailyRewards] Invalidating caches for user:', { userId, telegramId })
+
   await defaultCache.invalidate(cacheKey(userId)).catch(() => undefined)
   await defaultCache.invalidate(`user:rating:${userId}`).catch(() => undefined)
   // Инвалидируем кэш достижений (все вариации с limit/offset/summary)
   if (telegramId) {
+    console.log('[DailyRewards] Invalidating achievements cache prefix:', `user:achievements:${telegramId}`)
     await defaultCache.invalidatePrefix(`user:achievements:${telegramId}`).catch(() => undefined)
   }
   await defaultCache.invalidate(

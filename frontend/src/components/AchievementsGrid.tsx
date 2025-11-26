@@ -117,6 +117,17 @@ function normalizeAchievementsResult(result?: AchievementsResult) {
   const responseData = result?.data
   const hasRealData = Boolean(responseData?.achievements.length)
 
+  console.log('[AchievementsGrid] normalizeAchievementsResult', {
+    hasRealData,
+    achievementsCount: responseData?.achievements.length ?? 0,
+    achievements: responseData?.achievements?.map(a => ({
+      group: a.group,
+      currentProgress: a.currentProgress,
+      nextThreshold: a.nextThreshold,
+      currentLevel: a.currentLevel,
+    })),
+  })
+
   return {
     response:
       hasRealData && responseData

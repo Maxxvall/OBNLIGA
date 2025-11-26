@@ -145,7 +145,7 @@ export const resetSeasonPointsAchievements = async (
   }
 
   // Сбрасываем прогресс всех пользователей по этому достижению
-  const result = await client.userAchievementProgress.updateMany({
+  const result = await client.achievementProgress.updateMany({
     where: { achievementId: achievementType.id },
     data: {
       currentLevel: 0,
@@ -161,3 +161,4 @@ export const resetSeasonPointsAchievements = async (
 
   return result.count
 }
+

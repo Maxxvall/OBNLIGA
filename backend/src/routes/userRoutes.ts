@@ -293,7 +293,7 @@ export default async function (server: FastifyInstance) {
           })
 
           // Получаем прогресс пользователя
-          const userProgress = await prisma.userAchievementProgress.findMany({
+          const userProgress = await prisma.achievementProgress.findMany({
             where: { userId: user.id },
           })
 
@@ -310,7 +310,7 @@ export default async function (server: FastifyInstance) {
           let unnotifiedRewards: { id: bigint; group: string; tier: number; points: number }[] = []
           try {
             const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
-            unnotifiedRewards = await prisma.userAchievementReward.findMany({
+            unnotifiedRewards = await prisma.userAchievementRewards.findMany({
               where: {
                 userId: user.id,
                 notified: false,
@@ -468,7 +468,7 @@ export default async function (server: FastifyInstance) {
         // Обновляем только если награда принадлежит пользователю
         // Gracefully handle case when table doesn't exist yet
         try {
-          const updated = await prisma.userAchievementReward.updateMany({
+          const updated = await prisma.userAchievementRewards.updateMany({
             where: {
               id: rewardId,
               userId: user.id,
@@ -642,3 +642,4 @@ function getSeasonPointsLevelTitle(level: number): string {
       return 'Дебютант'
   }
 }
+

@@ -66,7 +66,7 @@ export async function createAchievementRewardJob(
   }
 
   try {
-    await client.achievementJob.create({
+    await client.achievementJobs.create({
       data: {
         status: AchievementJobStatus.PENDING,
         payload: payload as unknown as Prisma.InputJsonValue,
@@ -95,7 +95,7 @@ async function processRewardJob(
   const { userId, group, tier, points, seasonId } = payload
 
   // Idempotent upsert — если запись уже есть, не создаём дубль
-  const existingReward = await client.userAchievementReward.findFirst({
+  const existingReward = await client.userAchievementRewards.findFirst({
     where: {
       userId,
       group,
@@ -110,7 +110,7 @@ async function processRewardJob(
   }
 
   // Создаём запись о награде
-  await client.userAchievementReward.create({
+  await client.userAchievementRewards.create({
     data: {
       userId,
       group,
@@ -165,7 +165,7 @@ export async function processPendingAchievementJobs(limit = JOB_BATCH_SIZE): Pro
   const jobIds = pendingJobs.map(j => j.achievement_job_id)
 
   // Помечаем как PROCESSING
-  await prisma.achievementJob.updateMany({
+  await prisma.achievementJobs.updateMany({
     where: { id: { in: jobIds } },
     data: { status: AchievementJobStatus.PROCESSING },
   })
@@ -181,7 +181,7 @@ export async function processPendingAchievementJobs(limit = JOB_BATCH_SIZE): Pro
       })
 
       // Помечаем как DONE
-      await prisma.achievementJob.update({
+      await prisma.achievementJobs.update({
         where: { id: job.achievement_job_id },
         data: { status: AchievementJobStatus.DONE },
       })
@@ -209,7 +209,7 @@ export async function processPendingAchievementJobs(limit = JOB_BATCH_SIZE): Pro
       processedCount++
     } catch (err) {
       // Увеличиваем attempts и проверяем лимит
-      const currentJob = await prisma.achievementJob.findUnique({
+      const currentJob = await prisma.achievementJobs.findUnique({
         where: { id: job.achievement_job_id },
         select: { attempts: true },
       })
@@ -217,7 +217,7 @@ export async function processPendingAchievementJobs(limit = JOB_BATCH_SIZE): Pro
       const newAttempts = (currentJob?.attempts ?? 0) + 1
 
       if (newAttempts >= MAX_JOB_ATTEMPTS) {
-        await prisma.achievementJob.update({
+        await prisma.achievementJobs.update({
           where: { id: job.achievement_job_id },
           data: {
             status: AchievementJobStatus.FAILED,
@@ -226,7 +226,7 @@ export async function processPendingAchievementJobs(limit = JOB_BATCH_SIZE): Pro
           },
         })
       } else {
-        await prisma.achievementJob.update({
+        await prisma.achievementJobs.update({
           where: { id: job.achievement_job_id },
           data: {
             status: AchievementJobStatus.PENDING,
@@ -260,10 +260,10 @@ export async function getAchievementJobsStats(): Promise<{
 }> {
   try {
     const [pending, processing, done, failed] = await Promise.all([
-      prisma.achievementJob.count({ where: { status: AchievementJobStatus.PENDING } }),
-      prisma.achievementJob.count({ where: { status: AchievementJobStatus.PROCESSING } }),
-      prisma.achievementJob.count({ where: { status: AchievementJobStatus.DONE } }),
-      prisma.achievementJob.count({ where: { status: AchievementJobStatus.FAILED } }),
+      prisma.achievementJobs.count({ where: { status: AchievementJobStatus.PENDING } }),
+      prisma.achievementJobs.count({ where: { status: AchievementJobStatus.PROCESSING } }),
+      prisma.achievementJobs.count({ where: { status: AchievementJobStatus.DONE } }),
+      prisma.achievementJobs.count({ where: { status: AchievementJobStatus.FAILED } }),
     ])
 
     return { pending, processing, done, failed }
@@ -272,3 +272,4 @@ export async function getAchievementJobsStats(): Promise<{
     return { pending: 0, processing: 0, done: 0, failed: 0 }
   }
 }
+

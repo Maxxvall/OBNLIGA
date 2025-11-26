@@ -39,3 +39,6 @@ backend/.env.example
 k6-load-test.js
 docs/k6-testing.md
 run-load-test.ps1
+prisma/schema.prisma.backup
+prisma/schema.prisma.bak
+prisma/schema.prisma.new2

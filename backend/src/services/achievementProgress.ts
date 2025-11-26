@@ -55,7 +55,7 @@ export const incrementAchievementProgress = async (
   const now = new Date()
 
   for (const type of types) {
-    const progress = await client.userAchievementProgress.upsert({
+    const progress = await client.achievementProgress.upsert({
       where: {
         achievement_progress_unique: {
           userId,
@@ -76,7 +76,7 @@ export const incrementAchievementProgress = async (
     const unlockedLevel = resolveUnlockedLevel(type.levels, progress.progressCount)
 
     if (unlockedLevel > progress.currentLevel) {
-      await client.userAchievementProgress.update({
+      await client.achievementProgress.update({
         where: { id: progress.id },
         data: {
           currentLevel: unlockedLevel,
@@ -147,7 +147,7 @@ export const syncSeasonPointsProgress = async (
   const now = new Date()
 
   for (const type of types) {
-    const progress = await client.userAchievementProgress.upsert({
+    const progress = await client.achievementProgress.upsert({
       where: {
         achievement_progress_unique: {
           userId,
@@ -168,7 +168,7 @@ export const syncSeasonPointsProgress = async (
     const unlockedLevel = resolveUnlockedLevel(type.levels, progress.progressCount)
 
     if (unlockedLevel > progress.currentLevel) {
-      await client.userAchievementProgress.update({
+      await client.achievementProgress.update({
         where: { id: progress.id },
         data: {
           currentLevel: unlockedLevel,
@@ -245,7 +245,7 @@ export const syncAllSeasonPointsProgress = async (
     const batch = ratings.slice(i, i + BATCH_SIZE)
 
     for (const rating of batch) {
-      const progress = await client.userAchievementProgress.upsert({
+      const progress = await client.achievementProgress.upsert({
         where: {
           achievement_progress_unique: {
             userId: rating.userId,
@@ -266,7 +266,7 @@ export const syncAllSeasonPointsProgress = async (
       const unlockedLevel = resolveUnlockedLevel(achievementType.levels, progress.progressCount)
 
       if (unlockedLevel > progress.currentLevel) {
-        await client.userAchievementProgress.update({
+        await client.achievementProgress.update({
           where: { id: progress.id },
           data: {
             currentLevel: unlockedLevel,
@@ -304,3 +304,4 @@ export const syncAllSeasonPointsProgress = async (
 
   return syncedCount
 }
+

@@ -458,10 +458,10 @@ const generateRoundRobinPairs = (clubIds: ClubId[], roundsPerPair: number): Roun
 
 const alignDateToWeekday = (date: Date, weekday: number): Date => {
   const clone = new Date(date)
-  const currentWeekday = clone.getUTCDay()
+  const currentWeekday = clone.getDay()
   const normalizedWeekday = ((weekday % 7) + 7) % 7
   const delta = (normalizedWeekday - currentWeekday + 7) % 7
-  clone.setUTCDate(clone.getUTCDate() + delta)
+  clone.setDate(clone.getDate() + delta)
   return clone
 }
 
@@ -472,13 +472,13 @@ export const applyTimeToDate = (date: Date, time?: string | null): Date => {
   const hours = Number(match[1])
   const minutes = Number(match[2])
   const withTime = new Date(date)
-  withTime.setUTCHours(hours, minutes, 0, 0)
+  withTime.setHours(hours, minutes, 0, 0)
   return withTime
 }
 
 export const addDays = (date: Date, days: number): Date => {
   const next = new Date(date)
-  next.setUTCDate(next.getUTCDate() + days)
+  next.setDate(next.getDate() + days)
   return next
 }
 
@@ -487,7 +487,7 @@ export const addMinutes = (date: Date, minutes: number): Date => {
     return new Date(date)
   }
   const next = new Date(date)
-  next.setUTCMinutes(next.getUTCMinutes() + minutes)
+  next.setMinutes(next.getMinutes() + minutes)
   return next
 }
 
@@ -1369,7 +1369,11 @@ export const createSeasonPlayoffs = async (
       where: { seasonId },
       orderBy: { matchDateTime: 'desc' },
     })
-    const matchTime = lastMatch ? lastMatch.matchDateTime.toISOString().slice(11, 16) : null
+    const matchTime = lastMatch
+      ? `${String(lastMatch.matchDateTime.getHours()).padStart(2, '0')}:${String(
+          lastMatch.matchDateTime.getMinutes()
+        ).padStart(2, '0')}`
+      : null
     const playoffStart = addDays(season.endDate, 7)
 
     const { plans, byeSeries } = createInitialPlayoffPlans(

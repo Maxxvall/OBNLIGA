@@ -653,7 +653,7 @@ const registerLineupRouteGroup = (
             })
           }
         }
-      })
+      }, { timeout: 20000, maxWait: 2000 })
 
       if (hasRosterChanges) {
         await defaultCache.invalidate(publicMatchLineupsCacheKey(matchId)).catch(() => undefined)

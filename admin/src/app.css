@@ -693,6 +693,17 @@
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
 }
 
+/* ensure styles apply when nested inside .card (higher specificity) */
+.card .shop-items-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  margin-top: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(0, 240, 255, 0.2);
+  background: rgba(3, 8, 18, 0.65);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
 .shop-items-table {
   width: 100%;
   min-width: 100%;

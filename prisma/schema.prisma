@@ -82,7 +82,7 @@ model AdBanner {
   startsAt     DateTime? @map("starts_at")
   endsAt       DateTime? @map("ends_at")
   createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  updatedAt    DateTime  @updatedAt @default(now()) @map("updated_at")
 
   @@index([isActive, displayOrder, updatedAt], map: "ad_banner_active_order")
   @@map("ad_banner")

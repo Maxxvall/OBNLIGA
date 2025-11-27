@@ -394,13 +394,16 @@ const renderClubCompactWithLogo = (
   </div>
 )
 
-const renderClubCompactNoLogo = (
-  club: UserPredictionEntry['homeClub']
-) => (
-  <div className="prediction-club-compact">
-    <span className="prediction-club-name">{club.name}</span>
-  </div>
-)
+const getClubShortName = (club: { name: string; shortName: string | null }): string => {
+  if (club.shortName) return club.shortName
+  // Генерируем сокращение из первых 3 букв названия
+  const words = club.name.trim().split(/\s+/)
+  if (words.length === 1) {
+    return words[0].slice(0, 3).toUpperCase()
+  }
+  // Для названий из нескольких слов берём первые буквы
+  return words.map(w => w[0]).join('').slice(0, 3).toUpperCase()
+}
 
 const renderUpcomingMatchHeader = (match: ActivePredictionMatch) => {
   const competitionLabel = match.competitionName && match.seasonName
@@ -470,33 +473,36 @@ const renderUserPrediction = (prediction: UserPredictionEntry) => {
     ? `${prediction.competitionName} • ${prediction.seasonName}`
     : prediction.competitionName || prediction.seasonName || 'Матч'
   
+  const homeShort = getClubShortName(prediction.homeClub)
+  const awayShort = getClubShortName(prediction.awayClub)
+  
   return (
-    <li key={prediction.id} className={`prediction-entry prediction-entry-${prediction.status.toLowerCase()}`}>
-      <div className="prediction-entry-header">
-        <div className="prediction-entry-top-line">
-          <span className="prediction-entry-competition">{competitionLabel}</span>
-          <span className="prediction-entry-datetime">{formatDateTime(prediction.matchDateTime)}</span>
-          <span className={`prediction-status status-${prediction.status.toLowerCase()}`}>
-            {STATUS_LABELS[prediction.status] ?? prediction.status}
-          </span>
-        </div>
-        <div className="prediction-entry-main-line">
-          <div className="prediction-entry-teams-compact">
-            {renderClubCompactNoLogo(prediction.homeClub)}
-            <span className="prediction-vs-compact">VS</span>
-            {renderClubCompactNoLogo(prediction.awayClub)}
-          </div>
-          <div className="prediction-entry-bet">
-            <span className="prediction-bet-label">Прогноз:</span>
-            <strong className="prediction-selection">{formattedSelection}</strong>
-          </div>
-          {typeof prediction.scoreAwarded === 'number' && (
-            <div className="prediction-entry-score">
-              <span className="prediction-score-value">
-                {prediction.scoreAwarded > 0 ? `+${prediction.scoreAwarded}` : prediction.scoreAwarded}
-              </span>
-            </div>
+    <li key={prediction.id} className={`prediction-entry-compact prediction-entry-${prediction.status.toLowerCase()}`}>
+      <div className="prediction-entry-row">
+        {/* Очки слева */}
+        <div className="prediction-entry-points">
+          {typeof prediction.scoreAwarded === 'number' ? (
+            <span className={`points-value ${prediction.scoreAwarded > 0 ? 'positive' : prediction.scoreAwarded < 0 ? 'negative' : ''}`}>
+              {prediction.scoreAwarded > 0 ? `+${prediction.scoreAwarded}` : prediction.scoreAwarded}
+            </span>
+          ) : (
+            <span className="points-placeholder">—</span>
           )}
+        </div>
+        
+        {/* Основная информация */}
+        <div className="prediction-entry-content">
+          <div className="prediction-entry-meta">
+            <span className="prediction-entry-competition-short">{competitionLabel}</span>
+            <span className="prediction-entry-datetime-short">{formatDateTime(prediction.matchDateTime)}</span>
+            <span className={`prediction-status-compact status-${prediction.status.toLowerCase()}`}>
+              {STATUS_LABELS[prediction.status] ?? prediction.status}
+            </span>
+          </div>
+          <div className="prediction-entry-main">
+            <span className="prediction-teams-short">{homeShort} vs {awayShort}</span>
+            <span className="prediction-selection-value">{formattedSelection}</span>
+          </div>
         </div>
       </div>
     </li>

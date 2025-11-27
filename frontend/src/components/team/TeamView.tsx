@@ -181,9 +181,14 @@ const selectMatchesForMode = (
 
   const filterSet = allowedStatuses[mode]
   const filtered = matches.filter(item => filterSet.has(item.match.st))
-  const pickSource = filtered.length ? filtered : matches
+  
+  // Если нет матчей с нужным статусом - возвращаем пустой массив
+  // Не показываем все матчи в режиме результатов, если нет завершённых
+  if (filtered.length === 0) {
+    return []
+  }
 
-  const sorted = pickSource
+  const sorted = filtered
     .slice()
     .sort((left, right) => {
       const leftTime = Date.parse(left.match.d)

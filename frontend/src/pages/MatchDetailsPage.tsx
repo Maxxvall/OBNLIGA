@@ -693,10 +693,9 @@ export const MatchDetailsPage: React.FC = () => {
                     {awayScoreDisplay}
                   </span>
                 </div>
-                {(penaltyLabel || minuteLabel) && (
+                {penaltyLabel && (
                   <div className="score-meta">
-                    {penaltyLabel && <span className="score-detail">{penaltyLabel}</span>}
-                    {minuteLabel && <span className="match-minute">{minuteLabel}</span>}
+                    <span className="score-detail">{penaltyLabel}</span>
                   </div>
                 )}
               </div>
@@ -742,7 +741,12 @@ export const MatchDetailsPage: React.FC = () => {
 
         <div className="match-details-content">
           {activeTab === 'lineups' && (
-            <LineupsView lineups={lineups} loading={matchDetails.loadingLineups} />
+            <LineupsView 
+              lineups={lineups} 
+              loading={matchDetails.loadingLineups}
+              homeTeamName={homeName}
+              awayTeamName={awayName}
+            />
           )}
           {activeTab === 'events' && (
             <EventsView events={events} loading={matchDetails.loadingEvents} />
@@ -775,42 +779,106 @@ export const MatchDetailsPage: React.FC = () => {
 const LineupsView: React.FC<{
   lineups?: MatchDetailsLineups
   loading: boolean
-}> = ({ lineups, loading }) => {
+  homeTeamName?: string
+  awayTeamName?: string
+}> = ({ lineups, loading, homeTeamName, awayTeamName }) => {
+  const [activeTeam, setActiveTeam] = React.useState<'home' | 'away'>('home')
+  const touchStartRef = React.useRef<number | null>(null)
+  const touchEndRef = React.useRef<number | null>(null)
+  const minSwipeDistance = 50
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartRef.current = e.touches[0].clientX
+    touchEndRef.current = null
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    touchEndRef.current = e.touches[0].clientX
+  }
+
+  const handleTouchEnd = () => {
+    if (touchStartRef.current === null || touchEndRef.current === null) return
+    const distance = touchStartRef.current - touchEndRef.current
+    if (Math.abs(distance) > minSwipeDistance) {
+      if (distance > 0) {
+        // Свайп влево - показать гостей
+        setActiveTeam('away')
+      } else {
+        // Свайп вправо - показать хозяев
+        setActiveTeam('home')
+      }
+    }
+    touchStartRef.current = null
+    touchEndRef.current = null
+  }
+
   if (loading) {
     return <div className="loading">Загрузка составов...</div>
   }
 
   if (!lineups) {
-    return <div className="error">Нет данных о составах</div>
+    return <div className="lineups-empty">Нет данных о составах</div>
   }
 
+  const homePlayers = lineups.ht.pl
+  const awayPlayers = lineups.at.pl
+
   return (
-    <div className="lineups-view">
-      <div className="team-lineup">
-        <h3>Хозяева</h3>
-        <ul className="player-list">
-          {lineups.ht.pl.map((p, idx) => (
-            <li key={idx}>
-              <span className="player-number">{p.sn || '—'}</span>
-              <span className="player-name">
-                {p.fn} {p.ln}
-              </span>
-            </li>
-          ))}
-        </ul>
+    <div 
+      className="lineups-view-mobile"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* Переключатель команд */}
+      <div className="lineups-tabs" role="tablist">
+        <button
+          type="button"
+          className={`lineups-tab ${activeTeam === 'home' ? 'active' : ''}`}
+          onClick={() => setActiveTeam('home')}
+          role="tab"
+          aria-selected={activeTeam === 'home'}
+        >
+          {homeTeamName || 'Хозяева'}
+        </button>
+        <button
+          type="button"
+          className={`lineups-tab ${activeTeam === 'away' ? 'active' : ''}`}
+          onClick={() => setActiveTeam('away')}
+          role="tab"
+          aria-selected={activeTeam === 'away'}
+        >
+          {awayTeamName || 'Гости'}
+        </button>
       </div>
-      <div className="team-lineup">
-        <h3>Гости</h3>
-        <ul className="player-list">
-          {lineups.at.pl.map((p, idx) => (
-            <li key={idx}>
-              <span className="player-number">{p.sn || '—'}</span>
-              <span className="player-name">
-                {p.fn} {p.ln}
-              </span>
-            </li>
-          ))}
-        </ul>
+
+      {/* Индикатор свайпа */}
+      <div className="lineups-swipe-hint">
+        <span className={`swipe-dot ${activeTeam === 'home' ? 'active' : ''}`} />
+        <span className={`swipe-dot ${activeTeam === 'away' ? 'active' : ''}`} />
+      </div>
+
+      {/* Список игроков */}
+      <div className="lineups-content">
+        {activeTeam === 'home' ? (
+          <ul className="player-list">
+            {homePlayers.map((p, idx) => (
+              <li key={idx}>
+                <span className="player-number">{p.sn || '—'}</span>
+                <span className="player-name">{p.fn} {p.ln}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <ul className="player-list">
+            {awayPlayers.map((p, idx) => (
+              <li key={idx}>
+                <span className="player-number">{p.sn || '—'}</span>
+                <span className="player-name">{p.fn} {p.ln}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   )
@@ -825,33 +893,39 @@ const EventsView: React.FC<{
   }
 
   if (!events || events.ev.length === 0) {
-    return <div className="error">Нет событий в матче</div>
+    return <div className="events-empty">Нет событий в матче</div>
   }
 
-  const eventTypeLabel = (type: string) => {
-    const labels: Record<string, string> = {
-      GOAL: '⚽ Гол',
-      PENALTY_GOAL: '⚽ Пенальти',
-      OWN_GOAL: '⚽ Автогол',
-      YELLOW_CARD: '🟨 ЖК',
-      RED_CARD: '🟥 КК',
-      SUB_IN: '↑',
-      SUB_OUT: '↓',
+  const eventTypeLabel = (type: string): { icon: string; label: string } => {
+    const labels: Record<string, { icon: string; label: string }> = {
+      GOAL: { icon: '⚽', label: 'Гол' },
+      PENALTY_GOAL: { icon: '⚽', label: 'Пенальти' },
+      PENALTY_MISSED: { icon: '⛔', label: 'Пенальти' },
+      OWN_GOAL: { icon: '⚽', label: 'Автогол' },
+      YELLOW_CARD: { icon: '🟨', label: 'ЖК' },
+      SECOND_YELLOW_CARD: { icon: '🟨🟨', label: 'Вторая ЖК' },
+      RED_CARD: { icon: '🟥', label: 'КК' },
+      SUB_IN: { icon: '⬆️', label: 'Замена' },
+      SUB_OUT: { icon: '⬇️', label: 'Замена' },
     }
-    return labels[type] || type
+    return labels[type] || { icon: '•', label: type }
   }
 
   return (
     <div className="events-view">
       <ul className="event-list">
-        {events.ev.map(ev => (
-          <li key={ev.id} className={`event ${ev.tm}`}>
-            <span className="event-minute">{ev.min}&apos;</span>
-            <span className="event-type">{eventTypeLabel(ev.tp)}</span>
-            <span className="event-player">{ev.pl || '—'}</span>
-            {ev.pl2 && <span className="event-player2">→ {ev.pl2}</span>}
-          </li>
-        ))}
+        {events.ev.map(ev => {
+          const eventInfo = eventTypeLabel(ev.tp)
+          return (
+            <li key={ev.id} className={`event ${ev.tm} event-type-${ev.tp.toLowerCase()}`}>
+              <span className="event-minute">{ev.min}&apos;</span>
+              <span className="event-icon">{eventInfo.icon}</span>
+              <span className="event-type-label">{eventInfo.label}</span>
+              <span className="event-player">{ev.pl || '—'}</span>
+              {ev.pl2 && <span className="event-player2">→ {ev.pl2}</span>}
+            </li>
+          )
+        })}
       </ul>
     </div>
   )
@@ -866,37 +940,50 @@ const StatsView: React.FC<{
   }
 
   if (!stats) {
-    return <div className="error">Нет статистики матча</div>
+    return <div className="stats-empty">Нет статистики матча</div>
   }
 
   const statRows = [
-    { label: 'Удары', key: 'sh' as const },
-    { label: 'Удары в створ', key: 'sot' as const },
-    { label: 'Угловые', key: 'cor' as const },
-    { label: 'Жёлтые карточки', key: 'yc' as const },
-    { label: 'Красные карточки', key: 'rc' as const },
+    { label: 'Удары', key: 'sh' as const, icon: '⚽' },
+    { label: 'Удары в створ', key: 'sot' as const, icon: '🎯' },
+    { label: 'Угловые', key: 'cor' as const, icon: '🚩' },
+    { label: 'Жёлтые карточки', key: 'yc' as const, icon: '🟨' },
+    { label: 'Красные карточки', key: 'rc' as const, icon: '🟥' },
   ]
 
+  const getProgressWidth = (home: number, away: number) => {
+    const total = home + away
+    if (total === 0) return { home: 50, away: 50 }
+    return {
+      home: Math.round((home / total) * 100),
+      away: Math.round((away / total) * 100),
+    }
+  }
+
   return (
-    <div className="stats-view">
-      <table className="stats-table">
-        <thead>
-          <tr>
-            <th>Хозяева</th>
-            <th>Показатель</th>
-            <th>Гости</th>
-          </tr>
-        </thead>
-        <tbody>
-          {statRows.map(row => (
-            <tr key={row.key}>
-              <td className="stat-value">{stats.ht.st[row.key] ?? 0}</td>
-              <td className="stat-label">{row.label}</td>
-              <td className="stat-value">{stats.at.st[row.key] ?? 0}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="stats-view-modern">
+      {statRows.map(row => {
+        const homeVal = stats.ht.st[row.key] ?? 0
+        const awayVal = stats.at.st[row.key] ?? 0
+        const progress = getProgressWidth(homeVal, awayVal)
+        
+        return (
+          <div key={row.key} className="stat-row">
+            <div className="stat-header">
+              <span className="stat-value home">{homeVal}</span>
+              <span className="stat-label">
+                <span className="stat-icon">{row.icon}</span>
+                {row.label}
+              </span>
+              <span className="stat-value away">{awayVal}</span>
+            </div>
+            <div className="stat-bar">
+              <div className="stat-bar-home" style={{ width: `${progress.home}%` }} />
+              <div className="stat-bar-away" style={{ width: `${progress.away}%` }} />
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }

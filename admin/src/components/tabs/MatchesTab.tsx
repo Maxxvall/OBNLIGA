@@ -1337,11 +1337,45 @@ export const MatchesTab = () => {
       handleFeedback('Игрок должен быть из выбранной команды', 'error')
       return
     }
+    // Проверка: игрок не должен быть удалён с поля ранее (красная карточка или вторая жёлтая)
+    const ejectionTypes: MatchEventEntry['eventType'][] = ['RED_CARD', 'SECOND_YELLOW_CARD']
+    const scoringTypes: MatchEventEntry['eventType'][] = ['GOAL', 'PENALTY_GOAL', 'OWN_GOAL']
+    if (scoringTypes.includes(eventForm.eventType)) {
+      const playerEjection = matchEvents.find(
+        ev =>
+          ev.playerId === eventForm.playerId &&
+          ejectionTypes.includes(ev.eventType) &&
+          ev.minute < (eventForm.minute as number)
+      )
+      if (playerEjection) {
+        const ejectionLabel = playerEjection.eventType === 'RED_CARD' ? 'красную карточку' : 'вторую жёлтую'
+        handleFeedback(
+          `Игрок получил ${ejectionLabel} на ${playerEjection.minute}' и не может забить гол на ${eventForm.minute}'`,
+          'error'
+        )
+        return
+      }
+    }
     const assistEnabled = eventForm.eventType === 'GOAL'
     if (assistEnabled && eventForm.relatedPlayerId) {
       const relatedEntry = matchPlayersById.get(eventForm.relatedPlayerId)
       if (!relatedEntry || relatedEntry.clubId !== playerEntry.clubId) {
         handleFeedback('Второй игрок должен быть из той же команды, что и автор события', 'error')
+        return
+      }
+      // Проверка: ассистент тоже не должен быть удалён
+      const assistEjection = matchEvents.find(
+        ev =>
+          ev.playerId === eventForm.relatedPlayerId &&
+          ejectionTypes.includes(ev.eventType) &&
+          ev.minute < (eventForm.minute as number)
+      )
+      if (assistEjection) {
+        const ejectionLabel = assistEjection.eventType === 'RED_CARD' ? 'красную карточку' : 'вторую жёлтую'
+        handleFeedback(
+          `Ассистент получил ${ejectionLabel} на ${assistEjection.minute}' и не может отдать голевую на ${eventForm.minute}'`,
+          'error'
+        )
         return
       }
     }
@@ -1368,8 +1402,13 @@ export const MatchesTab = () => {
   }
 
   const availableClubs = data.clubs
-  const seasonSeries = data.series.filter(series => series.seasonId === selectedSeasonId)
-  const seasonMatches = data.matches.filter(match => match.seasonId === selectedSeasonId)
+  const seasonSeries = useMemo(() => {
+    return data.series.filter(series => series.seasonId === selectedSeasonId)
+  }, [data.series, selectedSeasonId])
+
+  const seasonMatches = useMemo(() => {
+    return data.matches.filter(match => match.seasonId === selectedSeasonId)
+  }, [data.matches, selectedSeasonId])
 
   const matchesSorted = useMemo(() => {
     if (!seasonMatches.length) return []

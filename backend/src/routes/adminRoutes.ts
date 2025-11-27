@@ -2383,7 +2383,8 @@ export default async function (server: FastifyInstance) {
               display_order,
               is_active,
               starts_at,
-              ends_at
+              ends_at,
+              updated_at
             ) VALUES (
               ${titleRaw},
               ${subtitleRaw ?? null},
@@ -2396,7 +2397,8 @@ export default async function (server: FastifyInstance) {
               ${displayOrder},
               ${isActive},
               ${startsAt},
-              ${endsAt}
+              ${endsAt},
+              ${new Date()}
             )
             RETURNING
               ad_banner_id          AS id,
@@ -2869,7 +2871,7 @@ export default async function (server: FastifyInstance) {
             }
 
             await syncClubSeasonRosters(tx, clubId)
-          })
+          }, { timeout: 20000, maxWait: 2000 })
         } catch (err) {
           const prismaErr = err as Prisma.PrismaClientKnownRequestError
           if (prismaErr?.code === 'P2002') {

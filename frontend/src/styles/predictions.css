@@ -926,3 +926,170 @@
   }
 }
 
+/* =============================================
+   КОМПАКТНЫЕ КАРТОЧКИ ПРОГНОЗОВ ПОЛЬЗОВАТЕЛЯ
+   ============================================= */
+
+.prediction-entry-compact {
+  border-radius: 12px;
+  border: 1px solid var(--prediction-border);
+  background: var(--prediction-bg);
+  padding: 10px 12px;
+  box-shadow: 0 8px 20px rgba(3, 8, 18, 0.5);
+  transition: border-color 200ms ease;
+}
+
+.prediction-entry-compact:hover {
+  border-color: var(--prediction-border-strong);
+}
+
+.prediction-entry-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.prediction-entry-points {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgba(0, 240, 255, 0.06);
+  border: 1px solid rgba(0, 240, 255, 0.15);
+}
+
+.prediction-entry-points .points-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--prediction-accent);
+}
+
+.prediction-entry-points .points-value.positive {
+  color: var(--prediction-success);
+}
+
+.prediction-entry-points .points-value.negative {
+  color: var(--prediction-error);
+}
+
+.prediction-entry-points .points-placeholder {
+  font-size: 14px;
+  color: var(--prediction-muted);
+  opacity: 0.5;
+}
+
+.prediction-entry-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.prediction-entry-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.prediction-entry-competition-short {
+  font-size: 11px;
+  color: var(--prediction-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+.prediction-entry-datetime-short {
+  font-size: 10px;
+  color: rgba(190, 215, 255, 0.55);
+  white-space: nowrap;
+}
+
+.prediction-status-compact {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.prediction-entry-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.prediction-teams-short {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--prediction-text);
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+.prediction-selection-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--prediction-accent);
+  white-space: nowrap;
+  background: rgba(0, 240, 255, 0.1);
+  padding: 3px 10px;
+  border-radius: 8px;
+}
+
+/* Мобильная адаптация компактных карточек */
+@media (max-width: 400px) {
+  .prediction-entry-compact {
+    padding: 8px 10px;
+    border-radius: 10px;
+  }
+
+  .prediction-entry-row {
+    gap: 10px;
+  }
+
+  .prediction-entry-points {
+    width: 42px;
+    height: 42px;
+  }
+
+  .prediction-entry-points .points-value {
+    font-size: 14px;
+  }
+
+  .prediction-entry-meta {
+    gap: 6px;
+  }
+
+  .prediction-entry-competition-short {
+    max-width: 90px;
+    font-size: 10px;
+  }
+
+  .prediction-entry-datetime-short {
+    font-size: 9px;
+  }
+
+  .prediction-status-compact {
+    font-size: 9px;
+    padding: 2px 6px;
+  }
+
+  .prediction-teams-short {
+    font-size: 12px;
+  }
+
+  .prediction-selection-value {
+    font-size: 12px;
+    padding: 2px 8px;
+  }
+}

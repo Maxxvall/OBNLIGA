@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import type { ClubMatchesResponse, ClubSummaryResponse, MatchStatus } from '@shared/types'
 import { useAppStore, TeamSubTab, TeamMatchesMode } from '../../store/appStore'
+import ClubSubscribeButton from './ClubSubscribeButton'
 import '../../styles/teamView.css'
 import '../../styles/leagueRounds.css'
 
@@ -838,15 +839,18 @@ export const TeamView: React.FC = () => {
             </span>
           )}
           <h2 id="team-view-title" className="sr-only">{header?.club.name ?? 'Клуб'}</h2>
-          <button
-            type="button"
-            className="team-view-close"
-            onClick={close}
-            ref={closeButtonRef}
-            aria-label="Закрыть"
-          >
-            ✕
-          </button>
+          <div className="team-view-header-actions">
+            <ClubSubscribeButton clubId={clubId} compact />
+            <button
+              type="button"
+              className="team-view-close"
+              onClick={close}
+              ref={closeButtonRef}
+              aria-label="Закрыть"
+            >
+              ✕
+            </button>
+          </div>
         </header>
 
         <nav className="team-view-tabs" aria-label="Разделы клуба">

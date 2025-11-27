@@ -1,0 +1,152 @@
+/* Кнопка подписки на команду */
+
+.club-subscribe-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 240, 255, 0.28);
+  background: linear-gradient(135deg, rgba(12, 20, 36, 0.88), rgba(18, 28, 48, 0.78));
+  color: rgba(0, 240, 255, 0.92);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    transform 150ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    background 180ms ease;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
+  user-select: none;
+  white-space: nowrap;
+  position: relative;
+  overflow: hidden;
+}
+
+.club-subscribe-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(0, 240, 255, 0.42);
+  box-shadow: 0 6px 22px rgba(0, 240, 255, 0.18);
+}
+
+.club-subscribe-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.club-subscribe-btn:focus-visible {
+  outline: 2px solid rgba(0, 240, 255, 0.6);
+  outline-offset: 2px;
+}
+
+.club-subscribe-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Подписан */
+.club-subscribe-btn.subscribed {
+  border-color: rgba(76, 217, 100, 0.4);
+  background: linear-gradient(135deg, rgba(12, 28, 20, 0.88), rgba(18, 38, 28, 0.78));
+  color: rgba(76, 217, 100, 0.95);
+}
+
+.club-subscribe-btn.subscribed:hover:not(:disabled) {
+  border-color: rgba(255, 69, 58, 0.45);
+  background: linear-gradient(135deg, rgba(28, 12, 12, 0.88), rgba(38, 18, 18, 0.78));
+  color: rgba(255, 69, 58, 0.95);
+}
+
+.club-subscribe-btn.subscribed:hover .club-subscribe-text::after {
+  content: ' (отписаться)';
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* Компактный режим */
+.club-subscribe-btn.compact {
+  padding: 6px 10px;
+  min-width: 38px;
+  border-radius: 10px;
+}
+
+.club-subscribe-btn.compact .club-subscribe-icon {
+  font-size: 16px;
+}
+
+/* Иконка */
+.club-subscribe-icon {
+  font-size: 14px;
+  line-height: 1;
+  transition: transform 180ms ease;
+}
+
+.club-subscribe-btn.animating .club-subscribe-icon {
+  animation: subscribeIconPulse 300ms ease;
+}
+
+@keyframes subscribeIconPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+
+/* Текст */
+.club-subscribe-text {
+  line-height: 1.2;
+}
+
+/* Спиннер загрузки */
+.club-subscribe-spinner {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: subscribeSpinner 600ms linear infinite;
+}
+
+.club-subscribe-btn.compact .club-subscribe-spinner {
+  position: static;
+  transform: none;
+  margin-left: -2px;
+}
+
+@keyframes subscribeSpinner {
+  to { transform: translateY(-50%) rotate(360deg); }
+}
+
+.club-subscribe-btn.compact .club-subscribe-spinner {
+  animation: subscribeSpinnerCompact 600ms linear infinite;
+}
+
+@keyframes subscribeSpinnerCompact {
+  to { transform: rotate(360deg); }
+}
+
+/* Состояние загрузки */
+.club-subscribe-btn.loading {
+  pointer-events: none;
+}
+
+.club-subscribe-btn.loading .club-subscribe-icon {
+  opacity: 0.5;
+}
+
+/* Адаптив */
+@media (max-width: 480px) {
+  .club-subscribe-btn {
+    padding: 7px 12px;
+    font-size: 12px;
+    gap: 5px;
+  }
+
+  .club-subscribe-btn .club-subscribe-icon {
+    font-size: 13px;
+  }
+}

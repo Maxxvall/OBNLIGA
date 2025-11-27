@@ -186,7 +186,9 @@ export async function fetchMyAchievementsPaginated(options: {
     logAchievements('Cache invalid after 304, clearing and refetching without ETag')
     try {
       window.localStorage.removeItem(cacheKey)
-    } catch {}
+    } catch {
+      // Ignore localStorage errors
+    }
     // Повторный запрос без ETag
     const freshResponse = await httpRequest<UserAchievementsResponse>(url, {
       credentials: 'include',

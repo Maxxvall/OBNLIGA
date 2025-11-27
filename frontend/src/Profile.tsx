@@ -10,6 +10,7 @@ import { fetchMyAchievements, invalidateAchievementsCache } from './api/achievem
 import { fetchDailyRewardSummary, claimDailyReward } from './api/dailyRewardApi'
 import DailyRewardCard from './components/DailyRewardCard'
 import AchievementsGrid from './components/AchievementsGrid'
+import NotificationSettings from './components/NotificationSettings'
 import './profile.css'
 
 type LeaguePlayerStatus = 'NONE' | 'PENDING' | 'VERIFIED'
@@ -138,7 +139,7 @@ const MIN_REQUEST_INTERVAL_MS = 3000
 // Храним timestamp последнего запроса в модуле (сохраняется между монтированиями)
 let lastRequestTimestamp = 0
 
-type ProfileSection = 'overview' | 'stats' | 'achievements'
+type ProfileSection = 'overview' | 'stats' | 'achievements' | 'settings'
 
 export default function Profile() {
   const [user, setUser] = useState<Nullable<ProfileUser>>(null)
@@ -888,6 +889,7 @@ export default function Profile() {
   const shouldShowCareerSection = isVerified && (!isCompactLayout || activeSection === 'stats')
   const shouldShowAchievements = !isCompactLayout || activeSection === 'achievements'
   const shouldShowDailyReward = !isCompactLayout || activeSection === 'overview'
+  const shouldShowSettings = !isCompactLayout || activeSection === 'settings'
 
   const statusMessage = (() => {
     if (status === 'NONE') {
@@ -1092,6 +1094,15 @@ export default function Profile() {
             >
               Достижения
             </button>
+            <button
+              type="button"
+              className={activeSection === 'settings' ? 'active' : ''}
+              onClick={() => setActiveSection('settings')}
+              role="tab"
+              aria-selected={activeSection === 'settings'}
+            >
+              ⚙️
+            </button>
           </div>
         ) : null}
 
@@ -1186,6 +1197,14 @@ export default function Profile() {
         )}
 
         {shouldShowAchievements && achievementsBlock}
+
+        {shouldShowSettings && (
+          <section className="profile-section">
+            <div className="profile-card">
+              <NotificationSettings />
+            </div>
+          </section>
+        )}
 
         {showVerifyModal ? (
           <div className="verify-modal-backdrop" role="dialog" aria-modal="true">

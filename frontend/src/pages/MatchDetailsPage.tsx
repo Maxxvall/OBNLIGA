@@ -655,7 +655,9 @@ export const MatchDetailsPage: React.FC = () => {
     penaltyAway !== null
   const penaltyLabel = hasPenalty ? `Пенальти ${penaltyHome}:${penaltyAway}` : null
 
-  const minuteLabel = status === 'LIVE' && typeof header?.min === 'number' ? `${header.min}'` : null
+  // minuteLabel reserved for live minute display feature
+  const _minuteLabel = status === 'LIVE' && typeof header?.min === 'number' ? `${header.min}'` : null
+  void _minuteLabel
 
   const locationLabel = buildLocationLabel(header?.loc, snapshot?.location ?? null)
   const roundLabel = header?.rd?.label ?? snapshot?.series?.stageName ?? null

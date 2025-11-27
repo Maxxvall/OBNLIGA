@@ -790,3 +790,38 @@ export interface ShopOrderView {
   items: ShopOrderItemView[]
   user?: ShopOrderUserView | null
 }
+
+// =================== ПОДПИСКИ И УВЕДОМЛЕНИЯ ===================
+
+export interface ClubSubscriptionView {
+  id: number
+  clubId: number
+  clubName: string
+  clubShortName: string
+  clubLogoUrl: string | null
+  createdAt: string
+}
+
+export interface MatchSubscriptionView {
+  id: number
+  matchId: string
+  homeClubName: string
+  awayClubName: string
+  matchDateTime: string
+  createdAt: string
+}
+
+export interface NotificationSettingsView {
+  enabled: boolean
+  remindBefore: number
+  matchStartEnabled: boolean
+  matchEndEnabled: boolean
+  goalEnabled: boolean
+}
+
+export interface SubscriptionsSummaryView {
+  clubs: ClubSubscriptionView[]
+  matches: MatchSubscriptionView[]
+  settings: NotificationSettingsView
+}
+

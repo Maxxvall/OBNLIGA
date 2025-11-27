@@ -92,6 +92,8 @@ import matchPublicRoutes from './routes/matchPublicRoutes'
 import predictionRoutes from './routes/predictionRoutes'
 import ratingsRoutes from './routes/ratingsRoutes'
 import shopRoutes from './routes/shopRoutes'
+import subscriptionRoutes from './routes/subscriptionRoutes'
+import cronRoutes from './routes/cronRoutes'
 server.register(newsRoutes)
 server.register(adsRoutes)
 server.register(leagueRoutes)
@@ -100,6 +102,11 @@ server.register(matchPublicRoutes)
 server.register(predictionRoutes)
 server.register(ratingsRoutes)
 server.register(shopRoutes)
+server.register(subscriptionRoutes)
+server.register(cronRoutes)
+// Duplicate registrations removed: `ratingsRoutes` and `shopRoutes`
+// were registered above already. Keeping single registration to avoid
+// Fastify "Method 'GET' already declared" errors.
 
 // register fastify websocket & cookie plugins and realtime
 // websocket & cookie plugins and realtime will be registered in start() to avoid top-level await

@@ -149,6 +149,10 @@ model AppUser {
   achievements            UserAchievement[]
   userAchievementRewards  UserAchievementRewards[]
   userRating              UserRating?
+  clubSubscriptions       ClubSubscription[]
+  matchSubscriptions      MatchSubscription[]
+  notificationSettings    NotificationSettings?
+  notificationQueue       NotificationQueue[]
 
   @@map("app_user")
 }
@@ -176,6 +180,7 @@ model Club {
   seasonGroupSlot       SeasonGroupSlot[]
   seasonParticipant     SeasonParticipant[]
   seasonRoster          SeasonRoster[]
+  clubSubscriptions     ClubSubscription[]
 
   @@map("club")
 }
@@ -292,6 +297,8 @@ model Match {
   statistics          MatchStatistic[]
   predictions         Prediction[]
   predictionTemplates PredictionTemplate[]
+  matchSubscriptions  MatchSubscription[]
+  notificationQueue   NotificationQueue[]
 
   @@unique([seriesId, seriesMatchNumber], map: "unique_series_match_number")
   @@map("match")
@@ -897,4 +904,89 @@ enum ShopOrderStatus {
   PENDING
   CONFIRMED
   CANCELLED
+}
+
+// =================== ПОДПИСКИ И УВЕДОМЛЕНИЯ ===================
+
+// Подписки на команды
+model ClubSubscription {
+  id        Int      @id @default(autoincrement()) @map("club_subscription_id")
+  userId    Int      @map("user_id")
+  clubId    Int      @map("club_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  club Club    @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clubId], map: "club_subscription_user_club_unique")
+  @@index([clubId], map: "club_subscription_club_idx")
+  @@map("club_subscription")
+}
+
+// Подписки на конкретные матчи
+model MatchSubscription {
+  id        Int      @id @default(autoincrement()) @map("match_subscription_id")
+  userId    Int      @map("user_id")
+  matchId   BigInt   @map("match_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user  AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  match Match   @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, matchId], map: "match_subscription_user_match_unique")
+  @@index([matchId], map: "match_subscription_match_idx")
+  @@map("match_subscription")
+}
+
+// Настройки уведомлений пользователя
+model NotificationSettings {
+  id                Int     @id @default(autoincrement()) @map("notification_settings_id")
+  userId            Int     @unique @map("user_id")
+  enabled           Boolean @default(true)
+  remindBefore      Int     @default(30) @map("remind_before") // минуты до матча
+  matchStartEnabled Boolean @default(true) @map("match_start_enabled")
+  matchEndEnabled   Boolean @default(false) @map("match_end_enabled")
+  goalEnabled       Boolean @default(false) @map("goal_enabled")
+
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_settings")
+}
+
+// Очередь уведомлений (для отложенной отправки)
+model NotificationQueue {
+  id           Int                     @id @default(autoincrement()) @map("notification_queue_id")
+  userId       Int                     @map("user_id")
+  telegramId   BigInt                  @map("telegram_id")
+  matchId      BigInt                  @map("match_id")
+  scheduledAt  DateTime                @map("scheduled_at")
+  sentAt       DateTime?               @map("sent_at")
+  status       NotificationStatus      @default(PENDING)
+  messageType  NotificationMessageType @map("message_type")
+  errorMessage String?                 @map("error_message")
+  retryCount   Int                     @default(0) @map("retry_count")
+  createdAt    DateTime                @default(now()) @map("created_at")
+
+  user  AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  match Match   @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, matchId, messageType], map: "notification_queue_user_match_type_unique")
+  @@index([status, scheduledAt], map: "notification_queue_status_scheduled_idx")
+  @@index([userId], map: "notification_queue_user_idx")
+  @@index([matchId], map: "notification_queue_match_idx")
+  @@map("notification_queue")
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum NotificationMessageType {
+  MATCH_REMINDER
+  MATCH_STARTED
+  MATCH_FINISHED
+  GOAL_SCORED
 }

@@ -128,6 +128,10 @@ export async function handleMatchFinalization(
 
   await prisma.$transaction(
     async tx => {
+      // Блокируем матч на время транзакции для предотвращения race condition
+      // при одновременном завершении матча несколькими админами
+      await tx.$executeRaw`SELECT id FROM "Match" WHERE id = ${matchId} FOR UPDATE`
+      
       const includePlayoffRounds = isBracketFormat
       await rebuildClubSeasonStats(seasonId, tx, { includePlayoffRounds })
       await rebuildPlayerSeasonStats(seasonId, tx)

@@ -1,7 +1,7 @@
 import React from 'react'
 import type { LeagueMatchView, LeagueRoundCollection } from '@shared/types'
 import { useAppStore } from '../../store/appStore'
-import { buildLocationLabel, buildMatchDescriptor } from '../../utils/matchPresentation'
+import { MatchCard } from './MatchCard'
 import '../../styles/leagueRounds.css'
 
 type LeagueRoundsViewProps = {
@@ -580,104 +580,18 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
               } else {
                 bodyContent = (
                   <div className="league-round-card-body" id={isResultsMode ? bodyId : undefined}>
-                    {round.matches.map(match => {
-                      const descriptor = buildMatchDescriptor(match, mode)
-                      const homeName = match.homeClub.name
-                      const awayName = match.awayClub.name
-                      const location = buildLocationLabel(match)
-                      const isLiveActivated = liveHighlightIds.has(match.id)
-                      const isScoreUpdated = scoreHighlightIds.has(match.id)
-                      const cardClasses = ['league-match-card']
-                      if (descriptor.modifier) {
-                        cardClasses.push(descriptor.modifier)
-                      }
-                      if (isLiveActivated) {
-                        cardClasses.push('live-activated')
-                      }
-                      const scoreClassName = `league-match-score${isScoreUpdated ? ' score-updated' : ''}`
-                      return (
-                        <div
-                          className={cardClasses.join(' ')}
-                          key={match.id}
-                          onClick={() => openMatchDetails(match.id, match, data?.season.id)}
-                          style={{ cursor: 'pointer' }}
-                        >
-                          <div className="league-match-top">
-                            <span className="match-datetime">{descriptor.dateTime}</span>
-                            {descriptor.badge && (
-                              <span className={`match-badge ${descriptor.badge.tone}`}>{descriptor.badge.label}</span>
-                            )}
-                          </div>
-                          <div className="league-match-main">
-                            <div className="league-match-team">
-                              <button
-                                type="button"
-                                className="club-logo-button"
-                                onClick={e => {
-                                  e.stopPropagation()
-                                  openTeamView(match.homeClub.id)
-                                }}
-                                aria-label={`Открыть страницу клуба ${match.homeClub.name}`}
-                              >
-                                {match.homeClub.logoUrl ? (
-                                  <img
-                                    src={match.homeClub.logoUrl}
-                                    alt=""
-                                    aria-hidden="true"
-                                    className="club-logo"
-                                  />
-                                ) : (
-                                  <span className="club-logo fallback" aria-hidden="true">
-                                    {homeName.slice(0, 2).toUpperCase()}
-                                  </span>
-                                )}
-                              </button>
-                              <span className="team-name">{homeName}</span>
-                            </div>
-                            <div className={scoreClassName}>
-                              <span className="score-main">{descriptor.score}</span>
-                              {descriptor.detail && (
-                                <span className="score-detail">{descriptor.detail}</span>
-                              )}
-                            </div>
-                            <div className="league-match-team">
-                              <button
-                                type="button"
-                                className="club-logo-button"
-                                onClick={e => {
-                                  e.stopPropagation()
-                                  openTeamView(match.awayClub.id)
-                                }}
-                                aria-label={`Открыть страницу клуба ${match.awayClub.name}`}
-                              >
-                                {match.awayClub.logoUrl ? (
-                                  <img
-                                    src={match.awayClub.logoUrl}
-                                    alt=""
-                                    aria-hidden="true"
-                                    className="club-logo"
-                                  />
-                                ) : (
-                                  <span className="club-logo fallback" aria-hidden="true">
-                                    {awayName.slice(0, 2).toUpperCase()}
-                                  </span>
-                                )}
-                              </button>
-                              <span className="team-name">{awayName}</span>
-                            </div>
-                          </div>
-                          {descriptor.series ? (
-                            <div className="series-info">
-                              <span className="series-label">Счёт в серии</span>
-                              <span className="series-score">{descriptor.series.seriesScore}</span>
-                            </div>
-                          ) : null}
-                          <div className="league-match-location">
-                            <span>{location}</span>
-                          </div>
-                        </div>
-                      )
-                    })}
+                    {round.matches.map(match => (
+                      <MatchCard
+                        key={match.id}
+                        match={match}
+                        mode={mode}
+                        isLiveActivated={liveHighlightIds.has(match.id)}
+                        isScoreUpdated={scoreHighlightIds.has(match.id)}
+                        onMatchClick={openMatchDetails}
+                        onTeamClick={openTeamView}
+                        seasonId={data?.season.id}
+                      />
+                    ))}
                   </div>
                 )
               }

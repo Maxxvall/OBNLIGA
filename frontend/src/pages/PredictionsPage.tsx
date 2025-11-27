@@ -467,7 +467,12 @@ const formatEntrySelection = (entry: UserPredictionEntry): string => {
   return entry.selection
 }
 
-const renderUserPrediction = (prediction: UserPredictionEntry) => {
+// Мемоизированный компонент для карточки прогноза пользователя
+type UserPredictionCardProps = {
+  prediction: UserPredictionEntry
+}
+
+const UserPredictionCardInner: React.FC<UserPredictionCardProps> = ({ prediction }) => {
   const formattedSelection = formatEntrySelection(prediction)
   const competitionLabel = prediction.competitionName && prediction.seasonName
     ? `${prediction.competitionName} • ${prediction.seasonName}`
@@ -477,7 +482,7 @@ const renderUserPrediction = (prediction: UserPredictionEntry) => {
   const awayShort = getClubShortName(prediction.awayClub)
   
   return (
-    <li key={prediction.id} className={`prediction-entry-compact prediction-entry-${prediction.status.toLowerCase()}`}>
+    <li className={`prediction-entry-compact prediction-entry-${prediction.status.toLowerCase()}`}>
       <div className="prediction-entry-row">
         {/* Очки слева */}
         <div className="prediction-entry-points">
@@ -508,6 +513,21 @@ const renderUserPrediction = (prediction: UserPredictionEntry) => {
     </li>
   )
 }
+
+const UserPredictionCard = React.memo(UserPredictionCardInner, (prev, next) => {
+  // Перерендер только при изменении данных прогноза
+  const p = prev.prediction
+  const n = next.prediction
+  return (
+    p.id === n.id &&
+    p.status === n.status &&
+    p.scoreAwarded === n.scoreAwarded &&
+    p.selection === n.selection
+  )
+})
+
+UserPredictionCard.displayName = 'UserPredictionCard'
+
 const PredictionsPage: React.FC = () => {
   const [tab, setTab] = useState<PredictionsTab>('upcoming')
   const [upcoming, setUpcoming] = useState<ActivePredictionMatch[]>([])
@@ -808,7 +828,11 @@ const PredictionsPage: React.FC = () => {
       return <p className="prediction-note">Вы ещё не делали прогнозы. Попробуйте выбрать исходы в ближайших матчах.</p>
     }
 
-    return <ul className="prediction-entry-list">{mine.map(renderUserPrediction)}</ul>
+    return (
+      <ul className="prediction-entry-list">
+        {mine.map(p => <UserPredictionCard key={p.id} prediction={p} />)}
+      </ul>
+    )
   }
 
   return (

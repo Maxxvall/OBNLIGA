@@ -940,13 +940,14 @@ model MatchSubscription {
 
 // Настройки уведомлений пользователя
 model NotificationSettings {
-  id                Int     @id @default(autoincrement()) @map("settings_id")
-  userId            Int     @unique @map("user_id")
-  enabled           Boolean @default(true)
-  remindBefore      Int     @default(30) @map("remind_before") // минуты до матча
-  matchStartEnabled Boolean @default(true) @map("match_start_enabled")
-  matchEndEnabled   Boolean @default(false) @map("match_end_enabled")
-  goalEnabled       Boolean @default(false) @map("goal_enabled")
+  id                Int      @id @default(autoincrement()) @map("settings_id")
+  userId            Int      @unique @map("user_id")
+  enabled           Boolean  @default(true)
+  remindBefore      Int      @default(30) @map("remind_before") // минуты до матча
+  matchStartEnabled Boolean  @default(true) @map("match_start_enabled")
+  matchEndEnabled   Boolean  @default(false) @map("match_end_enabled")
+  goalEnabled       Boolean  @default(false) @map("goal_enabled")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 

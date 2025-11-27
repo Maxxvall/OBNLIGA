@@ -259,12 +259,24 @@
   display: flex;
   gap: 8px;
   padding: 0 16px 12px;
-  justify-content: center;
+  /* Горизонтальный скролл для вкладок */
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.profile-mobile-tabs::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
 }
 
 .profile-mobile-tabs button {
-  flex: 1 1 0;
-  min-width: 120px;
+  flex: 0 0 auto;
+  min-width: 100px;
+  max-width: 120px;
+  scroll-snap-align: start;
   border-radius: 16px;
   border: 1px solid rgba(0, 240, 255, 0.22);
   background: rgba(12, 20, 36, 0.85);

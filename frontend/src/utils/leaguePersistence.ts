@@ -3,7 +3,8 @@
  */
 
 const STORAGE_PREFIX = 'obnliga_league_'
-const STORAGE_VERSION = 1
+// Версия 2: сброс устаревших данных с удалённых матчей (27.11.2025)
+const STORAGE_VERSION = 2
 
 type StorageKey = 
   | 'tables'

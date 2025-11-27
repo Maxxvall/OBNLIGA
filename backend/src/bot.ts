@@ -1,4 +1,4 @@
-import { Bot, BotError, Context, InlineKeyboard } from 'grammy'
+import { Bot, BotError, Context } from 'grammy'
 import dotenv from 'dotenv'
 
 dotenv.config({ path: `${__dirname}/../.env` })
@@ -49,9 +49,11 @@ if (token) {
 
   botInstance.command('start', async ctx => {
     const name = ctx.from?.first_name || 'игрок'
-    const keyboard = new InlineKeyboard().url('Открыть Приложение', webAppUrl)
-    await ctx.reply(`Привет, ${name}! Добро пожаловать в Футбольную Лигу.`)
-    await ctx.reply('Нажмите кнопку, чтобы открыть Приложение:', { reply_markup: keyboard })
+    const keyboard = {
+      inline_keyboard: [[{ text: 'Открыть Приложение', web_app: { url: webAppUrl } }]]
+    }
+    await ctx.reply(`Привет, ${name}! Добро пожаловать в Футбольную Лига.`)
+    await ctx.reply('Нажмите кнопку, чтобы открыть Приложение:', { reply_markup: keyboard as any })
   })
 
   botInstance.on('message', async ctx => {

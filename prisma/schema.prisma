@@ -910,7 +910,7 @@ enum ShopOrderStatus {
 
 // Подписки на команды
 model ClubSubscription {
-  id        Int      @id @default(autoincrement()) @map("club_subscription_id")
+  id        Int      @id @default(autoincrement()) @map("subscription_id")
   userId    Int      @map("user_id")
   clubId    Int      @map("club_id")
   createdAt DateTime @default(now()) @map("created_at")
@@ -925,7 +925,7 @@ model ClubSubscription {
 
 // Подписки на конкретные матчи
 model MatchSubscription {
-  id        Int      @id @default(autoincrement()) @map("match_subscription_id")
+  id        Int      @id @default(autoincrement()) @map("subscription_id")
   userId    Int      @map("user_id")
   matchId   BigInt   @map("match_id")
   createdAt DateTime @default(now()) @map("created_at")
@@ -940,7 +940,7 @@ model MatchSubscription {
 
 // Настройки уведомлений пользователя
 model NotificationSettings {
-  id                Int     @id @default(autoincrement()) @map("notification_settings_id")
+  id                Int     @id @default(autoincrement()) @map("settings_id")
   userId            Int     @unique @map("user_id")
   enabled           Boolean @default(true)
   remindBefore      Int     @default(30) @map("remind_before") // минуты до матча
@@ -955,7 +955,7 @@ model NotificationSettings {
 
 // Очередь уведомлений (для отложенной отправки)
 model NotificationQueue {
-  id           Int                     @id @default(autoincrement()) @map("notification_queue_id")
+  id           Int                     @id @default(autoincrement()) @map("notification_id")
   userId       Int                     @map("user_id")
   telegramId   BigInt                  @map("telegram_id")
   matchId      BigInt                  @map("match_id")

@@ -1119,6 +1119,74 @@ const resolveSeasonId = (state: AppState, override?: number) =>
 
 const isFriendlySeasonId = (seasonId?: number | null): boolean => seasonId === FRIENDLY_SEASON_ID
 
+/**
+ * Очищает кэшированные данные для сезонов которых больше нет в списке
+ * Вызывается после загрузки актуального списка сезонов
+ */
+const cleanupOrphanedSeasonData = (
+  validSeasonIds: Set<number>,
+  tables: Record<number, LeagueTableResponse>,
+  schedules: Record<number, LeagueRoundCollection>,
+  results: Record<number, LeagueRoundCollection>,
+  stats: Record<number, LeagueStatsResponse>
+): {
+  tables: Record<number, LeagueTableResponse>
+  schedules: Record<number, LeagueRoundCollection>
+  results: Record<number, LeagueRoundCollection>
+  stats: Record<number, LeagueStatsResponse>
+  hasChanges: boolean
+} => {
+  let hasChanges = false
+  
+  const cleanedTables: Record<number, LeagueTableResponse> = {}
+  for (const [idStr, table] of Object.entries(tables)) {
+    const id = Number(idStr)
+    if (validSeasonIds.has(id) || id === FRIENDLY_SEASON_ID) {
+      cleanedTables[id] = table
+    } else {
+      hasChanges = true
+    }
+  }
+
+  const cleanedSchedules: Record<number, LeagueRoundCollection> = {}
+  for (const [idStr, schedule] of Object.entries(schedules)) {
+    const id = Number(idStr)
+    if (validSeasonIds.has(id) || id === FRIENDLY_SEASON_ID) {
+      cleanedSchedules[id] = schedule
+    } else {
+      hasChanges = true
+    }
+  }
+
+  const cleanedResults: Record<number, LeagueRoundCollection> = {}
+  for (const [idStr, result] of Object.entries(results)) {
+    const id = Number(idStr)
+    if (validSeasonIds.has(id) || id === FRIENDLY_SEASON_ID) {
+      cleanedResults[id] = result
+    } else {
+      hasChanges = true
+    }
+  }
+
+  const cleanedStats: Record<number, LeagueStatsResponse> = {}
+  for (const [idStr, stat] of Object.entries(stats)) {
+    const id = Number(idStr)
+    if (validSeasonIds.has(id) || id === FRIENDLY_SEASON_ID) {
+      cleanedStats[id] = stat
+    } else {
+      hasChanges = true
+    }
+  }
+
+  return {
+    tables: cleanedTables,
+    schedules: cleanedSchedules,
+    results: cleanedResults,
+    stats: cleanedStats,
+    hasChanges,
+  }
+}
+
 const isClubSummaryStatistics = (
   value: unknown
 ): value is ClubSummaryResponse['statistics'] => {
@@ -1453,6 +1521,25 @@ export const useAppStore = create<AppState>((set, get) => ({
       : previousSelected && ordered.some(season => season.id === previousSelected)
         ? previousSelected
         : active?.id ?? ordered[0]?.id
+    
+    // Очищаем кэшированные данные для несуществующих сезонов
+    const validSeasonIds = new Set(ordered.map(s => s.id))
+    const cleaned = cleanupOrphanedSeasonData(
+      validSeasonIds,
+      state.tables,
+      state.schedules,
+      state.results,
+      state.stats
+    )
+
+    if (cleaned.hasChanges) {
+      // Обновляем localStorage с очищенными данными
+      writeToStorage('tables', cleaned.tables)
+      writeToStorage('schedules', cleaned.schedules)
+      writeToStorage('results', cleaned.results)
+      writeToStorage('stats', cleaned.stats)
+    }
+
     set(prev => ({
       seasons: ordered,
       seasonsVersion: response.version,
@@ -1460,6 +1547,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       activeSeasonId: active?.id,
       selectedSeasonId: nextSelected,
       loading: { ...prev.loading, seasons: false },
+      // Применяем очищенные данные если были удалены orphaned записи
+      ...(cleaned.hasChanges ? {
+        tables: cleaned.tables,
+        schedules: cleaned.schedules,
+        results: cleaned.results,
+        stats: cleaned.stats,
+      } : {}),
     }))
     if (nextSelected && !isFriendlySeasonId(nextSelected)) {
       void get().fetchLeagueTable({ seasonId: nextSelected })

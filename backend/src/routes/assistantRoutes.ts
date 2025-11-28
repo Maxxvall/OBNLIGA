@@ -502,8 +502,9 @@ export default async function assistantRoutes(server: FastifyInstance) {
           return reply.status(409).send({ ok: false, error: 'status_transition_invalid' })
         }
 
+        let updated
         try {
-          const updated = await prisma.match.update({
+          updated = await prisma.match.update({
             where: { id: matchId },
             data: {
               homeScore: nextHomeScore,
@@ -514,32 +515,41 @@ export default async function assistantRoutes(server: FastifyInstance) {
               status: statusUpdate ?? match.status,
             },
           })
-
-          const publishTopic =
-            typeof request.server.publishTopic === 'function'
-              ? request.server.publishTopic.bind(request.server)
-              : undefined
-
-          if (statusUpdate !== MatchStatus.FINISHED || match.status === MatchStatus.FINISHED) {
-            try {
-              await refreshLeagueMatchAggregates(match.seasonId, { publishTopic })
-            } catch (err) {
-              request.server.log.warn(
-                { err, matchId: matchId.toString(), seasonId: match.seasonId },
-                'assistant score update: failed to refresh league aggregates'
-              )
-            }
-          }
-
-          if (statusUpdate === MatchStatus.FINISHED && match.status !== MatchStatus.FINISHED) {
-            await handleMatchFinalization(matchId, request.server.log, { publishTopic })
-          }
-
-          return reply.send({ ok: true, data: serializePrisma(updated) })
         } catch (err) {
           request.log.error({ err, matchId: matchId.toString() }, 'assistant score update failed')
           return reply.status(500).send({ ok: false, error: 'match_update_failed' })
         }
+
+        // Post-update operations выполняются после успешного обновления матча
+        // Ошибки здесь не должны влиять на ответ пользователю
+        const publishTopic =
+          typeof request.server.publishTopic === 'function'
+            ? request.server.publishTopic.bind(request.server)
+            : undefined
+
+        if (statusUpdate !== MatchStatus.FINISHED || match.status === MatchStatus.FINISHED) {
+          try {
+            await refreshLeagueMatchAggregates(match.seasonId, { publishTopic })
+          } catch (err) {
+            request.server.log.warn(
+              { err, matchId: matchId.toString(), seasonId: match.seasonId },
+              'assistant score update: failed to refresh league aggregates'
+            )
+          }
+        }
+
+        if (statusUpdate === MatchStatus.FINISHED && match.status !== MatchStatus.FINISHED) {
+          try {
+            await handleMatchFinalization(matchId, request.server.log, { publishTopic })
+          } catch (err) {
+            request.server.log.error(
+              { err, matchId: matchId.toString() },
+              'assistant: handleMatchFinalization failed but match was updated'
+            )
+          }
+        }
+
+        return reply.send({ ok: true, data: serializePrisma(updated) })
         }
       )
 

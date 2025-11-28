@@ -390,6 +390,12 @@ export const MatchesTab = () => {
     automationForm.seriesFormat === 'DOUBLE_ROUND_PLAYOFF'
   const automationRandomBracket = automationForm.seriesFormat === 'PLAYOFF_BRACKET'
   const automationGroupStage = automationForm.seriesFormat === 'GROUP_SINGLE_ROUND_PLAYOFF'
+  // Определяем тип выбранного соревнования для условной логики UI
+  const selectedCompetition = useMemo(() => {
+    if (!automationForm.competitionId) return undefined
+    return data.competitions.find(c => c.id === automationForm.competitionId)
+  }, [automationForm.competitionId, data.competitions])
+  const isCupCompetition = selectedCompetition?.type === 'CUP'
   const [lastGroupStagePreview, setLastGroupStagePreview] =
     useState<SeasonGroupStagePayload | null>(null)
   const [playoffBestOf, setPlayoffBestOf] = useState<number>(playoffBestOfOptions[0])
@@ -1954,16 +1960,19 @@ export const MatchesTab = () => {
                         onChange={event => updateGroupSize(Number(event.target.value) || 2)}
                       />
                     </label>
-                    <label>
-                      Проходят дальше
-                      <input
-                        type="number"
-                        min={1}
-                        max={groupStageState.groupSize}
-                        value={groupStageState.qualifyCount}
-                        onChange={event => updateQualifyCount(Number(event.target.value) || 1)}
-                      />
-                    </label>
+                    {/* Для кубков qualifyCount не нужен — система сама определяет проход */}
+                    {!isCupCompetition && (
+                      <label>
+                        Проходят дальше
+                        <input
+                          type="number"
+                          min={1}
+                          max={groupStageState.groupSize}
+                          value={groupStageState.qualifyCount}
+                          onChange={event => updateQualifyCount(Number(event.target.value) || 1)}
+                        />
+                      </label>
+                    )}
                     <label>
                       Кругов в группе
                       <select
@@ -2009,6 +2018,12 @@ export const MatchesTab = () => {
                         }, 0)}{' '}
                       из {groupStageState.groupCount * groupStageState.groupSize}
                     </div>
+                    {isCupCompetition && (
+                      <p className="muted" style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>
+                        🏆 Кубок: после групп все команды проходят в плей-офф (квалификация + 1/4).
+                        Проигравшие 1/4 → Серебряный кубок, победители → Золотой кубок.
+                      </p>
+                    )}
                   </div>
                   <div className="group-stage-grid">
                     {groupStageState.groups

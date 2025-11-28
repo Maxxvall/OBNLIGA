@@ -442,8 +442,9 @@ export default async function judgeRoutes(server: FastifyInstance) {
           penaltyAwayScore = 0
         }
 
+        let updated
         try {
-          const updated = await prisma.match.update({
+          updated = await prisma.match.update({
             where: { id: matchId },
             data: {
               homeScore: nextHomeScore,
@@ -453,19 +454,37 @@ export default async function judgeRoutes(server: FastifyInstance) {
               penaltyAwayScore,
             },
           })
-
-          const publishTopic =
-            typeof request.server.publishTopic === 'function'
-              ? request.server.publishTopic.bind(request.server)
-              : undefined
-          await handleMatchFinalization(matchId, request.server.log, { publishTopic })
-          await broadcastMatchStatistics(request.server, matchId)
-
-          return reply.send({ ok: true, data: serializePrisma(updated) })
         } catch (err) {
           request.log.error({ err, matchId: matchId.toString() }, 'judge score update failed')
           return reply.status(500).send({ ok: false, error: 'match_update_failed' })
         }
+
+        // Post-update operations выполняются после успешного обновления
+        // Ошибки здесь логируются но не влияют на ответ
+        const publishTopic =
+          typeof request.server.publishTopic === 'function'
+            ? request.server.publishTopic.bind(request.server)
+            : undefined
+        
+        try {
+          await handleMatchFinalization(matchId, request.server.log, { publishTopic })
+        } catch (err) {
+          request.log.error(
+            { err, matchId: matchId.toString() },
+            'judge: handleMatchFinalization failed but match was updated'
+          )
+        }
+
+        try {
+          await broadcastMatchStatistics(request.server, matchId)
+        } catch (err) {
+          request.log.warn(
+            { err, matchId: matchId.toString() },
+            'judge: broadcastMatchStatistics failed'
+          )
+        }
+
+        return reply.send({ ok: true, data: serializePrisma(updated) })
       }
       )
     },

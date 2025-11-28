@@ -462,10 +462,11 @@ const generateRoundRobinPairs = (clubIds: ClubId[], roundsPerPair: number): Roun
 
 const alignDateToWeekday = (date: Date, weekday: number): Date => {
   const clone = new Date(date)
-  const currentWeekday = clone.getDay()
+  // Используем UTC методы для консистентности
+  const currentWeekday = clone.getUTCDay()
   const normalizedWeekday = ((weekday % 7) + 7) % 7
   const delta = (normalizedWeekday - currentWeekday + 7) % 7
-  clone.setDate(clone.getDate() + delta)
+  clone.setUTCDate(clone.getUTCDate() + delta)
   return clone
 }
 
@@ -476,13 +477,16 @@ export const applyTimeToDate = (date: Date, time?: string | null): Date => {
   const hours = Number(match[1])
   const minutes = Number(match[2])
   const withTime = new Date(date)
-  withTime.setHours(hours, minutes, 0, 0)
+  // Используем UTC методы чтобы избежать смещения timezone
+  // Время указывается пользователем в его локальной зоне (Москва +3)
+  // и должно сохраняться как есть без преобразований сервера
+  withTime.setUTCHours(hours, minutes, 0, 0)
   return withTime
 }
 
 export const addDays = (date: Date, days: number): Date => {
   const next = new Date(date)
-  next.setDate(next.getDate() + days)
+  next.setUTCDate(next.getUTCDate() + days)
   return next
 }
 
@@ -491,7 +495,7 @@ export const addMinutes = (date: Date, minutes: number): Date => {
     return new Date(date)
   }
   const next = new Date(date)
-  next.setMinutes(next.getMinutes() + minutes)
+  next.setUTCMinutes(next.getUTCMinutes() + minutes)
   return next
 }
 

@@ -3,8 +3,9 @@
  */
 
 const STORAGE_PREFIX = 'obnliga_league_'
-// Версия 2: сброс устаревших данных с удалённых матчей (27.11.2025)
-const STORAGE_VERSION = 2
+// Версия 3: сброс после внедрения эталонной системы кубка (28.11.2025)
+// Старые данные могли иметь неверную структуру групп
+const STORAGE_VERSION = 3
 
 type StorageKey = 
   | 'tables'

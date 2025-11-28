@@ -1470,11 +1470,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ selectedSeasonId: FRIENDLY_SEASON_ID })
       return
     }
-    const seasons = get().seasons
+    const state = get()
+    const seasons = state.seasons
     if (!seasons.some(season => season.id === seasonId)) {
       return
     }
+    const previousSeasonId = state.selectedSeasonId
     set({ selectedSeasonId: seasonId })
+    
+    // Принудительно обновляем данные при смене сезона
+    // чтобы избежать показа устаревших данных из кэша
+    if (previousSeasonId !== seasonId) {
+      void get().fetchLeagueTable({ seasonId, force: true })
+      void get().fetchLeagueSchedule({ seasonId, force: true })
+      void get().fetchLeagueResults({ seasonId, force: true })
+    }
   },
   fetchLeagueSeasons: async options => {
     const state = get()
@@ -1555,11 +1565,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         stats: cleaned.stats,
       } : {}),
     }))
+    // При загрузке сезонов всегда принудительно обновляем данные выбранного сезона
+    // чтобы гарантировать актуальность информации
     if (nextSelected && !isFriendlySeasonId(nextSelected)) {
-      void get().fetchLeagueTable({ seasonId: nextSelected })
+      void get().fetchLeagueTable({ seasonId: nextSelected, force: true })
     } else if (isFriendlySeasonId(nextSelected)) {
-      void get().fetchLeagueSchedule({ seasonId: FRIENDLY_SEASON_ID })
-      void get().fetchLeagueResults({ seasonId: FRIENDLY_SEASON_ID })
+      void get().fetchLeagueSchedule({ seasonId: FRIENDLY_SEASON_ID, force: true })
+      void get().fetchLeagueResults({ seasonId: FRIENDLY_SEASON_ID, force: true })
     }
     return { ok: true }
   },

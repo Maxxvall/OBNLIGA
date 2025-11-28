@@ -3940,6 +3940,17 @@ export default async function (server: FastifyInstance) {
             playoffBestOf,
           })
 
+          // Инвалидируем кэш лиги после создания сезона
+          await Promise.all([
+            defaultCache.invalidate(PUBLIC_LEAGUE_SEASONS_KEY).catch(() => undefined),
+            defaultCache.invalidate(PUBLIC_LEAGUE_TABLE_KEY).catch(() => undefined),
+            defaultCache.invalidate(`${PUBLIC_LEAGUE_TABLE_KEY}:${result.seasonId}`).catch(() => undefined),
+            defaultCache.invalidate(PUBLIC_LEAGUE_SCHEDULE_KEY).catch(() => undefined),
+            defaultCache.invalidate(`${PUBLIC_LEAGUE_SCHEDULE_KEY}:${result.seasonId}`).catch(() => undefined),
+            defaultCache.invalidate(PUBLIC_LEAGUE_RESULTS_KEY).catch(() => undefined),
+            defaultCache.invalidate(`${PUBLIC_LEAGUE_RESULTS_KEY}:${result.seasonId}`).catch(() => undefined),
+          ])
+
           return reply.send({ ok: true, data: result })
         } catch (err) {
           const error = err as Error & { code?: string }
@@ -4097,6 +4108,13 @@ export default async function (server: FastifyInstance) {
           const participant = await prisma.seasonParticipant.create({
             data: { seasonId, clubId: body.clubId },
           })
+          
+          // Инвалидируем кэш таблицы при добавлении участника
+          await Promise.all([
+            defaultCache.invalidate(PUBLIC_LEAGUE_TABLE_KEY).catch(() => undefined),
+            defaultCache.invalidate(`${PUBLIC_LEAGUE_TABLE_KEY}:${seasonId}`).catch(() => undefined),
+          ])
+          
           return reply.send({ ok: true, data: participant })
         } catch (err) {
           request.server.log.error({ err }, 'season participant create failed')
@@ -4114,6 +4132,13 @@ export default async function (server: FastifyInstance) {
           return reply.status(409).send({ ok: false, error: 'club_already_played' })
         }
         await prisma.seasonParticipant.delete({ where: { seasonId_clubId: { seasonId, clubId } } })
+        
+        // Инвалидируем кэш таблицы при удалении участника
+        await Promise.all([
+          defaultCache.invalidate(PUBLIC_LEAGUE_TABLE_KEY).catch(() => undefined),
+          defaultCache.invalidate(`${PUBLIC_LEAGUE_TABLE_KEY}:${seasonId}`).catch(() => undefined),
+        ])
+        
         return reply.send({ ok: true })
       })
 

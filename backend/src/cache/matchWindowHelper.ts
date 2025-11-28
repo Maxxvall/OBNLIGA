@@ -140,11 +140,11 @@ export type AdaptiveCacheResource =
 
 const adaptivePolicies: Record<AdaptiveCacheResource, { outside: CacheFetchOptions; matchWindow: CacheFetchOptions }> = {
   leagueTable: {
-    outside: { ttlSeconds: 604_800, staleWhileRevalidateSeconds: 86_400, lockTimeoutSeconds: 12 },
+    outside: { ttlSeconds: 3_600, staleWhileRevalidateSeconds: 900, lockTimeoutSeconds: 12 },
     matchWindow: { ttlSeconds: 30, staleWhileRevalidateSeconds: 120, lockTimeoutSeconds: 6 },
   },
   leagueSchedule: {
-    outside: { ttlSeconds: 604_800, staleWhileRevalidateSeconds: 43_200, lockTimeoutSeconds: 10 },
+    outside: { ttlSeconds: 3_600, staleWhileRevalidateSeconds: 900, lockTimeoutSeconds: 10 },
     matchWindow: { ttlSeconds: 20, staleWhileRevalidateSeconds: 90, lockTimeoutSeconds: 6 },
   },
   leagueResults: {
@@ -156,7 +156,7 @@ const adaptivePolicies: Record<AdaptiveCacheResource, { outside: CacheFetchOptio
     matchWindow: { ttlSeconds: 45, staleWhileRevalidateSeconds: 150, lockTimeoutSeconds: 8 },
   },
   friendliesSchedule: {
-    outside: { ttlSeconds: 604_800, staleWhileRevalidateSeconds: 43_200, lockTimeoutSeconds: 10 },
+    outside: { ttlSeconds: 3_600, staleWhileRevalidateSeconds: 900, lockTimeoutSeconds: 10 },
     matchWindow: { ttlSeconds: 20, staleWhileRevalidateSeconds: 90, lockTimeoutSeconds: 6 },
   },
   friendliesResults: {

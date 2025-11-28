@@ -1,5 +1,7 @@
 ﻿import {
+  BracketType,
   Competition,
+  CompetitionType,
   MatchStatus,
   Prisma,
   PrismaClient,
@@ -8,6 +10,11 @@
   SeriesStatus,
 } from '@prisma/client'
 import { FastifyBaseLogger } from 'fastify'
+import {
+  CUP_STAGE_NAMES,
+  generateQuarterFinalPairs2Groups,
+  type GroupStandingEntry,
+} from './cupBracketLogic'
 
 type ClubId = number
 
@@ -189,6 +196,7 @@ type PlayoffSeriesPlan = {
   awaySeed: number
   targetSlot: number
   matchDateTimes: Date[]
+  bracketType?: BracketType
 }
 
 type PlayoffByePlan = {
@@ -1398,12 +1406,88 @@ export const createSeasonPlayoffs = async (
       : null
     const playoffStart = addDays(season.endDate, 7)
 
-    const { plans, byeSeries } = createInitialPlayoffPlans(
-      seededClubIds,
-      playoffStart,
-      matchTime,
-      bestOfLength
-    )
+    // Определяем, является ли это кубком с 2 группами по 4-5 команд
+    const isCupWith2Groups =
+      season.competition.type === CompetitionType.CUP &&
+      isGroupPlayoffFormat &&
+      groupSeedDetails &&
+      new Set(groupSeedDetails.map(s => s.groupIndex)).size === 2
+
+    let plans: PlayoffSeriesPlan[] = []
+    let byeSeries: PlayoffByePlan[] = []
+    let isCupCrossGroupPairing = false
+
+    if (isCupWith2Groups && groupSeedDetails) {
+      // Для кубков с 2 группами используем кросс-групповой паринг
+      // A1vsB4, B1vsA4, A2vsB3, B2vsA3
+      isCupCrossGroupPairing = true
+      const groupsByIndex = new Map<number, typeof groupSeedDetails>()
+      for (const seed of groupSeedDetails) {
+        const arr = groupsByIndex.get(seed.groupIndex) ?? []
+        arr.push(seed)
+        groupsByIndex.set(seed.groupIndex, arr)
+      }
+
+      // Получаем label для каждой группы
+      const groups = await tx.seasonGroup.findMany({
+        where: { seasonId },
+        select: { groupIndex: true, label: true },
+      })
+      const groupLabelMap = new Map<number, string>()
+      for (const g of groups) {
+        groupLabelMap.set(g.groupIndex, g.label)
+      }
+
+      // Преобразуем в GroupStandingEntry для generateQuarterFinalPairs2Groups
+      const standings: GroupStandingEntry[] = groupSeedDetails.map(seed => ({
+        clubId: seed.clubId,
+        groupIndex: seed.groupIndex,
+        groupLabel: groupLabelMap.get(seed.groupIndex) ?? `Группа ${seed.groupIndex}`,
+        placement: seed.placement,
+        points: seed.points,
+        goalDiff: seed.goalDiff,
+        goalsFor: seed.goalsFor,
+        goalsAgainst: 0, // У нас нет этого значения в GroupPlayoffSeed
+        wins: seed.wins,
+        draws: 0, // У нас нет этого значения в GroupPlayoffSeed
+        losses: 0, // У нас нет этого значения в GroupPlayoffSeed
+      }))
+
+      const cupPairs = generateQuarterFinalPairs2Groups(standings)
+
+      // Преобразуем SeriesPlan в PlayoffSeriesPlan
+      let dateOffset = 0
+      plans = cupPairs.map(pair => {
+        const matchDates: Date[] = []
+        for (let game = 0; game < bestOfLength; game++) {
+          const scheduled = addDays(playoffStart, dateOffset + game * 3)
+          matchDates.push(applyTimeToDate(scheduled, matchTime))
+        }
+        dateOffset += 2
+
+        return {
+          stageName: pair.stageName,
+          homeClubId: pair.homeClubId,
+          awayClubId: pair.awayClubId,
+          homeSeed: pair.homeSeed ?? 0,
+          awaySeed: pair.awaySeed ?? 0,
+          targetSlot: pair.bracketSlot,
+          bracketType: pair.bracketType,
+          matchDateTimes: matchDates,
+        }
+      })
+    } else {
+      // Стандартная логика для лиг и других форматов
+      const result = createInitialPlayoffPlans(
+        seededClubIds,
+        playoffStart,
+        matchTime,
+        bestOfLength
+      )
+      plans = result.plans
+      byeSeries = result.byeSeries
+    }
+
     if (plans.length === 0 && byeSeries.length === 0) {
       throw new Error('not_enough_pairs')
     }
@@ -1447,6 +1531,7 @@ export const createSeasonPlayoffs = async (
           homeSeed: plan.homeSeed,
           awaySeed: plan.awaySeed,
           bracketSlot: plan.targetSlot,
+          bracketType: plan.bracketType ?? undefined,
         },
       })
       seriesCreated += 1

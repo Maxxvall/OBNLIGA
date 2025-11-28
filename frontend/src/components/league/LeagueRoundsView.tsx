@@ -406,7 +406,9 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
 
   const { season } = data
   const seasonEndTime = Number.isNaN(Date.parse(season.endDate)) ? null : Date.parse(season.endDate)
-  const allowTableFallback = !playoffState.hasSeries && (!season.isActive || (seasonEndTime !== null && Date.now() > seasonEndTime))
+  // Для кубков не показываем чемпиона по таблице — только по плей-офф серии
+  const isCup = season.competition?.type === 'CUP'
+  const allowTableFallback = !isCup && !playoffState.hasSeries && (!season.isActive || (seasonEndTime !== null && Date.now() > seasonEndTime))
 
   const showCompletedState =
     mode === 'schedule' &&

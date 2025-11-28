@@ -3893,9 +3893,35 @@ export default async function (server: FastifyInstance) {
             }
           })
 
+          const groupCount = Number(rawGroupStage.groupCount ?? parsedGroups.length)
+          const groupSize = Number(rawGroupStage.groupSize ?? parsedGroups[0]?.slots.length ?? 0)
+
+          // Валидация допустимых конфигураций кубка
+          // Допустимые комбинации: 2x4, 2x5, 3x3, 3x4, 4x3
+          const validCupConfigs = [
+            { groups: 2, size: 4 }, // 8 команд
+            { groups: 2, size: 5 }, // 10 команд
+            { groups: 3, size: 3 }, // 9 команд
+            { groups: 3, size: 4 }, // 12 команд
+            { groups: 4, size: 3 }, // 12 команд (эталонная система)
+          ]
+          const isCupForCompetition = competition.type === CompetitionType.CUP
+          if (isCupForCompetition) {
+            const isValidConfig = validCupConfigs.some(
+              cfg => cfg.groups === groupCount && cfg.size === groupSize
+            )
+            if (!isValidConfig) {
+              return reply.status(400).send({
+                ok: false,
+                error: 'invalid_cup_config',
+                message: `Недопустимая конфигурация кубка: ${groupCount}x${groupSize}. Допустимые: 2x4, 2x5, 3x3, 3x4, 4x3`,
+              })
+            }
+          }
+
           groupStageConfig = {
-            groupCount: Number(rawGroupStage.groupCount ?? parsedGroups.length),
-            groupSize: Number(rawGroupStage.groupSize ?? parsedGroups[0]?.slots.length ?? 0),
+            groupCount,
+            groupSize,
             qualifyCount: Number(rawGroupStage.qualifyCount ?? parsedGroups[0]?.qualifyCount ?? 0),
             groups: parsedGroups,
           }
@@ -4905,7 +4931,15 @@ export default async function (server: FastifyInstance) {
         }
 
         if (body.status === MatchStatus.FINISHED && existing.status !== MatchStatus.FINISHED) {
-          await handleMatchFinalization(matchId, request.server.log, { publishTopic })
+          try {
+            await handleMatchFinalization(matchId, request.server.log, { publishTopic })
+          } catch (err) {
+            request.server.log.error(
+              { err, matchId: matchId.toString() },
+              'failed to finalize match after status update'
+            )
+            // Матч уже обновлён в БД, не возвращаем ошибку пользователю
+          }
         }
 
         if (nextStatus === MatchStatus.SCHEDULED) {

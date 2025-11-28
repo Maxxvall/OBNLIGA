@@ -115,7 +115,7 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
       return reply.status(401).send({ ok: false, error: 'user_not_found' })
     }
 
-    const cacheKey = getUserCacheKey(telegramId) + ':clubs'
+    const cacheKey = `${getUserCacheKey(telegramId)}:clubs`
 
     try {
       const { value, version } = await defaultCache.getWithMeta(
@@ -214,7 +214,7 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
         await scheduleNotificationsForClubSubscription(userId, telegramId, clubId)
 
         // Инвалидируем кэш
-        const cacheKey = getUserCacheKey(telegramId) + ':clubs'
+        const cacheKey = `${getUserCacheKey(telegramId)}:clubs`
         await defaultCache.invalidate(cacheKey)
 
         return reply.status(201).send({ ok: true, data: { subscribed: true } })
@@ -269,7 +269,7 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
         })
 
         // Инвалидируем кэш
-        const cacheKey = getUserCacheKey(telegramId) + ':clubs'
+        const cacheKey = `${getUserCacheKey(telegramId)}:clubs`
         await defaultCache.invalidate(cacheKey)
 
         return reply.send({ ok: true, data: { subscribed: false } })
@@ -341,7 +341,7 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
       return reply.status(401).send({ ok: false, error: 'user_not_found' })
     }
 
-    const cacheKey = getUserCacheKey(telegramId) + ':matches'
+    const cacheKey = `${getUserCacheKey(telegramId)}:matches`
 
     try {
       const { value, version } = await defaultCache.getWithMeta(
@@ -464,7 +464,7 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
         }
 
         // Инвалидируем кэш
-        const cacheKey = getUserCacheKey(telegramId) + ':matches'
+        const cacheKey = `${getUserCacheKey(telegramId)}:matches`
         await defaultCache.invalidate(cacheKey)
 
         return reply.status(201).send({ ok: true, data: { subscribed: true } })
@@ -514,7 +514,7 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
         })
 
         // Инвалидируем кэш
-        const cacheKey = getUserCacheKey(telegramId) + ':matches'
+        const cacheKey = `${getUserCacheKey(telegramId)}:matches`
         await defaultCache.invalidate(cacheKey)
 
         return reply.send({ ok: true, data: { subscribed: false } })
@@ -682,7 +682,7 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
       return reply.status(401).send({ ok: false, error: 'user_not_found' })
     }
 
-    const cacheKey = getUserCacheKey(telegramId) + ':summary'
+    const cacheKey = `${getUserCacheKey(telegramId)}:summary`
 
     try {
       const { value, version } = await defaultCache.getWithMeta(

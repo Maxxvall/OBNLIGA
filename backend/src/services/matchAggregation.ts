@@ -44,8 +44,6 @@ import {
   createSilverSemiFinalPlans,
   createGoldFinalPlans,
   createSilverFinalPlans,
-  getCupStageRank,
-  isFinalStage,
 } from './cupBracketLogic'
 
 const YELLOW_CARD_LIMIT = 4

@@ -149,7 +149,7 @@ export function RatingsPage() {
       const response = await fetchRatingLeaderboard(targetScope, { page, pageSize: PAGE_SIZE, force })
 
       if (!response.ok) {
-        const errorLabel = formatError(response.error)
+        const errorLabel = formatError(response.error ?? 'unknown_error')
         updateStates((prev) => ({
           ...prev,
           [targetScope]: {

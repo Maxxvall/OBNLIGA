@@ -9,7 +9,7 @@
  * 5. Золотой кубок: победители 1/4 финала
  */
 
-import { BracketType, SeriesStatus } from '@prisma/client'
+import { BracketType } from '@prisma/client'
 
 // ============================================================================
 // Типы и интерфейсы
@@ -791,4 +791,338 @@ export const getCupStageRank = (stageName: string): number => {
     [CUP_STAGE_NAMES.FINAL_SILVER]: 51,
   }
   return ranks[stageName] ?? 0
+}
+
+// ============================================================================
+// Логика для 3 групп по 3 команды (9 команд → 8 в плей-офф)
+// ============================================================================
+
+/**
+ * Информация о команде с дополнительными метриками для сравнения
+ */
+export interface TeamWithStats extends GroupStandingEntry {
+  /** Разница мячей */
+  goalDifference: number
+  /** Голы забитые */
+  goalsFor: number
+  /** Голы пропущенные */
+  goalsAgainst: number
+  /** Результаты личных встреч с другими командами (clubId -> результат: 1=победа, 0=ничья, -1=поражение) */
+  headToHead: Map<number, number>
+}
+
+/**
+ * Сравнивает две команды для определения лучшей
+ * Порядок сравнения:
+ * 1. Очки
+ * 2. Личные встречи (если играли между собой)
+ * 3. Разница мячей
+ * 4. Голы забитые
+ */
+export const compareTeams = (a: TeamWithStats, b: TeamWithStats): number => {
+  // 1. По очкам (больше = лучше)
+  if (a.points !== b.points) {
+    return b.points - a.points
+  }
+
+  // 2. По личным встречам (если играли между собой)
+  const h2hA = a.headToHead.get(b.clubId)
+  const h2hB = b.headToHead.get(a.clubId)
+  if (h2hA !== undefined && h2hB !== undefined) {
+    // h2h: 1 = победа, 0 = ничья, -1 = поражение
+    if (h2hA > h2hB) return -1 // A выиграл личную встречу
+    if (h2hA < h2hB) return 1 // B выиграл личную встречу
+  }
+
+  // 3. По разнице мячей (больше = лучше)
+  if (a.goalDifference !== b.goalDifference) {
+    return b.goalDifference - a.goalDifference
+  }
+
+  // 4. По голам забитым (больше = лучше)
+  if (a.goalsFor !== b.goalsFor) {
+    return b.goalsFor - a.goalsFor
+  }
+
+  // Если всё равно — по clubId для стабильности
+  return a.clubId - b.clubId
+}
+
+/**
+ * Определяет 8 лучших команд из 9 (3 группы по 3)
+ * 
+ * Все команды ранжируются глобально:
+ * - Сначала все 1-е места (3 команды)
+ * - Затем все 2-е места (3 команды)
+ * - Затем все 3-е места (3 команды) — выбывает худшая
+ * 
+ * Внутри каждой категории сравнение по:
+ * 1. Очкам
+ * 2. Личным встречам
+ * 3. Разнице мячей
+ * 4. Голам забитым
+ */
+export const selectBest8From3x3 = (
+  standings: TeamWithStats[]
+): TeamWithStats[] => {
+  // Группируем по местам
+  const firstPlace = standings.filter(t => t.placement === 1)
+  const secondPlace = standings.filter(t => t.placement === 2)
+  const thirdPlace = standings.filter(t => t.placement === 3)
+
+  // Сортируем каждую группу
+  firstPlace.sort(compareTeams)
+  secondPlace.sort(compareTeams)
+  thirdPlace.sort(compareTeams)
+
+  // Все 1-е места проходят (3 команды)
+  // Все 2-е места проходят (3 команды)
+  // Из 3-х мест проходят только 2 лучших (2 команды)
+  const qualified = [
+    ...firstPlace,
+    ...secondPlace,
+    ...thirdPlace.slice(0, 2), // Только 2 лучших из 3-х мест
+  ]
+
+  return qualified
+}
+
+/**
+ * Генерирует пары 1/4 финала для 3 групп по 3 команды
+ * 
+ * Схема посева:
+ * Seed 1-3: 1-е места групп (сортированы по метрикам)
+ * Seed 4-6: 2-е места групп (сортированы по метрикам)
+ * Seed 7-8: 2 лучших 3-х места
+ * 
+ * Пары: 1vs8, 2vs7, 3vs6, 4vs5
+ */
+export const generateQuarterFinalPairs3x3 = (
+  standings: TeamWithStats[]
+): SeriesPlan[] => {
+  const best8 = selectBest8From3x3(standings)
+  
+  // Присваиваем посев (seed) по порядку в отсортированном списке
+  const seeded = best8.map((team, index) => ({
+    ...team,
+    seed: index + 1,
+  }))
+
+  const plans: SeriesPlan[] = []
+
+  // QF1: Seed 1 vs Seed 8
+  if (seeded[0] && seeded[7]) {
+    plans.push({
+      stageName: CUP_STAGE_NAMES.QUARTER_FINAL,
+      homeClubId: seeded[0].clubId,
+      awayClubId: seeded[7].clubId,
+      bracketType: BracketType.GOLD,
+      bracketSlot: 1,
+      homeSeed: 1,
+      awaySeed: 8,
+    })
+  }
+
+  // QF2: Seed 2 vs Seed 7
+  if (seeded[1] && seeded[6]) {
+    plans.push({
+      stageName: CUP_STAGE_NAMES.QUARTER_FINAL,
+      homeClubId: seeded[1].clubId,
+      awayClubId: seeded[6].clubId,
+      bracketType: BracketType.GOLD,
+      bracketSlot: 2,
+      homeSeed: 2,
+      awaySeed: 7,
+    })
+  }
+
+  // QF3: Seed 3 vs Seed 6
+  if (seeded[2] && seeded[5]) {
+    plans.push({
+      stageName: CUP_STAGE_NAMES.QUARTER_FINAL,
+      homeClubId: seeded[2].clubId,
+      awayClubId: seeded[5].clubId,
+      bracketType: BracketType.GOLD,
+      bracketSlot: 3,
+      homeSeed: 3,
+      awaySeed: 6,
+    })
+  }
+
+  // QF4: Seed 4 vs Seed 5
+  if (seeded[3] && seeded[4]) {
+    plans.push({
+      stageName: CUP_STAGE_NAMES.QUARTER_FINAL,
+      homeClubId: seeded[3].clubId,
+      awayClubId: seeded[4].clubId,
+      bracketType: BracketType.GOLD,
+      bracketSlot: 4,
+      homeSeed: 4,
+      awaySeed: 5,
+    })
+  }
+
+  return plans
+}
+
+// ============================================================================
+// Логика для 3 групп по 4 команды (12 команд → 8 в плей-офф)
+// ============================================================================
+
+/**
+ * Определяет 8 лучших команд из 12 (3 группы по 4)
+ * 
+ * Все 1-е места (3) + Все 2-е места (3) + 2 лучших 3-х места
+ */
+export const selectBest8From3x4 = (
+  standings: TeamWithStats[]
+): TeamWithStats[] => {
+  const firstPlace = standings.filter(t => t.placement === 1)
+  const secondPlace = standings.filter(t => t.placement === 2)
+  const thirdPlace = standings.filter(t => t.placement === 3)
+
+  firstPlace.sort(compareTeams)
+  secondPlace.sort(compareTeams)
+  thirdPlace.sort(compareTeams)
+
+  return [
+    ...firstPlace,
+    ...secondPlace,
+    ...thirdPlace.slice(0, 2),
+  ]
+}
+
+/**
+ * Генерирует пары 1/4 финала для 3 групп по 4 команды
+ */
+export const generateQuarterFinalPairs3x4 = (
+  standings: TeamWithStats[]
+): SeriesPlan[] => {
+  const best8 = selectBest8From3x4(standings)
+  
+  const seeded = best8.map((team, index) => ({
+    ...team,
+    seed: index + 1,
+  }))
+
+  const plans: SeriesPlan[] = []
+
+  // Пары по посеву: 1vs8, 2vs7, 3vs6, 4vs5
+  const pairings = [
+    { home: 0, away: 7, slot: 1 },
+    { home: 1, away: 6, slot: 2 },
+    { home: 2, away: 5, slot: 3 },
+    { home: 3, away: 4, slot: 4 },
+  ]
+
+  for (const pairing of pairings) {
+    const home = seeded[pairing.home]
+    const away = seeded[pairing.away]
+    if (home && away) {
+      plans.push({
+        stageName: CUP_STAGE_NAMES.QUARTER_FINAL,
+        homeClubId: home.clubId,
+        awayClubId: away.clubId,
+        bracketType: BracketType.GOLD,
+        bracketSlot: pairing.slot,
+        homeSeed: pairing.home + 1,
+        awaySeed: pairing.away + 1,
+      })
+    }
+  }
+
+  return plans
+}
+
+// ============================================================================
+// Логика для 2 групп по 5 команд (10 команд → 8 в плей-офф)
+// ============================================================================
+
+/**
+ * Определяет 8 лучших команд из 10 (2 группы по 5)
+ * 
+ * Все 1-4 места из каждой группы, 5-е места выбывают
+ */
+export const selectBest8From2x5 = (
+  standings: TeamWithStats[]
+): TeamWithStats[] => {
+  // Группируем по группам
+  const byGroup = new Map<number, TeamWithStats[]>()
+  for (const team of standings) {
+    const group = byGroup.get(team.groupIndex) ?? []
+    group.push(team)
+    byGroup.set(team.groupIndex, group)
+  }
+
+  const qualified: TeamWithStats[] = []
+  
+  for (const [, teams] of byGroup) {
+    // Сортируем по месту и берём топ-4
+    teams.sort((a, b) => a.placement - b.placement)
+    qualified.push(...teams.slice(0, 4))
+  }
+
+  return qualified
+}
+
+/**
+ * Генерирует пары 1/4 финала для 2 групп по 5 команд
+ * Кросс-схема: A1vsB4, B1vsA4, A2vsB3, B2vsA3
+ */
+export const generateQuarterFinalPairs2x5 = (
+  standings: TeamWithStats[]
+): SeriesPlan[] => {
+  return generateQuarterFinalPairs2Groups(standings)
+}
+
+// ============================================================================
+// Универсальный диспетчер генерации плей-офф
+// ============================================================================
+
+/**
+ * Генерирует пары 1/4 финала на основе конфигурации турнира
+ */
+export const generateQuarterFinalPairs = (
+  config: CupBracketConfig,
+  standings: TeamWithStats[]
+): SeriesPlan[] => {
+  const { groupCount, groupSize } = config
+
+  // 4 группы по 3 команды — эталонная система с квалификацией
+  // (квалификация обрабатывается отдельно)
+  if (groupCount === 4 && groupSize === 3) {
+    // Для эталонной системы используем отдельную логику через generateQuarterFinalPairs4x3
+    // Эта функция вызывается только после завершения квалификации
+    return []
+  }
+
+  // 3 группы по 3 команды — 8 из 9
+  if (groupCount === 3 && groupSize === 3) {
+    return generateQuarterFinalPairs3x3(standings)
+  }
+
+  // 3 группы по 4 команды — 8 из 12
+  if (groupCount === 3 && groupSize === 4) {
+    return generateQuarterFinalPairs3x4(standings)
+  }
+
+  // 2 группы по 5 команд — 8 из 10
+  if (groupCount === 2 && groupSize === 5) {
+    return generateQuarterFinalPairs2x5(standings)
+  }
+
+  // 2 группы по 4 команды — все 8 в плей-офф
+  if (groupCount === 2 && groupSize === 4) {
+    return generateQuarterFinalPairs2Groups(standings)
+  }
+
+  return []
+}
+
+/**
+ * Проверяет, нужна ли квалификация для данной конфигурации
+ */
+export const needsQualification = (groupCount: number, groupSize: number): boolean => {
+  // Квалификация нужна только для эталонной системы 4x3
+  return groupCount === 4 && groupSize === 3
 }

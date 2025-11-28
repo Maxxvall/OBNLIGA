@@ -404,6 +404,19 @@ export async function fetchMyAchievements(options: { force?: boolean } = {}): Pr
     }
   }
 
+  // После проверки notModified гарантированно имеем ApiSuccess
+  if (!('data' in response)) {
+    // Fallback - не должно случиться но для TypeScript
+    return {
+      data: {
+        achievements: [],
+        totalUnlocked: 0,
+        generatedAt: new Date().toISOString(),
+      },
+      fromCache: false,
+    }
+  }
+
   const data = response.data
   const etag = response.version
 

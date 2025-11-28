@@ -66,6 +66,10 @@ type SeasonAutomationFormState = {
   matchTime: string
   clubIds: number[]
   seriesFormat: SeriesFormat
+  /** Количество кругов в группе для кубка (1 или 2) */
+  groupRounds: number
+  /** До скольких побед в серии плей-офф (1, 3, 5, 7) */
+  playoffBestOf: number
 }
 
 type GroupStageSlotState = {
@@ -148,6 +152,8 @@ const defaultAutomationForm: SeasonAutomationFormState = {
   matchTime: '12:00',
   clubIds: [],
   seriesFormat: 'SINGLE_MATCH',
+  groupRounds: 1,
+  playoffBestOf: 1,
 }
 
 const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
@@ -857,6 +863,9 @@ export const MatchesTab = () => {
       clubIds: payloadClubIds,
       seriesFormat: automationForm.seriesFormat,
       groupStage: groupStagePayload,
+      // Настройки формата для кубка
+      groupRounds: automationGroupStage ? automationForm.groupRounds : undefined,
+      playoffBestOf: automationGroupStage ? automationForm.playoffBestOf : undefined,
     }
 
     try {
@@ -1954,6 +1963,38 @@ export const MatchesTab = () => {
                         value={groupStageState.qualifyCount}
                         onChange={event => updateQualifyCount(Number(event.target.value) || 1)}
                       />
+                    </label>
+                    <label>
+                      Кругов в группе
+                      <select
+                        value={automationForm.groupRounds}
+                        onChange={event =>
+                          setAutomationForm(prev => ({
+                            ...prev,
+                            groupRounds: Number(event.target.value) || 1,
+                          }))
+                        }
+                      >
+                        <option value={1}>1 круг</option>
+                        <option value={2}>2 круга</option>
+                      </select>
+                    </label>
+                    <label>
+                      Формат плей-офф
+                      <select
+                        value={automationForm.playoffBestOf}
+                        onChange={event =>
+                          setAutomationForm(prev => ({
+                            ...prev,
+                            playoffBestOf: Number(event.target.value) || 1,
+                          }))
+                        }
+                      >
+                        <option value={1}>1 матч</option>
+                        <option value={3}>До 2 побед (bo3)</option>
+                        <option value={5}>До 3 побед (bo5)</option>
+                        <option value={7}>До 4 побед (bo7)</option>
+                      </select>
                     </label>
                     <div className="group-stage-summary">
                       Слотов заполнено{' '}

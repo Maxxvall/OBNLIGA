@@ -135,6 +135,8 @@ export interface MatchSeries {
   homeSeed?: number | null
   awaySeed?: number | null
   bracketSlot?: number | null
+  /** Тип сетки для кубков: QUALIFICATION, GOLD, SILVER */
+  bracketType?: 'QUALIFICATION' | 'GOLD' | 'SILVER' | null
 }
 
 export interface MatchSummary {

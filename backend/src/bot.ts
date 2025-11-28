@@ -51,8 +51,9 @@ if (token) {
     const name = ctx.from?.first_name || 'игрок'
     const keyboard = {
       inline_keyboard: [[{ text: 'Открыть Приложение', web_app: { url: webAppUrl } }]]
-    }
+    } as const
     await ctx.reply(`Привет, ${name}! Добро пожаловать в Футбольную Лига.`)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await ctx.reply('Нажмите кнопку, чтобы открыть Приложение:', { reply_markup: keyboard as any })
   })
 

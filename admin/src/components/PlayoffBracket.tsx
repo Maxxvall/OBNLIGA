@@ -18,6 +18,7 @@ type StageSeries = {
   awayClub?: Club
   homeClubId: number
   awayClubId: number
+  bracketType?: 'QUALIFICATION' | 'GOLD' | 'SILVER' | null
   summary: {
     homeLabel: string
     awayLabel: string
@@ -36,10 +37,26 @@ type StageSeries = {
 type StageBucket = {
   stageName: string
   rank: number
+  bracketType?: 'QUALIFICATION' | 'GOLD' | 'SILVER' | null
   series: StageSeries[]
 }
 
-const stageSortValue = (stageName: string): number => {
+const stageSortValue = (stageName: string, bracketType?: 'QUALIFICATION' | 'GOLD' | 'SILVER' | null): number => {
+  // Для кубков используем специальную сортировку
+  if (bracketType) {
+    const cupStageRanks: Record<string, number> = {
+      'Квалификация': 10,
+      '1/4 финала': 20,
+      'Полуфинал Золотого кубка': 30,
+      'Полуфинал Серебряного кубка': 31,
+      '3 место Золотого кубка': 40,
+      '3 место Серебряного кубка': 41,
+      'Финал Золотого кубка': 50,
+      'Финал Серебряного кубка': 51,
+    }
+    return cupStageRanks[stageName] ?? 0
+  }
+
   const normalized = stageName.toLowerCase()
   const fraction = stageName.match(/1\/(\d+)/i)
   if (fraction) {
@@ -151,16 +168,27 @@ export const PlayoffBracket: React.FC<PlayoffBracketProps> = ({ series, matches,
     if (!series.length) return []
     const buckets = new Map<string, StageBucket>()
 
+    // Проверяем, есть ли у серий bracketType (кубковый формат)
+    const hasCupFormat = series.some(item => item.bracketType != null)
+
     for (const item of series) {
       const stageMatches = matchesBySeriesId.get(item.id) ?? []
       const summary = summarizeSeries(stageMatches)
       const homeClub = clubMap.get(item.homeClubId)
       const awayClub = clubMap.get(item.awayClubId)
       const isBye = item.homeClubId === item.awayClubId
-      const stageRank = stageSortValue(item.stageName)
-      const stageEntry = buckets.get(item.stageName) ?? {
+      const bracketType = item.bracketType ?? null
+      const stageRank = stageSortValue(item.stageName, bracketType)
+      
+      // Для кубков группируем по bracketType + stageName
+      const bucketKey = hasCupFormat && bracketType
+        ? `${bracketType}:${item.stageName}`
+        : item.stageName
+      
+      const stageEntry = buckets.get(bucketKey) ?? {
         stageName: item.stageName,
         rank: stageRank,
+        bracketType,
         series: [] as StageSeries[],
       }
       stageEntry.series.push({
@@ -171,6 +199,7 @@ export const PlayoffBracket: React.FC<PlayoffBracketProps> = ({ series, matches,
         winnerClubId: item.winnerClubId,
         homeClub,
         awayClub,
+        bracketType,
         homeClubId: item.homeClubId,
         awayClubId: item.awayClubId,
         summary,
@@ -187,11 +216,25 @@ export const PlayoffBracket: React.FC<PlayoffBracketProps> = ({ series, matches,
           ? new Date(stageMatches[0].matchDateTime).getTime()
           : Number.MAX_SAFE_INTEGER,
       })
-      buckets.set(item.stageName, stageEntry)
+      buckets.set(bucketKey, stageEntry)
     }
 
     return Array.from(buckets.values())
       .sort((left, right) => {
+        // Сначала сортируем по bracketType (null < QUALIFICATION < GOLD < SILVER)
+        const bracketOrder = (bt: typeof left.bracketType) => {
+          if (bt === null || bt === undefined) return 0
+          if (bt === 'QUALIFICATION') return 1
+          if (bt === 'GOLD') return 2
+          if (bt === 'SILVER') return 3
+          return 4
+        }
+        const leftBracketOrder = bracketOrder(left.bracketType)
+        const rightBracketOrder = bracketOrder(right.bracketType)
+        if (leftBracketOrder !== rightBracketOrder) {
+          return leftBracketOrder - rightBracketOrder
+        }
+        // Затем по рангу стадии
         if (left.rank !== right.rank) {
           return right.rank - left.rank
         }
@@ -211,15 +254,33 @@ export const PlayoffBracket: React.FC<PlayoffBracketProps> = ({ series, matches,
     return <p className="muted">Данных по матчам плей-офф пока нет.</p>
   }
 
+  const bracketTypeLabels: Record<string, string> = {
+    QUALIFICATION: '🏆 Квалификация',
+    GOLD: '🥇 Золотой кубок',
+    SILVER: '🥈 Серебряный кубок',
+  }
+
   return (
     <div className="bracket-grid">
-      {stages.map(stage => (
-        <div className="bracket-stage" key={stage.stageName}>
-          <h5>{stage.stageName}</h5>
-          <ul>
-            {stage.series.map(item => {
-              const homeName = item.homeClub?.name ?? `Клуб #${item.homeClubId}`
-              const awayName = item.awayClub?.name ?? `Клуб #${item.awayClubId}`
+      {stages.map((stage, stageIndex) => {
+        // Показываем разделитель для нового bracketType
+        const prevStage = stageIndex > 0 ? stages[stageIndex - 1] : null
+        const showBracketHeader = stage.bracketType && 
+          (!prevStage || prevStage.bracketType !== stage.bracketType)
+        
+        return (
+          <React.Fragment key={`${stage.bracketType ?? 'main'}:${stage.stageName}`}>
+            {showBracketHeader && stage.bracketType && (
+              <div className="bracket-type-header">
+                <h4>{bracketTypeLabels[stage.bracketType] ?? stage.bracketType}</h4>
+              </div>
+            )}
+            <div className="bracket-stage">
+              <h5>{stage.stageName}</h5>
+              <ul>
+                {stage.series.map(item => {
+                  const homeName = item.homeClub?.name ?? `Клуб #${item.homeClubId}`
+                  const awayName = item.awayClub?.name ?? `Клуб #${item.awayClubId}`
               const winnerId = item.winnerClubId ?? (item.isBye ? item.homeClubId : undefined)
               return (
                 <li
@@ -260,9 +321,11 @@ export const PlayoffBracket: React.FC<PlayoffBracketProps> = ({ series, matches,
                 </li>
               )
             })}
-          </ul>
-        </div>
-      ))}
+              </ul>
+            </div>
+          </React.Fragment>
+        )
+      })}
     </div>
   )
 }

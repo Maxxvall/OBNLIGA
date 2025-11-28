@@ -3079,7 +3079,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     set(prev => {
-      const nextHistory = prev.shopHistory.length ? [response.data, ...prev.shopHistory] : [response.data]
+      const orderData = 'data' in response ? response.data : null
+      if (!orderData) return prev
+      const nextHistory = prev.shopHistory.length ? [orderData, ...prev.shopHistory] : [orderData]
       writeCartToStorage({})
       return {
         shopCart: {},

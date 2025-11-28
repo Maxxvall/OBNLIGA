@@ -695,6 +695,10 @@ export interface SeasonAutomationPayload {
   clubIds: number[]
   seriesFormat: SeriesFormat
   groupStage?: SeasonGroupStagePayload
+  /** Количество кругов в группе (1 или 2) */
+  groupRounds?: number
+  /** До скольких побед в серии плей-офф (1, 3, 5, 7) */
+  playoffBestOf?: number
 }
 
 export interface SeasonGroupStagePayload {

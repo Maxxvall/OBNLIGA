@@ -3809,6 +3809,8 @@ export default async function (server: FastifyInstance) {
           clubIds?: number[]
           seriesFormat?: string
           city?: string | null
+          groupRounds?: number // 1 или 2 круга для групповой стадии
+          playoffBestOf?: number // количество матчей в серии плей-офф (1, 3, 5, 7)
           groupStage?: {
             groupCount?: number
             groupSize?: number
@@ -3915,6 +3917,14 @@ export default async function (server: FastifyInstance) {
         const matchDay = Number(body.matchDayOfWeek)
         const normalizedMatchDay = ((matchDay % 7) + 7) % 7
 
+        // Валидация и нормализация groupRounds и playoffBestOf
+        const groupRounds = typeof body.groupRounds === 'number' && [1, 2].includes(body.groupRounds)
+          ? body.groupRounds
+          : 1
+        const playoffBestOf = typeof body.playoffBestOf === 'number' && [1, 3, 5, 7].includes(body.playoffBestOf)
+          ? body.playoffBestOf
+          : 1
+
         try {
           const result = await runSeasonAutomation(prisma, request.log, {
             competition,
@@ -3926,6 +3936,8 @@ export default async function (server: FastifyInstance) {
             city: typeof body.city === 'string' ? body.city.trim() : undefined,
             seriesFormat,
             groupStage: groupStageConfig,
+            groupRounds,
+            playoffBestOf,
           })
 
           return reply.send({ ok: true, data: result })

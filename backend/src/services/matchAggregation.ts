@@ -1,7 +1,9 @@
 import { FastifyBaseLogger } from 'fastify'
 import {
   AchievementMetric,
+  BracketType,
   ClubSeasonStats,
+  CompetitionType,
   DisqualificationReason,
   Match,
   MatchEvent,
@@ -36,6 +38,15 @@ import {
 } from './ratingAggregation'
 import { RATING_DEFAULT_PAGE_SIZE } from './ratingConstants'
 import { ensurePredictionTemplatesForMatch } from './predictionTemplateService'
+import {
+  CUP_STAGE_NAMES,
+  createGoldSemiFinalPlans,
+  createSilverSemiFinalPlans,
+  createGoldFinalPlans,
+  createSilverFinalPlans,
+  getCupStageRank,
+  isFinalStage,
+} from './cupBracketLogic'
 
 const YELLOW_CARD_LIMIT = 4
 const RED_CARD_BAN_MATCHES = 2
@@ -912,6 +923,8 @@ async function updateSeriesState(match: SeriesMatch, tx: PrismaTx, logger: Fasti
         bestOfLength: totalPlannedMatches,
         format,
         logger,
+        competitionType: series.season.competition.type,
+        bracketType: series.bracketType,
       })
     }
     return
@@ -954,6 +967,8 @@ async function updateSeriesState(match: SeriesMatch, tx: PrismaTx, logger: Fasti
       bestOfLength: 1,
       format,
       logger,
+      competitionType: series.season.competition.type,
+      bracketType: series.bracketType,
     })
   }
 }
@@ -964,6 +979,8 @@ type PlayoffProgressionContext = {
   bestOfLength: number
   format: SeriesFormat
   logger: FastifyBaseLogger
+  competitionType?: CompetitionType
+  bracketType?: BracketType | null
 }
 
 async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgressionContext) {
@@ -984,6 +1001,16 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
     if (!uniqueWinners.includes(clubId)) {
       uniqueWinners.push(clubId)
     }
+  }
+
+  // Для кубков с групповой стадией используем специальную логику Gold/Silver
+  const isCupFormat =
+    context.competitionType === CompetitionType.CUP &&
+    context.format === SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF
+
+  if (isCupFormat) {
+    await maybeCreateCupNextStage(tx, context, stageSeries)
+    return
   }
 
   if (uniqueWinners.length < 2) return
@@ -1479,6 +1506,286 @@ async function scheduleThirdPlaceIfFinal(
   return {
     seriesCreated: 1,
     matchesCreated: createdMatches,
+    latestDate,
+  }
+}
+
+/**
+ * Обработка прогрессии плей-офф для кубкового формата с Gold/Silver brackets
+ */
+async function maybeCreateCupNextStage(
+  tx: PrismaTx,
+  context: PlayoffProgressionContext,
+  stageSeries: MatchSeries[]
+): Promise<void> {
+  const currentStage = context.currentStageName
+
+  // Получаем настройки сезона для bestOf
+  const season = await tx.season.findUnique({
+    where: { id: context.seasonId },
+    select: { playoffBestOf: true },
+  })
+  const bestOfLength = season?.playoffBestOf ?? 1
+
+  // Получаем последний матч для определения даты и времени
+  const latestMatch = await tx.match.findFirst({
+    where: { seasonId: context.seasonId },
+    orderBy: { matchDateTime: 'desc' },
+  })
+  const matchTime = latestMatch ? latestMatch.matchDateTime.toISOString().slice(11, 16) : null
+  const startDate = latestMatch ? addDays(latestMatch.matchDateTime, 7) : new Date()
+
+  // Собираем победителей и проигравших текущей стадии
+  const winners: Array<{ qfSlot: number; sfSlot: number; clubId: number; seed?: number }> = []
+  const losers: Array<{ qfSlot: number; sfSlot: number; clubId: number; seed?: number }> = []
+
+  for (const series of stageSeries) {
+    if (!series.winnerClubId) continue
+
+    const slot = series.bracketSlot ?? 0
+    const winnerSeed =
+      series.winnerClubId === series.homeClubId ? series.homeSeed : series.awaySeed
+    const loserClubId =
+      series.winnerClubId === series.homeClubId ? series.awayClubId : series.homeClubId
+    const loserSeed =
+      series.winnerClubId === series.homeClubId ? series.awaySeed : series.homeSeed
+
+    winners.push({
+      qfSlot: slot,
+      sfSlot: slot,
+      clubId: series.winnerClubId,
+      seed: winnerSeed ?? undefined,
+    })
+
+    if (loserClubId !== series.winnerClubId) {
+      losers.push({
+        qfSlot: slot,
+        sfSlot: slot,
+        clubId: loserClubId,
+        seed: loserSeed ?? undefined,
+      })
+    }
+  }
+
+  let createdSeries = 0
+  let createdMatches = 0
+  let latestDate: Date | null = latestMatch?.matchDateTime ?? null
+
+  // Обработка 1/4 финала — создаем Gold полуфиналы и Silver полуфиналы
+  if (currentStage === CUP_STAGE_NAMES.QUARTER_FINAL) {
+    // Создаем полуфиналы Золотого кубка (победители QF)
+    const goldSfPlans = createGoldSemiFinalPlans(winners)
+    for (const plan of goldSfPlans) {
+      const result = await createCupSeriesWithMatches(tx, {
+        seasonId: context.seasonId,
+        plan,
+        bestOfLength,
+        startDate,
+        matchTime,
+        latestDate,
+      })
+      createdSeries += result.seriesCreated
+      createdMatches += result.matchesCreated
+      if (result.latestDate) latestDate = result.latestDate
+    }
+
+    // Создаем полуфиналы Серебряного кубка (проигравшие QF)
+    const silverSfPlans = createSilverSemiFinalPlans(losers)
+    for (const plan of silverSfPlans) {
+      const result = await createCupSeriesWithMatches(tx, {
+        seasonId: context.seasonId,
+        plan,
+        bestOfLength,
+        startDate: addDays(startDate, 1), // Silver на день позже
+        matchTime,
+        latestDate,
+      })
+      createdSeries += result.seriesCreated
+      createdMatches += result.matchesCreated
+      if (result.latestDate) latestDate = result.latestDate
+    }
+
+    context.logger.info(
+      {
+        seasonId: context.seasonId,
+        stage: currentStage,
+        goldSemiFinalsCreated: goldSfPlans.length,
+        silverSemiFinalsCreated: silverSfPlans.length,
+        seriesCreated: createdSeries,
+        matchesCreated: createdMatches,
+      },
+      'cup quarter finals completed, semi-finals created'
+    )
+  }
+
+  // Обработка полуфиналов Золотого кубка — создаем финал и матч за 3 место
+  if (currentStage === CUP_STAGE_NAMES.SEMI_FINAL_GOLD) {
+    const finalPlans = createGoldFinalPlans(winners, losers)
+    for (const plan of finalPlans) {
+      const result = await createCupSeriesWithMatches(tx, {
+        seasonId: context.seasonId,
+        plan,
+        bestOfLength,
+        startDate,
+        matchTime,
+        latestDate,
+      })
+      createdSeries += result.seriesCreated
+      createdMatches += result.matchesCreated
+      if (result.latestDate) latestDate = result.latestDate
+    }
+
+    context.logger.info(
+      {
+        seasonId: context.seasonId,
+        stage: currentStage,
+        seriesCreated: createdSeries,
+        matchesCreated: createdMatches,
+      },
+      'gold semi-finals completed, finals created'
+    )
+  }
+
+  // Обработка полуфиналов Серебряного кубка — создаем финал и матч за 3 место
+  if (currentStage === CUP_STAGE_NAMES.SEMI_FINAL_SILVER) {
+    const finalPlans = createSilverFinalPlans(winners, losers)
+    for (const plan of finalPlans) {
+      const result = await createCupSeriesWithMatches(tx, {
+        seasonId: context.seasonId,
+        plan,
+        bestOfLength,
+        startDate,
+        matchTime,
+        latestDate,
+      })
+      createdSeries += result.seriesCreated
+      createdMatches += result.matchesCreated
+      if (result.latestDate) latestDate = result.latestDate
+    }
+
+    context.logger.info(
+      {
+        seasonId: context.seasonId,
+        stage: currentStage,
+        seriesCreated: createdSeries,
+        matchesCreated: createdMatches,
+      },
+      'silver semi-finals completed, finals created'
+    )
+  }
+
+  // Обновляем дату окончания сезона
+  if (latestDate) {
+    await tx.season.update({
+      where: { id: context.seasonId },
+      data: { endDate: latestDate },
+    })
+  }
+}
+
+/**
+ * Создание серии и матчей для кубка
+ */
+async function createCupSeriesWithMatches(
+  tx: PrismaTx,
+  params: {
+    seasonId: number
+    plan: {
+      stageName: string
+      homeClubId: number
+      awayClubId: number
+      bracketType: BracketType
+      bracketSlot: number
+      homeSeed?: number
+      awaySeed?: number
+    }
+    bestOfLength: number
+    startDate: Date
+    matchTime: string | null
+    latestDate: Date | null
+  }
+): Promise<{ seriesCreated: number; matchesCreated: number; latestDate: Date | null }> {
+  const { seasonId, plan, bestOfLength, startDate, matchTime } = params
+  let latestDate = params.latestDate
+
+  // Проверяем, существует ли уже такая серия
+  const existingSeries = await tx.matchSeries.findFirst({
+    where: {
+      seasonId,
+      stageName: plan.stageName,
+      homeClubId: plan.homeClubId,
+      awayClubId: plan.awayClubId,
+    },
+  })
+
+  if (existingSeries) {
+    return { seriesCreated: 0, matchesCreated: 0, latestDate }
+  }
+
+  // Создаем или находим раунд
+  let round = await tx.seasonRound.findFirst({
+    where: { seasonId, label: plan.stageName },
+  })
+  if (!round) {
+    round = await tx.seasonRound.create({
+      data: {
+        seasonId,
+        roundType: RoundType.PLAYOFF,
+        roundNumber: null,
+        label: plan.stageName,
+      },
+    })
+  }
+
+  // Создаем серию
+  const series = await tx.matchSeries.create({
+    data: {
+      seasonId,
+      stageName: plan.stageName,
+      homeClubId: plan.homeClubId,
+      awayClubId: plan.awayClubId,
+      seriesStatus: SeriesStatus.IN_PROGRESS,
+      bracketType: plan.bracketType,
+      bracketSlot: plan.bracketSlot,
+      homeSeed: plan.homeSeed ?? null,
+      awaySeed: plan.awaySeed ?? null,
+    },
+  })
+
+  // Создаем матчи
+  const matchDates: Date[] = []
+  for (let i = 0; i < bestOfLength; i++) {
+    const scheduled = addDays(startDate, i * 3)
+    matchDates.push(applyTimeToDate(scheduled, matchTime))
+  }
+
+  const matchData = matchDates.map((date, index) => {
+    if (!latestDate || date > latestDate) {
+      latestDate = date
+    }
+    // Чередуем хозяев/гостей для серии
+    const isHomeGame = index % 2 === 0
+    return {
+      seasonId,
+      matchDateTime: date,
+      homeTeamId: isHomeGame ? plan.homeClubId : plan.awayClubId,
+      awayTeamId: isHomeGame ? plan.awayClubId : plan.homeClubId,
+      status: MatchStatus.SCHEDULED,
+      seriesId: series.id,
+      seriesMatchNumber: index + 1,
+      roundId: round.id,
+    }
+  })
+
+  let matchesCreated = 0
+  if (matchData.length) {
+    const result = await tx.match.createMany({ data: matchData })
+    matchesCreated = result.count
+  }
+
+  return {
+    seriesCreated: 1,
+    matchesCreated,
     latestDate,
   }
 }

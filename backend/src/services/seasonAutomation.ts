@@ -137,6 +137,10 @@ interface SeasonAutomationInput {
   bestOfLength?: number
   groupStage?: GroupStageConfigInput
   clubIds: ClubId[]
+  /** Количество кругов в групповом этапе (1 или 2). По умолчанию 1. */
+  groupRounds?: number
+  /** До скольких побед играется серия плей-офф (1, 3, 5). По умолчанию 1. */
+  playoffBestOf?: number
 }
 
 export type SeasonAutomationResult = {
@@ -535,6 +539,12 @@ export const runSeasonAutomation = async (
       ? addMinutes(seasonEndBase, (maxMatchesInRound - 1) * MATCH_INTERVAL_MINUTES)
       : seasonEndBase
 
+  // Определяем параметры для кубка
+  const groupRoundsValue = Math.max(1, Math.min(2, input.groupRounds ?? 1))
+  const playoffBestOfValue = [1, 3, 5, 7].includes(input.playoffBestOf ?? 1)
+    ? (input.playoffBestOf ?? 1)
+    : 1
+
   const season = await prisma.$transaction(async tx => {
     const createdSeason = await tx.season.create({
       data: {
@@ -544,6 +554,8 @@ export const runSeasonAutomation = async (
         endDate: seasonEndDate,
         city: seasonCity,
         seriesFormat: input.seriesFormat,
+        groupRounds: isGroupStageFormat ? groupRoundsValue : 1,
+        playoffBestOf: playoffBestOfValue,
       },
     })
 
@@ -654,6 +666,7 @@ export const runSeasonAutomation = async (
         seasonStart: kickoffDate,
         matchTime: input.matchTime ?? null,
         groups: validatedGroupStage.groups,
+        groupRounds: groupRoundsValue,
       })
       matchesCreated += groupStageResult.matchesCreated
       groupsCreated += groupStageResult.groupsCreated
@@ -840,12 +853,16 @@ const createGroupStageSchedule = async (
     seasonStart: Date
     matchTime: string | null | undefined
     groups: GroupStageGroupInput[]
+    groupRounds?: number
   }
 ): Promise<GroupStageCreationResult> => {
   let matchesCreated = 0
   let groupsCreated = 0
   let groupSlotsCreated = 0
   let latestMatchDate: Date | null = null
+
+  // Количество кругов: 1 или 2 (по умолчанию 1)
+  const roundsPerGroup = Math.max(1, Math.min(2, params.groupRounds ?? 1))
 
   for (const group of params.groups) {
     const seasonGroup = await tx.seasonGroup.create({
@@ -872,7 +889,8 @@ const createGroupStageSchedule = async (
     }
 
     const clubIds = group.slots.map(slot => slot.clubId)
-    const pairs = generateRoundRobinPairs(clubIds, 1)
+    // Генерируем пары с учетом количества кругов
+    const pairs = generateRoundRobinPairs(clubIds, roundsPerGroup)
     if (!pairs.length) {
       continue
     }

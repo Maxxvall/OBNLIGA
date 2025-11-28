@@ -1,7 +1,8 @@
 import { FastifyInstance } from 'fastify'
-import { Prisma, SeriesFormat } from '@prisma/client'
+import { BracketType, Prisma, SeriesFormat } from '@prisma/client'
 import prisma from '../db'
 import { serializePrisma } from '../utils/serialization'
+import { getCupStageRank } from '../services/cupBracketLogic'
 
 const includeConfig = {
   competition: true,
@@ -36,8 +37,14 @@ const includeConfig = {
 } satisfies Prisma.SeasonInclude
 
 type SeasonWithRelations = Prisma.SeasonGetPayload<{ include: typeof includeConfig }>
+type SeriesWithRelations = SeasonWithRelations['series'][number]
 
-const stageSortValue = (stageName: string): number => {
+const stageSortValue = (stageName: string, bracketType?: BracketType | null): number => {
+  // Для кубкового формата используем специальный rank (основан на stageName)
+  if (bracketType) {
+    return getCupStageRank(stageName)
+  }
+  
   const normalized = stageName.toLowerCase()
   const fraction = stageName.match(/1\/(\d+)/i)
   if (fraction) {
@@ -135,11 +142,15 @@ const buildBracketPayload = (season: SeasonWithRelations) => {
     clubMap.set(participant.clubId, participant.club)
   }
 
+  // Проверяем, есть ли у сезона кубковый формат (с bracketType)
+  const hasCupFormat = season.series.some(s => s.bracketType != null)
+
   const stageBuckets = new Map<
     string,
     {
       stageName: string
       rank: number
+      bracketType: BracketType | null
       series: Array<{
         id: bigint
         stageName: string
@@ -148,6 +159,8 @@ const buildBracketPayload = (season: SeasonWithRelations) => {
         winnerClubId?: number | null
         homeClubId: number
         awayClubId: number
+        bracketType: BracketType | null
+        bracketSlot: number | null
         homeClub?: { id: number; name: string; shortName: string; logoUrl: string | null }
         awayClub?: { id: number; name: string; shortName: string; logoUrl: string | null }
         summary: ReturnType<typeof summarizeSeries>
@@ -166,10 +179,19 @@ const buildBracketPayload = (season: SeasonWithRelations) => {
   for (const series of season.series) {
     const stageMatches = matchesBySeries.get(series.id.toString()) ?? []
     const summary = summarizeSeries(stageMatches)
-    const stageRank = stageSortValue(series.stageName)
-    const existing = stageBuckets.get(series.stageName) ?? {
+    const bracketType = (series as SeriesWithRelations & { bracketType?: BracketType | null }).bracketType ?? null
+    const bracketSlot = (series as SeriesWithRelations & { bracketSlot?: number | null }).bracketSlot ?? null
+    const stageRank = stageSortValue(series.stageName, bracketType)
+    
+    // Для кубкового формата ключ включает bracketType для группировки
+    const bucketKey = hasCupFormat && bracketType
+      ? `${bracketType}:${series.stageName}`
+      : series.stageName
+    
+    const existing = stageBuckets.get(bucketKey) ?? {
       stageName: series.stageName,
       rank: stageRank,
+      bracketType,
       series: [],
     }
 
@@ -181,6 +203,8 @@ const buildBracketPayload = (season: SeasonWithRelations) => {
       winnerClubId: series.winnerClubId,
       homeClubId: series.homeClubId,
       awayClubId: series.awayClubId,
+      bracketType,
+      bracketSlot,
       homeClub: clubMap.get(series.homeClubId) ?? undefined,
       awayClub: clubMap.get(series.awayClubId) ?? undefined,
       summary,
@@ -198,11 +222,25 @@ const buildBracketPayload = (season: SeasonWithRelations) => {
         : Number.MAX_SAFE_INTEGER,
     })
 
-    stageBuckets.set(series.stageName, existing)
+    stageBuckets.set(bucketKey, existing)
   }
 
   const stages = Array.from(stageBuckets.values())
     .sort((left, right) => {
+      // Сначала сортируем по bracketType (null < QUALIFICATION < GOLD < SILVER)
+      const bracketOrder = (bt: BracketType | null) => {
+        if (bt === null) return 0
+        if (bt === 'QUALIFICATION') return 1
+        if (bt === 'GOLD') return 2
+        if (bt === 'SILVER') return 3
+        return 4
+      }
+      const leftBracketOrder = bracketOrder(left.bracketType)
+      const rightBracketOrder = bracketOrder(right.bracketType)
+      if (leftBracketOrder !== rightBracketOrder) {
+        return leftBracketOrder - rightBracketOrder
+      }
+      // Затем по рангу стадии (больший rank = ранняя стадия)
       if (left.rank !== right.rank) {
         return right.rank - left.rank
       }
@@ -210,6 +248,7 @@ const buildBracketPayload = (season: SeasonWithRelations) => {
     })
     .map(stage => ({
       stageName: stage.stageName,
+      bracketType: stage.bracketType,
       series: stage.series
         .sort((left, right) => left.order - right.order)
         .map(item => ({
@@ -220,6 +259,8 @@ const buildBracketPayload = (season: SeasonWithRelations) => {
           winnerClubId: item.winnerClubId,
           homeClubId: item.homeClubId,
           awayClubId: item.awayClubId,
+          bracketType: item.bracketType,
+          bracketSlot: item.bracketSlot,
           homeClub: item.homeClub
             ? {
                 id: item.homeClub.id,
@@ -241,6 +282,9 @@ const buildBracketPayload = (season: SeasonWithRelations) => {
         })),
     }))
 
+  // Определяем, есть ли у сезона кубковый формат
+  const isCupFormat = hasCupFormat || season.seriesFormat === SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF
+
   return {
     season: {
       id: season.id,
@@ -248,6 +292,9 @@ const buildBracketPayload = (season: SeasonWithRelations) => {
       startDate: season.startDate,
       endDate: season.endDate,
       seriesFormat: season.seriesFormat ?? season.competition.seriesFormat,
+      groupRounds: (season as SeasonWithRelations & { groupRounds?: number }).groupRounds ?? 1,
+      playoffBestOf: (season as SeasonWithRelations & { playoffBestOf?: number }).playoffBestOf ?? 1,
+      isCupFormat,
       competition: {
         id: season.competition.id,
         name: season.competition.name,
@@ -275,6 +322,7 @@ const findSeasonForBracket = async (seasonId?: number): Promise<SeasonWithRelati
               SeriesFormat.BEST_OF_N,
               SeriesFormat.DOUBLE_ROUND_PLAYOFF,
               SeriesFormat.PLAYOFF_BRACKET,
+              SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF,
             ],
           },
         },
@@ -288,6 +336,7 @@ const findSeasonForBracket = async (seasonId?: number): Promise<SeasonWithRelati
                     SeriesFormat.BEST_OF_N,
                     SeriesFormat.DOUBLE_ROUND_PLAYOFF,
                     SeriesFormat.PLAYOFF_BRACKET,
+                    SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF,
                   ],
                 },
               },

@@ -337,23 +337,24 @@ model MatchLineup {
 }
 
 model MatchSeries {
-  id           BigInt       @id @default(autoincrement()) @map("series_id")
-  seasonId     Int          @map("season_id")
-  stageName    String       @map("stage_name")
-  homeClubId   Int          @map("home_club_id")
-  awayClubId   Int          @map("away_club_id")
-  seriesStatus SeriesStatus @map("series_status")
-  winnerClubId Int?         @map("winner_club_id")
-  homeSeed     Int?         @map("home_seed")
-  awaySeed     Int?         @map("away_seed")
-  bracketSlot  Int?         @map("bracket_slot")
-  createdAt    DateTime     @default(now()) @map("created_at")
-  updatedAt    DateTime     @updatedAt @map("updated_at")
+  id           BigInt        @id @default(autoincrement()) @map("series_id")
+  seasonId     Int           @map("season_id")
+  stageName    String        @map("stage_name")
+  homeClubId   Int           @map("home_club_id")
+  awayClubId   Int           @map("away_club_id")
+  seriesStatus SeriesStatus  @map("series_status")
+  winnerClubId Int?          @map("winner_club_id")
+  homeSeed     Int?          @map("home_seed")
+  awaySeed     Int?          @map("away_seed")
+  bracketSlot  Int?          @map("bracket_slot")
+  bracketType  BracketType?  @map("bracket_type")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
   matches      Match[]
-  awayClub     Club         @relation("match_series_away_club_idToclub", fields: [awayClubId], references: [id])
-  homeClub     Club         @relation("match_series_home_club_idToclub", fields: [homeClubId], references: [id])
-  season       Season       @relation(fields: [seasonId], references: [id], onDelete: Cascade)
-  winnerClub   Club?        @relation("match_series_winner_club_idToclub", fields: [winnerClubId], references: [id])
+  awayClub     Club          @relation("match_series_away_club_idToclub", fields: [awayClubId], references: [id])
+  homeClub     Club          @relation("match_series_home_club_idToclub", fields: [homeClubId], references: [id])
+  season       Season        @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  winnerClub   Club?         @relation("match_series_winner_club_idToclub", fields: [winnerClubId], references: [id])
 
   @@map("match_series")
 }
@@ -581,6 +582,8 @@ model Season {
   endDate           DateTime            @map("end_date")
   city              String?
   seriesFormat      SeriesFormat?       @map("series_format")
+  groupRounds       Int                 @default(1) @map("group_rounds")
+  playoffBestOf     Int                 @default(1) @map("playoff_best_of")
   isActive          Boolean             @default(false) @map("is_active")
   createdAt         DateTime            @default(now()) @map("created_at")
   updatedAt         DateTime            @updatedAt @map("updated_at")
@@ -898,6 +901,12 @@ enum SeriesFormat {
 enum SeriesStatus {
   IN_PROGRESS
   FINISHED
+}
+
+enum BracketType {
+  QUALIFICATION
+  GOLD
+  SILVER
 }
 
 enum ShopOrderStatus {

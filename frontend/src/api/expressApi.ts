@@ -307,6 +307,14 @@ export const fetchWeekCount = async (
         return { data: null, fromCache: false }
       }
 
+      // ApiNotModified не имеет data - используем кеш
+      if ('notModified' in response && response.notModified) {
+        if (cache) {
+          return { data: cache.data, fromCache: true }
+        }
+        return { data: null, fromCache: false }
+      }
+
       const data = response.data ?? null
       const cacheNow = Date.now()
 
@@ -365,6 +373,14 @@ export const fetchExpressConfig = async (
       })
 
       if (!response.ok) {
+        if (cache) {
+          return { data: cache.data, fromCache: true }
+        }
+        return { data: null, fromCache: false }
+      }
+
+      // ApiNotModified не имеет data - используем кеш
+      if ('notModified' in response && response.notModified) {
         if (cache) {
           return { data: cache.data, fromCache: true }
         }
@@ -496,6 +512,11 @@ export const fetchExpressById = async (
         return { data: null, error: 'not_found' }
       }
       return { data: null, error: 'unknown_error' }
+    }
+
+    // ApiNotModified не имеет data
+    if ('notModified' in response && response.notModified) {
+      return { data: null }
     }
 
     return { data: response.data ?? null }

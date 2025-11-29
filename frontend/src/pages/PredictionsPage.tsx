@@ -7,7 +7,10 @@ import type {
   UserPredictionEntry,
 } from '@shared/types'
 import { fetchActivePredictions, fetchMyPredictions, submitPrediction } from '../api/predictionsApi'
-import ExpressBuilder from '../components/ExpressBuilder'
+import { ExpressCartProvider } from '../store/ExpressCartContext'
+import { useExpressCart, createCartItem } from '../store/expressCartHooks'
+import ExpressCartButton from '../components/ExpressCartButton'
+import ExpressCartModal from '../components/ExpressCartModal'
 import ExpressList from '../components/ExpressList'
 import '../styles/predictions.css'
 
@@ -530,7 +533,8 @@ const UserPredictionCard = React.memo(UserPredictionCardInner, (prev, next) => {
 
 UserPredictionCard.displayName = 'UserPredictionCard'
 
-const PredictionsPage: React.FC = () => {
+const PredictionsPageInner: React.FC = () => {
+  const expressCart = useExpressCart()
   const [tab, setTab] = useState<PredictionsTab>('upcoming')
   const [upcoming, setUpcoming] = useState<ActivePredictionMatch[]>([])
   const [mine, setMine] = useState<UserPredictionEntry[]>([])
@@ -545,6 +549,7 @@ const PredictionsPage: React.FC = () => {
   const [submitErrors, setSubmitErrors] = useState<Record<string, string | undefined>>({})
   const [submitSuccess, setSubmitSuccess] = useState<Record<string, string | undefined>>({})
   const [expandedMatches, setExpandedMatches] = useState<Record<string, boolean>>({})
+
 
   useEffect(() => {
     let cancelled = false
@@ -695,15 +700,6 @@ const PredictionsPage: React.FC = () => {
 
     return (
       <div>
-        {/* Экспресс-билдер */}
-        {isAuthorized !== false && upcoming.length > 0 && (
-          <ExpressBuilder
-            matches={upcoming}
-            onExpressCreated={refreshMyPredictions}
-            isAuthorized={isAuthorized !== false}
-          />
-        )}
-
         {matchGroups.map(group => (
           <div key={group.dateKey} className="prediction-date-group">
             <h3 className="prediction-date-header">{group.dateLabel}</h3>
@@ -795,20 +791,65 @@ const PredictionsPage: React.FC = () => {
                         ) : null}
 
                         {!anySuccess && (
-                          <button
-                            type="button"
-                            className="prediction-submit-main"
-                            onClick={async () => {
-                              for (const template of match.templates) {
-                                if (selectedOptions[template.id]) {
-                                  await handleSubmit(template)
+                          <div className="prediction-footer-buttons">
+                            <button
+                              type="button"
+                              className="prediction-submit-main"
+                              onClick={async () => {
+                                for (const template of match.templates) {
+                                  if (selectedOptions[template.id]) {
+                                    await handleSubmit(template)
+                                  }
                                 }
-                              }
-                            }}
-                            disabled={!hasAnySelection || anySubmitting}
-                          >
-                            {anySubmitting ? 'Отправляем...' : 'Отправить прогноз'}
-                          </button>
+                              }}
+                              disabled={!hasAnySelection || anySubmitting}
+                            >
+                              {anySubmitting ? 'Отправляем...' : 'Отправить прогноз'}
+                            </button>
+
+                            {/* Кнопка добавления в экспресс */}
+                            {isAuthorized !== false && (() => {
+                              // Найти выбранный шаблон и его выбор
+                              const selectedTemplate = match.templates.find(t => selectedOptions[t.id])
+                              if (!selectedTemplate) return null
+
+                              const selection = selectedOptions[selectedTemplate.id]
+                              const meta = resolveTemplateMeta(selectedTemplate)
+                              const choices = normalizeTemplateChoices(selectedTemplate)
+                              const choiceObj = choices.find(c => c.value === selection)
+                              const selectionLabel = choiceObj?.label ?? selection
+
+                              // Проверить, есть ли уже этот матч в корзине
+                              const matchInCart = expressCart.hasMatch(match.matchId)
+                              const canAdd = expressCart.canAddMore() && !matchInCart
+
+                              return (
+                                <button
+                                  type="button"
+                                  className={`prediction-express-btn ${matchInCart ? 'in-cart' : ''}`}
+                                  onClick={() => {
+                                    if (matchInCart) {
+                                      // Открыть модалку для просмотра
+                                      expressCart.setModalOpen(true)
+                                    } else {
+                                      const cartItem = createCartItem(
+                                        selectedTemplate,
+                                        match,
+                                        selection,
+                                        selectionLabel,
+                                        meta.title
+                                      )
+                                      expressCart.addItem(cartItem)
+                                    }
+                                  }}
+                                  disabled={!canAdd && !matchInCart}
+                                  title={matchInCart ? 'Этот матч уже в экспрессе' : canAdd ? 'Добавить в экспресс' : 'Достигнут лимит событий'}
+                                >
+                                  {matchInCart ? '✓ В экспрессе' : '+ В экспресс'}
+                                </button>
+                              )
+                            })()}
+                          </div>
                         )}
                       </div>
                     ) : null}
@@ -891,8 +932,23 @@ const PredictionsPage: React.FC = () => {
       <div className="predictions-tab-panel" role="tabpanel">
         {tab === 'upcoming' ? upcomingContent() : myContent()}
       </div>
+
+      {/* Плавающая кнопка корзины экспресса */}
+      <ExpressCartButton />
+
+      {/* Модалка корзины экспресса */}
+      <ExpressCartModal onExpressCreated={refreshMyPredictions} />
     </div>
   )
 }
+
+/**
+ * Обёртка страницы прогнозов с провайдером корзины экспресса
+ */
+const PredictionsPage: React.FC = () => (
+  <ExpressCartProvider>
+    <PredictionsPageInner />
+  </ExpressCartProvider>
+)
 
 export default PredictionsPage

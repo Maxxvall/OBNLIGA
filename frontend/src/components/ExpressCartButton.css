@@ -1,0 +1,124 @@
+/* Плавающая кнопка корзины экспресса */
+
+.express-cart-fab {
+  position: fixed;
+  bottom: calc(var(--nav-height, 56px) + 16px);
+  right: 16px;
+  z-index: 100;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+
+  width: 56px;
+  height: 56px;
+  padding: 0;
+
+  border: none;
+  border-radius: 50%;
+  background: var(--color-primary, #3b82f6);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+
+  transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.express-cart-fab:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+}
+
+.express-cart-fab:active {
+  transform: scale(0.95);
+}
+
+.express-cart-fab.ready {
+  width: auto;
+  min-width: 56px;
+  padding: 0 16px;
+  border-radius: 28px;
+  background: linear-gradient(135deg, #10b981, #059669);
+  animation: express-cart-pulse 2s infinite;
+}
+
+@keyframes express-cart-pulse {
+  0%, 100% {
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+  }
+  50% {
+    box-shadow: 0 4px 24px rgba(16, 185, 129, 0.6);
+  }
+}
+
+.express-cart-fab-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.express-cart-fab-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.express-cart-fab-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+
+  background: #ef4444;
+  color: #fff;
+  border-radius: 10px;
+}
+
+.express-cart-fab.ready .express-cart-fab-badge {
+  position: static;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.express-cart-fab-multiplier {
+  font-size: 14px;
+  font-weight: 700;
+  margin-left: 2px;
+}
+
+/* Адаптация для маленьких экранов */
+@media (max-width: 360px) {
+  .express-cart-fab {
+    bottom: calc(var(--nav-height, 56px) + 8px);
+    right: 8px;
+    width: 48px;
+    height: 48px;
+  }
+
+  .express-cart-fab.ready {
+    padding: 0 12px;
+    border-radius: 24px;
+  }
+
+  .express-cart-fab-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .express-cart-fab-badge {
+    min-width: 18px;
+    height: 18px;
+    font-size: 11px;
+  }
+}

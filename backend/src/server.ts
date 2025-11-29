@@ -90,6 +90,7 @@ import leagueRoutes from './routes/leagueRoutes'
 import clubRoutes from './routes/clubRoutes'
 import matchPublicRoutes from './routes/matchPublicRoutes'
 import predictionRoutes from './routes/predictionRoutes'
+import expressRoutes from './routes/expressRoutes'
 import ratingsRoutes from './routes/ratingsRoutes'
 import shopRoutes from './routes/shopRoutes'
 import subscriptionRoutes from './routes/subscriptionRoutes'
@@ -100,6 +101,7 @@ server.register(leagueRoutes)
 server.register(clubRoutes)
 server.register(matchPublicRoutes)
 server.register(predictionRoutes)
+server.register(expressRoutes)
 server.register(ratingsRoutes)
 server.register(shopRoutes)
 server.register(subscriptionRoutes)

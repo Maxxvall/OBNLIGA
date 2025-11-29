@@ -153,6 +153,7 @@ model AppUser {
   matchSubscriptions      MatchSubscription[]
   notificationSettings    NotificationSettings?
   notificationQueue       NotificationQueue[]
+  expressBets             ExpressBet[]
 
   @@map("app_user")
 }
@@ -509,6 +510,7 @@ model PredictionTemplate {
   updatedAt            DateTime             @updatedAt @map("updated_at")
   entries              PredictionEntry[]
   match                Match                @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  expressItems         ExpressBetItem[]
 
   @@index([matchId, marketType], map: "prediction_template_match_market_idx")
   @@map("prediction_template")
@@ -999,4 +1001,53 @@ enum NotificationMessageType {
   MATCH_STARTED
   MATCH_FINISHED
   GOAL_SCORED
+}
+
+// =================== ЭКСПРЕСС-ПРОГНОЗЫ ===================
+
+// Статус экспресс-прогноза
+enum ExpressStatus {
+  PENDING     // Ожидает расчёта
+  WON         // Все события угаданы
+  LOST        // Хотя бы одно не угадано
+  CANCELLED   // Отменён (матч отменён)
+  VOID        // Аннулирован
+}
+
+// Экспресс-прогноз (комбинированная ставка)
+model ExpressBet {
+  id           BigInt        @id @default(autoincrement()) @map("express_bet_id")
+  userId       Int           @map("user_id")
+  status       ExpressStatus @default(PENDING)
+  multiplier   Decimal       @default(1.0) @map("multiplier") @db.Decimal(4, 2)
+  basePoints   Int           @map("base_points")
+  scoreAwarded Int?          @map("score_awarded")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  resolvedAt   DateTime?     @map("resolved_at")
+
+  items   ExpressBetItem[]
+  appUser AppUser          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status], map: "express_bet_user_status_idx")
+  @@index([status, createdAt], map: "express_bet_status_created_idx")
+  @@map("express_bet")
+}
+
+// Элемент экспресса (одно событие в комбинации)
+model ExpressBetItem {
+  id         BigInt                @id @default(autoincrement()) @map("express_bet_item_id")
+  expressId  BigInt                @map("express_id")
+  templateId BigInt                @map("template_id")
+  selection  String
+  status     PredictionEntryStatus @default(PENDING)
+  basePoints Int                   @map("base_points")
+  resolvedAt DateTime?             @map("resolved_at")
+
+  express  ExpressBet         @relation(fields: [expressId], references: [id], onDelete: Cascade)
+  template PredictionTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([expressId, templateId], map: "express_item_unique")
+  @@index([expressId], map: "express_item_express_idx")
+  @@index([templateId, status], map: "express_item_template_status_idx")
+  @@map("express_bet_item")
 }

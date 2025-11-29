@@ -33,3 +33,25 @@ export const PREDICTION_RED_CARD_DEFAULT_RATE = 0.25
 
 export const ACTIVE_PREDICTION_CACHE_KEY = (days: number) => `predictions:list:${days}`
 export const USER_PREDICTION_CACHE_KEY = (userId: number) => `predictions:user:${userId}`
+
+// =================== ЭКСПРЕСС-ПРОГНОЗЫ ===================
+
+// Максимум 2 экспресса за 6 дней (как и обычные прогнозы)
+export const EXPRESS_WEEKLY_LIMIT = 2
+export const EXPRESS_WEEKLY_LIMIT_DAYS = 6
+
+// Ограничения на количество событий в экспрессе
+export const EXPRESS_MIN_ITEMS = 2
+export const EXPRESS_MAX_ITEMS = 4
+
+// Коэффициенты умножения по количеству событий
+export const EXPRESS_MULTIPLIERS: Record<number, number> = {
+  2: 1.2, // 2 события → ×1.2
+  3: 1.5, // 3 события → ×1.5
+  4: 2.5, // 4 события → ×2.5
+}
+
+// Кэширование экспрессов
+export const EXPRESS_USER_CACHE_KEY = (userId: number) => `express:user:${userId}`
+export const EXPRESS_USER_CACHE_TTL_SECONDS = 300 // 5 минут
+export const EXPRESS_USER_STALE_SECONDS = 900 // 15 минут

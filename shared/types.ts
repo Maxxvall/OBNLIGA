@@ -190,6 +190,89 @@ export interface UserPredictionEntry {
     logoUrl: string | null
   }
 }
+
+// =================== ЭКСПРЕСС-ПРОГНОЗЫ ===================
+
+/**
+ * Статус экспресс-прогноза
+ */
+export type ExpressStatus =
+  | 'PENDING'   // Ожидает расчёта
+  | 'WON'       // Все события угаданы
+  | 'LOST'      // Хотя бы одно не угадано
+  | 'CANCELLED' // Отменён (матч отменён)
+  | 'VOID'      // Аннулирован
+
+/**
+ * Элемент экспресс-прогноза
+ */
+export interface ExpressBetItemView {
+  id: string
+  templateId: string
+  matchId: string
+  selection: string
+  status: PredictionEntryStatus
+  basePoints: number
+  resolvedAt: string | null
+  marketType: PredictionMarketType
+  matchDateTime: string
+  homeClub: {
+    id: number
+    name: string
+    shortName: string | null
+    logoUrl: string | null
+  }
+  awayClub: {
+    id: number
+    name: string
+    shortName: string | null
+    logoUrl: string | null
+  }
+}
+
+/**
+ * Экспресс-прогноз (комбинированная ставка)
+ */
+export interface ExpressBetView {
+  id: string
+  status: ExpressStatus
+  multiplier: number
+  basePoints: number
+  scoreAwarded: number | null
+  createdAt: string
+  resolvedAt: string | null
+  items: ExpressBetItemView[]
+}
+
+/**
+ * Конфигурация экспрессов (для UI)
+ */
+export interface ExpressConfig {
+  minItems: number
+  maxItems: number
+  multipliers: Record<number, number>
+  weeklyLimit: number
+  periodDays: number
+}
+
+/**
+ * Счётчик экспрессов за неделю
+ */
+export interface ExpressWeekCount {
+  count: number
+  limit: number
+  remaining: number
+  periodDays: number
+}
+
+/**
+ * Элемент для создания экспресса
+ */
+export interface CreateExpressItemInput {
+  templateId: string
+  selection: string
+}
+
 // Prisma/DB-backed user (Telegram)
 export interface DbUser {
   id: number

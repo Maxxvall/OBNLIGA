@@ -6,6 +6,13 @@ import {
   Prisma,
 } from '@prisma/client'
 import { formatTotalLine } from './predictionTotalsService'
+import {
+  updateExpressItemsForMatch,
+  settleExpressBet,
+  ExpressSettlementSummary,
+} from './expressService'
+import { EXPRESS_USER_CACHE_KEY } from './predictionConstants'
+import { defaultCache } from '../cache'
 
 type SettlementMatch = {
   id: bigint
@@ -38,6 +45,8 @@ export type SettlementSummary = {
   lost: number
   voided: number
   cancelled: number
+  // Экспресс-прогнозы
+  expressSettlements: ExpressSettlementSummary[]
 }
 
 type SettlementContext = {
@@ -340,6 +349,7 @@ const buildSummary = (): SettlementSummary => ({
   lost: 0,
   voided: 0,
   cancelled: 0,
+  expressSettlements: [],
 })
 
 export const settlePredictionEntries = async (
@@ -435,6 +445,40 @@ export const settlePredictionEntries = async (
         )
       }
     }
+  }
+
+  // Обновляем элементы экспрессов для этого матча
+  // Передаём контекст матча чтобы каждый элемент экспресса был расчитан индивидуально
+  try {
+    const expressIdsToSettle = await updateExpressItemsForMatch(
+      match.id,
+      { outcome, totalGoals, eventTypes },
+      tx,
+      logger
+    )
+
+    // Расчитываем экспрессы у которых все элементы теперь расчитаны
+    for (const expressId of expressIdsToSettle) {
+      try {
+        const expressResult = await settleExpressBet(expressId, tx, logger)
+        if (expressResult) {
+          summary.expressSettlements.push(expressResult)
+          summary.userIds.add(expressResult.userId)
+          // Инвалидируем кэш экспрессов пользователя
+          await defaultCache.invalidate(EXPRESS_USER_CACHE_KEY(expressResult.userId)).catch(() => undefined)
+        }
+      } catch (err) {
+        logger.error(
+          { err, expressId: expressId.toString(), matchId: match.id.toString() },
+          'prediction settlement: failed to settle express bet'
+        )
+      }
+    }
+  } catch (err) {
+    logger.error(
+      { err, matchId: match.id.toString() },
+      'prediction settlement: failed to update express items'
+    )
   }
 
   return summary

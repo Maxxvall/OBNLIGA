@@ -11,7 +11,6 @@
 } from '@prisma/client'
 import { FastifyBaseLogger } from 'fastify'
 import {
-  CUP_STAGE_NAMES,
   generateQuarterFinalPairs2Groups,
   type GroupStandingEntry,
 } from './cupBracketLogic'
@@ -1415,12 +1414,10 @@ export const createSeasonPlayoffs = async (
 
     let plans: PlayoffSeriesPlan[] = []
     let byeSeries: PlayoffByePlan[] = []
-    let isCupCrossGroupPairing = false
 
     if (isCupWith2Groups && groupSeedDetails) {
       // Для кубков с 2 группами используем кросс-групповой паринг
       // A1vsB4, B1vsA4, A2vsB3, B2vsA3
-      isCupCrossGroupPairing = true
       const groupsByIndex = new Map<number, typeof groupSeedDetails>()
       for (const seed of groupSeedDetails) {
         const arr = groupsByIndex.get(seed.groupIndex) ?? []

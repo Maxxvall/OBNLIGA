@@ -55,3 +55,8 @@ export const EXPRESS_MULTIPLIERS: Record<number, number> = {
 export const EXPRESS_USER_CACHE_KEY = (userId: number) => `express:user:${userId}`
 export const EXPRESS_USER_CACHE_TTL_SECONDS = 300 // 5 минут
 export const EXPRESS_USER_STALE_SECONDS = 900 // 15 минут
+
+// Кэширование счётчика экспрессов
+export const EXPRESS_WEEK_COUNT_CACHE_KEY = (userId: number) => `express:weekCount:${userId}`
+export const EXPRESS_WEEK_COUNT_TTL_SECONDS = 60 // 1 минута - важно для лимитов
+export const EXPRESS_WEEK_COUNT_STALE_SECONDS = 180 // 3 минуты

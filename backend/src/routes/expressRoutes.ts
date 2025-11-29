@@ -14,6 +14,9 @@ import {
   EXPRESS_USER_CACHE_KEY,
   EXPRESS_USER_CACHE_TTL_SECONDS,
   EXPRESS_USER_STALE_SECONDS,
+  EXPRESS_WEEK_COUNT_CACHE_KEY,
+  EXPRESS_WEEK_COUNT_TTL_SECONDS,
+  EXPRESS_WEEK_COUNT_STALE_SECONDS,
   EXPRESS_WEEKLY_LIMIT,
   EXPRESS_WEEKLY_LIMIT_DAYS,
 } from '../services/predictionConstants'
@@ -144,8 +147,11 @@ export default async function expressRoutes(server: FastifyInstance) {
         return reply.status(status).send({ ok: false, error: result.error, details: result.details })
       }
 
-      // Инвалидируем кэш экспрессов пользователя
-      await defaultCache.invalidate(EXPRESS_USER_CACHE_KEY(user.id)).catch(() => undefined)
+      // Инвалидируем кэш экспрессов пользователя и счётчика
+      await Promise.all([
+        defaultCache.invalidate(EXPRESS_USER_CACHE_KEY(user.id)).catch(() => undefined),
+        defaultCache.invalidate(EXPRESS_WEEK_COUNT_CACHE_KEY(user.id)).catch(() => undefined),
+      ])
 
       const view = serializeExpressBet(result.express!)
 
@@ -254,24 +260,56 @@ export default async function expressRoutes(server: FastifyInstance) {
       return reply.status(404).send({ ok: false, error: 'user_not_found' })
     }
 
-    const limitDate = new Date(Date.now() - EXPRESS_WEEKLY_LIMIT_DAYS * 24 * 60 * 60 * 1000)
+    const cacheKey = EXPRESS_WEEK_COUNT_CACHE_KEY(user.id)
 
-    const count = await prisma.expressBet.count({
-      where: {
-        userId: user.id,
-        createdAt: { gte: limitDate },
-      },
-    })
+    type WeekCountData = {
+      count: number
+      limit: number
+      remaining: number
+      periodDays: number
+    }
 
-    return reply.send({
-      ok: true,
-      data: {
+    const loader = async (): Promise<WeekCountData> => {
+      const limitDate = new Date(Date.now() - EXPRESS_WEEKLY_LIMIT_DAYS * 24 * 60 * 60 * 1000)
+
+      const count = await prisma.expressBet.count({
+        where: {
+          userId: user.id,
+          createdAt: { gte: limitDate },
+        },
+      })
+
+      return {
         count,
         limit: EXPRESS_WEEKLY_LIMIT,
         remaining: Math.max(0, EXPRESS_WEEKLY_LIMIT - count),
         periodDays: EXPRESS_WEEKLY_LIMIT_DAYS,
-      },
+      }
+    }
+
+    const { value, version } = await defaultCache.getWithMeta(cacheKey, loader, {
+      ttlSeconds: EXPRESS_WEEK_COUNT_TTL_SECONDS,
+      staleWhileRevalidateSeconds: EXPRESS_WEEK_COUNT_STALE_SECONDS,
     })
+
+    const etag = buildWeakEtag(cacheKey, version)
+
+    if (matchesIfNoneMatch(request.headers, etag)) {
+      return reply
+        .status(304)
+        .header('ETag', etag)
+        .header('X-Resource-Version', String(version))
+        .send()
+    }
+
+    reply.header(
+      'Cache-Control',
+      `private, max-age=${EXPRESS_WEEK_COUNT_TTL_SECONDS}, stale-while-revalidate=${EXPRESS_WEEK_COUNT_STALE_SECONDS}`
+    )
+    reply.header('ETag', etag)
+    reply.header('X-Resource-Version', String(version))
+
+    return reply.send({ ok: true, data: value, meta: { version } })
   })
 
   /**

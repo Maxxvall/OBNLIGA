@@ -26,6 +26,10 @@ import {
   matchStatsCacheKey,
 } from './matchModerationHelpers'
 import { defaultCache } from '../cache'
+import {
+  scheduleMatchStartNotifications,
+  scheduleMatchEndNotifications,
+} from './subscriptionHelpers'
 
 interface AssistantJwtPayload {
   sub: string
@@ -545,6 +549,40 @@ export default async function assistantRoutes(server: FastifyInstance) {
             request.server.log.error(
               { err, matchId: matchId.toString() },
               'assistant: handleMatchFinalization failed but match was updated'
+            )
+          }
+
+          // Планируем уведомления о завершении матча для подписчиков
+          try {
+            const scheduledCount = await scheduleMatchEndNotifications(matchId)
+            if (scheduledCount > 0) {
+              request.server.log.info(
+                { matchId: matchId.toString(), scheduledCount },
+                'scheduled match end notifications'
+              )
+            }
+          } catch (err) {
+            request.server.log.warn(
+              { err, matchId: matchId.toString() },
+              'failed to schedule match end notifications'
+            )
+          }
+        }
+
+        // Планируем уведомления о начале матча при переходе в LIVE
+        if (statusUpdate === MatchStatus.LIVE && match.status !== MatchStatus.LIVE) {
+          try {
+            const scheduledCount = await scheduleMatchStartNotifications(matchId)
+            if (scheduledCount > 0) {
+              request.server.log.info(
+                { matchId: matchId.toString(), scheduledCount },
+                'scheduled match start notifications'
+              )
+            }
+          } catch (err) {
+            request.server.log.warn(
+              { err, matchId: matchId.toString() },
+              'failed to schedule match start notifications'
             )
           }
         }

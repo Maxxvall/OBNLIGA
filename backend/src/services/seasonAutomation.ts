@@ -484,10 +484,18 @@ export const applyTimeToDate = (date: Date, time?: string | null): Date => {
   const hours = Number(match[1])
   const minutes = Number(match[2])
   const withTime = new Date(date)
-  // Используем UTC методы чтобы избежать смещения timezone
-  // Время указывается пользователем в его локальной зоне (Москва +3)
-  // и должно сохраняться как есть без преобразований сервера
-  withTime.setUTCHours(hours, minutes, 0, 0)
+  // Время вводится пользователем в московском часовом поясе (UTC+3)
+  // Конвертируем в UTC для корректного хранения в БД
+  // Например: 12:00 MSK = 09:00 UTC
+  const mskOffsetHours = 3
+  const utcHours = hours - mskOffsetHours
+  withTime.setUTCHours(utcHours, minutes, 0, 0)
+  // Если получилось отрицательное время (например, 01:00 MSK = -2:00 UTC),
+  // корректируем дату на предыдущий день
+  if (utcHours < 0) {
+    withTime.setUTCHours(utcHours + 24, minutes, 0, 0)
+    withTime.setUTCDate(withTime.getUTCDate() - 1)
+  }
   return withTime
 }
 

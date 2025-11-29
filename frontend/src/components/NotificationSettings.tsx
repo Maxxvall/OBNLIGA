@@ -223,24 +223,6 @@ export const NotificationSettings: React.FC<NotificationSettingsProps> = ({ clas
                 <span className="notification-toggle-track" />
               </label>
             </div>
-
-            <div className="notification-setting-row">
-              <div className="notification-setting-info">
-                <span className="notification-setting-label">Голы</span>
-                <span className="notification-setting-hint">
-                  Уведомления о забитых голах
-                </span>
-              </div>
-              <label className="notification-toggle small">
-                <input
-                  type="checkbox"
-                  checked={settings.goalEnabled}
-                  onChange={e => handleSettingChange('goalEnabled', e.target.checked)}
-                  disabled={saving}
-                />
-                <span className="notification-toggle-track" />
-              </label>
-            </div>
           </>
         )}
 

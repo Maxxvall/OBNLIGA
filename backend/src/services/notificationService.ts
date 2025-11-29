@@ -1,8 +1,3 @@
-/**
- * Сервис отправки уведомлений через Telegram Bot API.
- * Отвечает за форматирование и отправку push-уведомлений о матчах.
- */
-
 import { Bot, InlineKeyboard } from 'grammy'
 
 const token = process.env.TELEGRAM_BOT_TOKEN
@@ -48,10 +43,28 @@ export interface GoalDetails {
 
 // =================== ШАБЛОНЫ СООБЩЕНИЙ ===================
 
+// Часовой пояс для уведомлений (Московское время UTC+3)
+const NOTIFICATION_TIMEZONE = process.env.NOTIFICATION_TIMEZONE ?? 'Europe/Moscow'
+
+/**
+ * Форматирует время в московском часовом поясе.
+ * Использует Intl.DateTimeFormat для корректного отображения времени пользователям в России.
+ */
 const formatTime = (date: Date): string => {
-  const hours = String(date.getHours()).padStart(2, '0')
-  const minutes = String(date.getMinutes()).padStart(2, '0')
-  return `${hours}:${minutes}`
+  try {
+    return new Intl.DateTimeFormat('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: NOTIFICATION_TIMEZONE,
+    }).format(date)
+  } catch {
+    // Fallback если часовой пояс не поддерживается
+    const mskOffset = 3 * 60 * 60 * 1000 // UTC+3 в миллисекундах
+    const mskDate = new Date(date.getTime() + mskOffset)
+    const hours = String(mskDate.getUTCHours()).padStart(2, '0')
+    const minutes = String(mskDate.getUTCMinutes()).padStart(2, '0')
+    return `${hours}:${minutes}`
+  }
 }
 
 // Закомментировано: функция не используется, но может пригодиться для будущих уведомлений

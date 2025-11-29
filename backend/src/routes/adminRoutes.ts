@@ -89,6 +89,10 @@ import {
   getAchievementJobsStats,
 } from '../services/achievementJobProcessor'
 import { syncAllSeasonPointsProgress } from '../services/achievementProgress'
+import {
+  scheduleMatchStartNotifications,
+  scheduleMatchEndNotifications,
+} from './subscriptionHelpers'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -4939,6 +4943,40 @@ export default async function (server: FastifyInstance) {
               'failed to finalize match after status update'
             )
             // Матч уже обновлён в БД, не возвращаем ошибку пользователю
+          }
+
+          // Планируем уведомления о завершении матча для подписчиков
+          try {
+            const scheduledCount = await scheduleMatchEndNotifications(matchId)
+            if (scheduledCount > 0) {
+              request.server.log.info(
+                { matchId: matchId.toString(), scheduledCount },
+                'scheduled match end notifications'
+              )
+            }
+          } catch (err) {
+            request.server.log.warn(
+              { err, matchId: matchId.toString() },
+              'failed to schedule match end notifications'
+            )
+          }
+        }
+
+        // Планируем уведомления о начале матча при переходе в LIVE
+        if (body.status === MatchStatus.LIVE && existing.status !== MatchStatus.LIVE) {
+          try {
+            const scheduledCount = await scheduleMatchStartNotifications(matchId)
+            if (scheduledCount > 0) {
+              request.server.log.info(
+                { matchId: matchId.toString(), scheduledCount },
+                'scheduled match start notifications'
+              )
+            }
+          } catch (err) {
+            request.server.log.warn(
+              { err, matchId: matchId.toString() },
+              'failed to schedule match start notifications'
+            )
           }
         }
 

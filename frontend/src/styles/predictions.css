@@ -1093,3 +1093,30 @@
     padding: 2px 8px;
   }
 }
+
+/* =================== МОИ ПРОГНОЗЫ - КОНТЕЙНЕР =================== */
+
+.my-predictions-container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.my-predictions-section-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: rgba(0, 240, 255, 0.9);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.my-predictions-section-title::before {
+  content: '';
+  display: block;
+  width: 4px;
+  height: 18px;
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.8), rgba(180, 100, 255, 0.6));
+  border-radius: 2px;
+}

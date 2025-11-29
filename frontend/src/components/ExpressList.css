@@ -1,0 +1,515 @@
+/**
+ * Стили для компонента ExpressList
+ * с анимациями выигрыша/проигрыша
+ */
+
+/* =================== КОНТЕЙНЕР =================== */
+
+.express-list {
+  margin-bottom: 24px;
+}
+
+.express-list-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px;
+  font-size: 16px;
+  font-weight: 700;
+  color: rgba(255, 220, 100, 0.95);
+}
+
+.express-list-icon {
+  font-size: 20px;
+}
+
+.express-list-loading,
+.express-list-error {
+  text-align: center;
+  padding: 20px;
+  color: rgba(190, 200, 220, 0.7);
+  font-size: 14px;
+}
+
+.express-list-error {
+  color: rgba(255, 150, 150, 0.95);
+}
+
+.express-list-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 20px;
+  text-align: center;
+  color: rgba(190, 200, 220, 0.7);
+}
+
+.express-list-empty-icon {
+  font-size: 36px;
+  margin-bottom: 12px;
+  opacity: 0.5;
+}
+
+.express-list-empty p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.express-list-empty-hint {
+  margin-top: 8px !important;
+  font-size: 12px !important;
+  opacity: 0.7;
+}
+
+/* =================== СПИСОК =================== */
+
+.express-list-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* =================== КАРТОЧКА ЭКСПРЕССА =================== */
+
+.express-card {
+  position: relative;
+  border-radius: 14px;
+  background: rgba(25, 30, 45, 0.9);
+  border: 1px solid rgba(255, 200, 50, 0.2);
+  overflow: hidden;
+  transition: all 300ms ease;
+}
+
+.express-card:hover {
+  border-color: rgba(255, 200, 50, 0.35);
+}
+
+/* Статусы */
+.express-card.express-status-won {
+  border-color: rgba(100, 220, 150, 0.4);
+  background: linear-gradient(135deg, rgba(100, 220, 150, 0.08), rgba(25, 30, 45, 0.9));
+}
+
+.express-card.express-status-lost {
+  border-color: rgba(255, 100, 100, 0.3);
+  background: linear-gradient(135deg, rgba(255, 100, 100, 0.06), rgba(25, 30, 45, 0.9));
+}
+
+.express-card.express-status-pending {
+  border-color: rgba(255, 200, 50, 0.25);
+}
+
+/* =================== АНИМАЦИЯ ВЫИГРЫША =================== */
+
+.express-card.celebrating {
+  animation: celebrate-pulse 0.6s ease-in-out 3;
+}
+
+@keyframes celebrate-pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 4px 20px rgba(100, 220, 150, 0.2);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 8px 32px rgba(100, 220, 150, 0.5), 0 0 60px rgba(100, 220, 150, 0.3);
+  }
+}
+
+.express-celebration {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 30, 20, 0.95);
+  z-index: 10;
+  animation: celebration-fade 4s ease-in-out forwards;
+}
+
+@keyframes celebration-fade {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  10% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  80% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.05);
+    pointer-events: none;
+  }
+}
+
+.celebration-text {
+  font-size: 20px;
+  font-weight: 700;
+  color: rgba(100, 220, 150, 0.95);
+  margin-bottom: 8px;
+  animation: celebration-bounce 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes celebration-bounce {
+  from {
+    transform: translateY(-2px);
+  }
+  to {
+    transform: translateY(2px);
+  }
+}
+
+.celebration-points {
+  font-size: 32px;
+  font-weight: 800;
+  color: rgba(255, 220, 100, 0.95);
+  text-shadow: 0 4px 20px rgba(255, 200, 50, 0.5);
+}
+
+/* =================== ЗАГОЛОВОК КАРТОЧКИ =================== */
+
+.express-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+
+.express-card-header:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.express-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 80px;
+}
+
+.express-card-items-count {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(240, 245, 255, 0.9);
+}
+
+.express-card-status {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.express-card-status.status-pending {
+  color: rgba(255, 200, 50, 0.85);
+}
+
+.express-card-status.status-won {
+  color: rgba(100, 220, 150, 0.95);
+}
+
+.express-card-status.status-lost {
+  color: rgba(255, 100, 100, 0.85);
+}
+
+.express-card-status.status-cancelled,
+.express-card-status.status-void {
+  color: rgba(180, 190, 210, 0.6);
+}
+
+.express-card-stats {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.express-card-multiplier {
+  font-size: 16px;
+  font-weight: 700;
+  color: rgba(255, 200, 50, 0.95);
+}
+
+.express-card-potential {
+  font-size: 12px;
+  color: rgba(180, 190, 210, 0.6);
+}
+
+.express-card-points {
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(180, 190, 210, 0.6);
+}
+
+.express-card-points.won {
+  color: rgba(100, 220, 150, 0.95);
+}
+
+/* =================== ПРОГРЕСС-ТОЧКИ =================== */
+
+.express-card-progress {
+  display: flex;
+  gap: 4px;
+  margin: 0 12px;
+}
+
+.progress-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  transition: all 200ms ease;
+}
+
+.progress-dot.status-pending {
+  background: rgba(255, 200, 50, 0.6);
+  box-shadow: 0 0 8px rgba(255, 200, 50, 0.3);
+}
+
+.progress-dot.status-won {
+  background: rgba(100, 220, 150, 0.9);
+  box-shadow: 0 0 8px rgba(100, 220, 150, 0.4);
+}
+
+.progress-dot.status-lost {
+  background: rgba(255, 100, 100, 0.8);
+  box-shadow: 0 0 8px rgba(255, 100, 100, 0.3);
+}
+
+.progress-dot.status-cancelled,
+.progress-dot.status-void,
+.progress-dot.status-expired {
+  background: rgba(180, 190, 210, 0.4);
+}
+
+.express-expand-icon {
+  font-size: 12px;
+  color: rgba(180, 190, 210, 0.5);
+  flex-shrink: 0;
+}
+
+/* =================== ДЕТАЛИ КАРТОЧКИ =================== */
+
+.express-card-details {
+  padding: 0 16px 16px;
+  border-top: 1px solid rgba(255, 200, 50, 0.1);
+  animation: details-slide 200ms ease-out;
+}
+
+@keyframes details-slide {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.express-items-summary {
+  display: flex;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255, 200, 50, 0.1);
+}
+
+.summary-item {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.summary-item.won {
+  color: rgba(100, 220, 150, 0.9);
+}
+
+.summary-item.lost {
+  color: rgba(255, 100, 100, 0.85);
+}
+
+.summary-item.pending {
+  color: rgba(255, 200, 50, 0.85);
+}
+
+/* =================== СПИСОК СОБЫТИЙ =================== */
+
+.express-items-list {
+  list-style: none;
+  margin: 0;
+  padding: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.express-item-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(30, 35, 50, 0.6);
+  transition: all 200ms ease;
+}
+
+.express-item-row.status-won {
+  background: rgba(100, 220, 150, 0.08);
+  border-left: 3px solid rgba(100, 220, 150, 0.6);
+}
+
+.express-item-row.status-lost {
+  background: rgba(255, 100, 100, 0.06);
+  border-left: 3px solid rgba(255, 100, 100, 0.5);
+}
+
+.express-item-row.status-pending {
+  border-left: 3px solid rgba(255, 200, 50, 0.4);
+}
+
+.item-status-icon {
+  width: 20px;
+  font-size: 14px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.express-item-row.status-won .item-status-icon {
+  color: rgba(100, 220, 150, 0.95);
+}
+
+.express-item-row.status-lost .item-status-icon {
+  color: rgba(255, 100, 100, 0.9);
+}
+
+.express-item-row.status-pending .item-status-icon {
+  color: rgba(255, 200, 50, 0.85);
+}
+
+.item-match {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.item-teams {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(240, 245, 255, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-time {
+  font-size: 11px;
+  color: rgba(180, 190, 210, 0.55);
+}
+
+.item-selection {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(0, 240, 255, 0.9);
+  min-width: 30px;
+  text-align: center;
+}
+
+.item-points {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(100, 220, 150, 0.8);
+  min-width: 36px;
+  text-align: right;
+}
+
+.express-created-at {
+  font-size: 11px;
+  color: rgba(180, 190, 210, 0.45);
+  text-align: right;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 200, 50, 0.08);
+}
+
+/* =================== АНИМАЦИЯ ПРОИГРЫША =================== */
+
+.express-card.express-status-lost {
+  animation: lose-shake 0.4s ease-in-out;
+}
+
+@keyframes lose-shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-4px);
+  }
+  40% {
+    transform: translateX(4px);
+  }
+  60% {
+    transform: translateX(-2px);
+  }
+  80% {
+    transform: translateX(2px);
+  }
+}
+
+/* =================== АДАПТИВНОСТЬ =================== */
+
+@media (max-width: 480px) {
+  .express-card-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .express-card-progress {
+    order: 3;
+    width: 100%;
+    margin: 8px 0 0;
+    justify-content: center;
+  }
+
+  .express-card-stats {
+    margin-left: auto;
+  }
+
+  .express-item-row {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .item-match {
+    flex: 1 1 100%;
+    order: 1;
+  }
+
+  .item-status-icon {
+    order: 0;
+  }
+
+  .item-selection {
+    order: 2;
+    margin-left: auto;
+  }
+
+  .item-points {
+    order: 3;
+  }
+}

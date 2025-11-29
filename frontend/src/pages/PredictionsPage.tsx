@@ -7,6 +7,8 @@ import type {
   UserPredictionEntry,
 } from '@shared/types'
 import { fetchActivePredictions, fetchMyPredictions, submitPrediction } from '../api/predictionsApi'
+import ExpressBuilder from '../components/ExpressBuilder'
+import ExpressList from '../components/ExpressList'
 import '../styles/predictions.css'
 
 const TIME_FORMATTER = new Intl.DateTimeFormat('ru-RU', {
@@ -693,6 +695,15 @@ const PredictionsPage: React.FC = () => {
 
     return (
       <div>
+        {/* Экспресс-билдер */}
+        {isAuthorized !== false && upcoming.length > 0 && (
+          <ExpressBuilder
+            matches={upcoming}
+            onExpressCreated={refreshMyPredictions}
+            isAuthorized={isAuthorized !== false}
+          />
+        )}
+
         {matchGroups.map(group => (
           <div key={group.dateKey} className="prediction-date-group">
             <h3 className="prediction-date-header">{group.dateLabel}</h3>
@@ -824,14 +835,23 @@ const PredictionsPage: React.FC = () => {
       return <p className="prediction-error">{errorMine}</p>
     }
 
-    if (!mine.length) {
-      return <p className="prediction-note">Вы ещё не делали прогнозы. Попробуйте выбрать исходы в ближайших матчах.</p>
-    }
-
     return (
-      <ul className="prediction-entry-list">
-        {mine.map(p => <UserPredictionCard key={p.id} prediction={p} />)}
-      </ul>
+      <div className="my-predictions-container">
+        {/* Список экспрессов */}
+        <ExpressList />
+
+        {/* Список обычных прогнозов */}
+        {mine.length > 0 ? (
+          <>
+            <h3 className="my-predictions-section-title">Одиночные прогнозы</h3>
+            <ul className="prediction-entry-list">
+              {mine.map(p => <UserPredictionCard key={p.id} prediction={p} />)}
+            </ul>
+          </>
+        ) : (
+          <p className="prediction-note">Вы ещё не делали одиночных прогнозов. Попробуйте выбрать исходы в ближайших матчах.</p>
+        )}
+      </div>
     )
   }
 

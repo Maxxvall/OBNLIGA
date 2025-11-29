@@ -1,0 +1,572 @@
+/**
+ * Стили для компонента ExpressBuilder
+ */
+
+/* =================== КНОПКА ОТКРЫТИЯ =================== */
+
+.express-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 200, 50, 0.4);
+  background: linear-gradient(135deg, rgba(255, 200, 50, 0.15), rgba(255, 150, 50, 0.1));
+  color: rgba(255, 220, 100, 0.95);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 200ms ease;
+  box-shadow: 0 4px 16px rgba(255, 200, 50, 0.15);
+}
+
+.express-toggle-btn:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 200, 50, 0.6);
+  box-shadow: 0 8px 24px rgba(255, 200, 50, 0.25);
+}
+
+.express-toggle-btn.active {
+  background: linear-gradient(135deg, rgba(255, 200, 50, 0.3), rgba(255, 150, 50, 0.25));
+  border-color: rgba(255, 200, 50, 0.7);
+}
+
+.express-toggle-icon {
+  font-size: 18px;
+}
+
+.express-toggle-label {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.express-item-count {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255, 200, 50, 0.9);
+  color: rgba(20, 20, 30, 0.95);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* =================== ПАНЕЛЬ ЭКСПРЕССА =================== */
+
+.express-panel {
+  margin-top: 16px;
+  padding: 20px;
+  border-radius: 18px;
+  background: rgba(25, 20, 40, 0.92);
+  border: 1px solid rgba(255, 200, 50, 0.25);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+}
+
+.express-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.express-header-main {
+  flex: 1;
+}
+
+.express-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: rgba(255, 220, 100, 0.95);
+}
+
+.express-subtitle {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: rgba(190, 200, 220, 0.7);
+}
+
+.express-limit-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.express-limit-label {
+  font-size: 11px;
+  color: rgba(180, 190, 210, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.express-limit-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: rgba(100, 220, 150, 0.95);
+}
+
+.express-limit-value.exhausted {
+  color: rgba(255, 100, 100, 0.95);
+}
+
+.express-loading {
+  text-align: center;
+  padding: 20px;
+  color: rgba(190, 200, 220, 0.7);
+  font-size: 14px;
+}
+
+.express-limit-warning {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(255, 100, 100, 0.15);
+  border: 1px solid rgba(255, 100, 100, 0.3);
+  color: rgba(255, 150, 150, 0.95);
+  font-size: 14px;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+/* =================== СПИСОК ВЫБРАННЫХ СОБЫТИЙ =================== */
+
+.express-items {
+  margin-bottom: 16px;
+}
+
+.express-items-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.express-items-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(200, 210, 230, 0.8);
+}
+
+.express-clear-btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 100, 100, 0.4);
+  background: transparent;
+  color: rgba(255, 150, 150, 0.9);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+
+.express-clear-btn:hover {
+  background: rgba(255, 100, 100, 0.15);
+  border-color: rgba(255, 100, 100, 0.6);
+}
+
+.express-items-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.express-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(30, 35, 50, 0.8);
+  border: 1px solid rgba(255, 200, 50, 0.15);
+}
+
+.express-item-match {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.express-item-teams {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(240, 245, 255, 0.95);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.express-item-time {
+  font-size: 11px;
+  color: rgba(180, 190, 210, 0.6);
+}
+
+.express-item-selection {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.express-item-market {
+  font-size: 11px;
+  color: rgba(180, 190, 210, 0.6);
+}
+
+.express-item-choice {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(0, 240, 255, 0.9);
+}
+
+.express-item-points {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(100, 220, 150, 0.9);
+}
+
+.express-item-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 100, 100, 0.3);
+  background: rgba(255, 100, 100, 0.1);
+  color: rgba(255, 150, 150, 0.9);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 160ms ease;
+  flex-shrink: 0;
+}
+
+.express-item-remove:hover {
+  background: rgba(255, 100, 100, 0.25);
+  border-color: rgba(255, 100, 100, 0.5);
+}
+
+/* =================== РАСЧЁТ =================== */
+
+.express-calculation {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(40, 35, 55, 0.7);
+  border: 1px solid rgba(255, 200, 50, 0.2);
+  margin-bottom: 16px;
+}
+
+.express-calc-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.express-calc-row.highlight {
+  border-top: 1px solid rgba(255, 200, 50, 0.15);
+  margin-top: 6px;
+  padding-top: 10px;
+}
+
+.express-calc-row.total {
+  border-top: 1px solid rgba(255, 200, 50, 0.25);
+  margin-top: 6px;
+  padding-top: 12px;
+}
+
+.express-calc-label {
+  font-size: 13px;
+  color: rgba(190, 200, 220, 0.75);
+}
+
+.express-calc-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(240, 245, 255, 0.95);
+}
+
+.express-calc-value.multiplier {
+  color: rgba(255, 200, 50, 0.95);
+  font-size: 16px;
+}
+
+.express-calc-row.total .express-calc-label {
+  font-weight: 600;
+  color: rgba(220, 230, 250, 0.9);
+}
+
+.express-calc-row.total .express-calc-value {
+  font-size: 18px;
+  color: rgba(100, 220, 150, 0.95);
+}
+
+/* =================== ВЫБОР МАТЧА =================== */
+
+.express-match-picker {
+  margin-bottom: 16px;
+}
+
+.express-picker-title {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(200, 210, 230, 0.85);
+}
+
+.express-match-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.express-no-matches {
+  text-align: center;
+  padding: 16px;
+  color: rgba(180, 190, 210, 0.6);
+  font-size: 13px;
+}
+
+.express-match-btn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 240, 255, 0.2);
+  background: rgba(30, 35, 50, 0.6);
+  color: rgba(240, 245, 255, 0.9);
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+
+.express-match-btn:hover {
+  background: rgba(0, 240, 255, 0.08);
+  border-color: rgba(0, 240, 255, 0.4);
+  transform: translateX(4px);
+}
+
+.express-match-teams {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.express-match-time {
+  font-size: 12px;
+  color: rgba(180, 190, 210, 0.6);
+}
+
+/* =================== ВЫБОР СОБЫТИЯ =================== */
+
+.express-template-picker {
+  background: rgba(25, 30, 45, 0.7);
+  border-radius: 12px;
+  padding: 14px;
+  border: 1px solid rgba(0, 240, 255, 0.15);
+}
+
+.express-picker-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(0, 240, 255, 0.15);
+}
+
+.express-picker-match {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(240, 245, 255, 0.95);
+}
+
+.express-back-btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  background: transparent;
+  color: rgba(0, 240, 255, 0.9);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+
+.express-back-btn:hover {
+  background: rgba(0, 240, 255, 0.1);
+}
+
+.express-no-templates {
+  text-align: center;
+  padding: 16px;
+  color: rgba(180, 190, 210, 0.6);
+  font-size: 13px;
+}
+
+.express-templates {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.express-template {
+  background: rgba(35, 40, 55, 0.6);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.express-template-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 12px 14px;
+  border: none;
+  background: transparent;
+  color: rgba(240, 245, 255, 0.9);
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+
+.express-template-header:hover {
+  background: rgba(0, 240, 255, 0.06);
+}
+
+.express-template-header.expanded {
+  background: rgba(0, 240, 255, 0.1);
+  border-bottom: 1px solid rgba(0, 240, 255, 0.15);
+}
+
+.express-template-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.express-template-points {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(100, 220, 150, 0.9);
+}
+
+.express-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 14px;
+}
+
+.express-choice-btn {
+  padding: 10px 18px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  background: rgba(0, 240, 255, 0.08);
+  color: rgba(0, 240, 255, 0.95);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+
+.express-choice-btn:hover {
+  background: rgba(0, 240, 255, 0.18);
+  border-color: rgba(0, 240, 255, 0.5);
+  transform: translateY(-2px);
+}
+
+/* =================== СООБЩЕНИЯ =================== */
+
+.express-error {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(255, 100, 100, 0.12);
+  border: 1px solid rgba(255, 100, 100, 0.3);
+  color: rgba(255, 150, 150, 0.95);
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+.express-success {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(100, 220, 150, 0.12);
+  border: 1px solid rgba(100, 220, 150, 0.3);
+  color: rgba(100, 220, 150, 0.95);
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+/* =================== КНОПКА ОТПРАВКИ =================== */
+
+.express-submit-btn {
+  width: 100%;
+  padding: 14px 20px;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(135deg, rgba(255, 200, 50, 0.9), rgba(255, 150, 50, 0.85));
+  color: rgba(20, 20, 30, 0.95);
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: all 200ms ease;
+  box-shadow: 0 8px 24px rgba(255, 200, 50, 0.3);
+}
+
+.express-submit-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(255, 200, 50, 0.4);
+}
+
+.express-submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* =================== АДАПТИВНОСТЬ =================== */
+
+@media (max-width: 480px) {
+  .express-panel {
+    padding: 16px;
+  }
+
+  .express-header {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .express-limit-info {
+    align-items: flex-start;
+    flex-direction: row;
+    gap: 8px;
+  }
+
+  .express-item {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .express-item-match {
+    flex: 1 1 100%;
+  }
+
+  .express-item-selection {
+    flex: 1;
+  }
+
+  .express-choices {
+    gap: 6px;
+  }
+
+  .express-choice-btn {
+    padding: 8px 14px;
+    font-size: 12px;
+  }
+}

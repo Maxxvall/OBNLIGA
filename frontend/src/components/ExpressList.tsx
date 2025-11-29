@@ -244,7 +244,7 @@ const ExpressList: React.FC<ExpressListProps> = ({ onRefresh: _onRefresh }) => {
                         </span>
                         <div className="item-match">
                           <span className="item-teams">
-                            {getClubShortName(item.homeClub)} — {getClubShortName(item.awayClub)}
+                            {item.homeClub.name} — {item.awayClub.name}
                           </span>
                           <span className="item-time">{formatDateTime(item.matchDateTime)}</span>
                         </div>

@@ -6,6 +6,7 @@ import {
   STREAK_REWARD_CONFIG,
   PREDICTIONS_REWARD_CONFIG,
   SEASON_POINTS_REWARD_CONFIG,
+  BET_WINS_REWARD_CONFIG,
 } from './achievementJobProcessor'
 
 const DEFAULT_CLIENT = prisma
@@ -119,6 +120,11 @@ export const incrementAchievementProgress = async (
         const points = SEASON_POINTS_REWARD_CONFIG[unlockedLevel]
         if (points) {
           await createAchievementRewardJob(userId, 'credits', unlockedLevel, points, seasonId, client)
+        }
+      } else if (metric === AchievementMetric.CORRECT_PREDICTIONS) {
+        const points = BET_WINS_REWARD_CONFIG[unlockedLevel]
+        if (points) {
+          await createAchievementRewardJob(userId, 'bet_wins', unlockedLevel, points, seasonId, client)
         }
       }
     }

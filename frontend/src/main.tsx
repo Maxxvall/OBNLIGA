@@ -40,11 +40,17 @@ function handleTelegramStartParam(): void {
     if (startParam.startsWith(matchPrefix)) {
       const matchId = startParam.substring(matchPrefix.length)
       if (matchId && /^\d+$/.test(matchId)) {
-        // Небольшая задержка для инициализации стора
-        setTimeout(() => {
-          const { openMatchDetails } = useAppStore.getState()
-          openMatchDetails(matchId)
-        }, 100)
+        // Увеличенная задержка для полной инициализации приложения и сезонов
+        const tryOpenMatch = (attempts = 0) => {
+          const state = useAppStore.getState()
+          // Ждём загрузки сезонов или максимум 3 секунды
+          if (state.loading.seasons && attempts < 30) {
+            setTimeout(() => tryOpenMatch(attempts + 1), 100)
+            return
+          }
+          state.openMatchDetails(matchId)
+        }
+        setTimeout(() => tryOpenMatch(), 300)
       }
     }
   } catch (err) {

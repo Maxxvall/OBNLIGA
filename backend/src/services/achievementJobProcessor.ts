@@ -44,6 +44,13 @@ export const SEASON_POINTS_REWARD_CONFIG: Record<number, number> = {
   3: 1000,  // Gold (Легенда) — 5000 сезонных очков
 }
 
+// Конфигурация очков для уровней bet_wins (угаданные прогнозы)
+export const BET_WINS_REWARD_CONFIG: Record<number, number> = {
+  1: 20,    // Bronze (Счастливчик) — 10 угаданных прогнозов
+  2: 200,   // Silver (Снайпер) — 50 угаданных прогнозов
+  3: 1000,  // Gold (Чемпион) — 200 угаданных прогнозов
+}
+
 /**
  * Создаёт задачу на выдачу награды за достижение
  * Gracefully handles case when table doesn't exist yet

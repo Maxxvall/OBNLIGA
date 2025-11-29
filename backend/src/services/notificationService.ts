@@ -123,18 +123,22 @@ const buildMatchStartedMessage = (match: MatchNotificationDetails): string => {
   const lines = [
     '🔴 <b>МАТЧ НАЧАЛСЯ!</b>',
     '',
-    `⚽ <b>${match.homeClubName}</b> vs <b>${match.awayClubName}</b>`,
+    `⚽ ${match.homeClubName} vs ${match.awayClubName}`,
   ]
 
+  // Соревнование + сезон
   if (match.competitionName) {
-    lines.push(`🏆 ${match.competitionName}`)
+    const competitionLine = match.seasonName
+      ? `🏆 ${match.competitionName} — ${match.seasonName}`
+      : `🏆 ${match.competitionName}`
+    lines.push(competitionLine)
   }
 
   lines.push('')
   lines.push('🎬 Заходи смотреть трансляцию прямо сейчас!')
-  lines.push('')
 
   if (match.broadcastUrl) {
+    lines.push('')
     lines.push(`📺 Трансляция: ${match.broadcastUrl}`)
   }
 
@@ -145,29 +149,30 @@ const buildMatchFinishedMessage = (match: MatchNotificationDetails): string => {
   const homeScore = match.homeScore ?? 0
   const awayScore = match.awayScore ?? 0
 
-  const lines = [
-    '🏁 <b>МАТЧ ЗАВЕРШЁН!</b>',
-    '',
-    `⚽ <b>${match.homeClubName}</b> ${homeScore} : ${awayScore} <b>${match.awayClubName}</b>`,
-  ]
+  const lines = ['🏁 <b>МАТЧ ЗАВЕРШЁН!</b>', '']
 
-  if (match.competitionName) {
-    lines.push(`🏆 ${match.competitionName}`)
-  }
-
-  lines.push('')
-
-  // Определяем результат
+  // Определяем результат и выводим его ПЕРЕД счётом
   if (homeScore > awayScore) {
-    lines.push(`🎉 Победа ${match.homeClubShortName}!`)
+    lines.push(`🎉 Победа ${match.homeClubName}!`)
   } else if (awayScore > homeScore) {
-    lines.push(`🎉 Победа ${match.awayClubShortName}!`)
+    lines.push(`🎉 Победа ${match.awayClubName}!`)
   } else {
     lines.push('🤝 Ничья!')
   }
 
   lines.push('')
-  lines.push('Открой приложение для полной статистики 📊')
+  lines.push(`⚽ ${match.homeClubName} ${homeScore} : ${awayScore} ${match.awayClubName}`)
+
+  // Соревнование + сезон
+  if (match.competitionName) {
+    const competitionLine = match.seasonName
+      ? `🏆 ${match.competitionName} ${match.seasonName}`
+      : `🏆 ${match.competitionName}`
+    lines.push(competitionLine)
+  }
+
+  lines.push('')
+  lines.push('📊 Открой приложение для полной статистики')
 
   return lines.join('\n')
 }

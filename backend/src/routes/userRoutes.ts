@@ -11,7 +11,7 @@ import {
   claimDailyReward,
   DailyRewardError,
 } from '../services/dailyRewards'
-import { STREAK_REWARD_CONFIG, PREDICTIONS_REWARD_CONFIG, SEASON_POINTS_REWARD_CONFIG } from '../services/achievementJobProcessor'
+import { STREAK_REWARD_CONFIG, PREDICTIONS_REWARD_CONFIG, SEASON_POINTS_REWARD_CONFIG, BET_WINS_REWARD_CONFIG } from '../services/achievementJobProcessor'
 
 type UserUpsertBody = {
   userId?: string | number | bigint
@@ -506,7 +506,7 @@ function getAchievementGroup(metric: string): string {
     case 'TOTAL_PREDICTIONS':
       return 'predictions'
     case 'CORRECT_PREDICTIONS':
-      return 'accuracy'
+      return 'bet_wins'
     case 'SEASON_POINTS':
       return 'credits'
     default:
@@ -522,6 +522,8 @@ function getAchievementIconUrl(metric: string, level: number): string {
       return getPredictionsIconUrl(level)
     case 'SEASON_POINTS':
       return getSeasonPointsIconUrl(level)
+    case 'CORRECT_PREDICTIONS':
+      return getBetWinsIconUrl(level)
     default:
       return '/achievements/default-locked.png'
   }
@@ -535,6 +537,8 @@ function getAchievementLevelTitle(metric: string, level: number): string {
       return getPredictionsLevelTitle(level)
     case 'SEASON_POINTS':
       return getSeasonPointsLevelTitle(level)
+    case 'CORRECT_PREDICTIONS':
+      return getBetWinsLevelTitle(level)
     default:
       return `Уровень ${level}`
   }
@@ -548,6 +552,8 @@ function getAchievementRewardPoints(metric: string, level: number): number {
       return PREDICTIONS_REWARD_CONFIG[level] ?? 0
     case 'SEASON_POINTS':
       return SEASON_POINTS_REWARD_CONFIG[level] ?? 0
+    case 'CORRECT_PREDICTIONS':
+      return BET_WINS_REWARD_CONFIG[level] ?? 0
     default:
       return 0
   }
@@ -640,6 +646,36 @@ function getSeasonPointsLevelTitle(level: number): string {
       return 'Легенда'
     default:
       return 'Дебютант'
+  }
+}
+
+function getBetWinsIconUrl(level: number): string {
+  switch (level) {
+    case 0:
+      return '/achievements/betwins-locked.png'
+    case 1:
+      return '/achievements/betwins-bronze.png'
+    case 2:
+      return '/achievements/betwins-silver.png'
+    case 3:
+      return '/achievements/betwins-gold.png'
+    default:
+      return '/achievements/betwins-locked.png'
+  }
+}
+
+function getBetWinsLevelTitle(level: number): string {
+  switch (level) {
+    case 0:
+      return 'Новичок'
+    case 1:
+      return 'Счастливчик'
+    case 2:
+      return 'Снайпер'
+    case 3:
+      return 'Чемпион'
+    default:
+      return 'Новичок'
   }
 }
 

@@ -197,28 +197,28 @@
 
 /* === Статистика: широкий блок === */
 .team-stats-wide-block {
-  border-radius: 18px;
-  padding: 24px;
-  background: rgba(0, 240, 255, 0.08);
-  border: 1px solid rgba(0, 240, 255, 0.16);
+  border-radius: 16px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.06), rgba(120, 31, 143, 0.04));
+  border: 1px solid rgba(0, 240, 255, 0.12);
   display: grid;
   grid-template-columns: auto 1fr;
   align-items: center;
-  gap: 32px;
-  margin-bottom: 16px;
+  gap: 20px;
+  margin-bottom: 12px;
 }
 
 .team-stats-matches {
   position: relative;
-  min-width: 160px;
+  min-width: 120px;
 }
 
 .team-stats-gauge {
   position: relative;
-  width: 160px;
+  width: 120px;
   margin: 0 auto;
-  --team-gauge-stroke: 18px;
-  --team-gauge-track: rgba(230, 247, 255, 0.18);
+  --team-gauge-stroke: 12px;
+  --team-gauge-track: rgba(230, 247, 255, 0.12);
   --team-gauge-win: #4a9d5f;
   --team-gauge-draw: rgba(255, 255, 255, 0.52);
   --team-gauge-loss: #dc2626;
@@ -269,33 +269,32 @@
 }
 
 .team-stats-matches-value {
-  font-size: 48px;
+  font-size: 32px;
   font-weight: 700;
   color: rgba(230, 247, 255, 0.95);
   line-height: 1;
 }
 
 .team-stats-matches-label {
-  font-size: 12px;
-  letter-spacing: 0.6px;
-  color: rgba(230, 247, 255, 0.72);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  color: rgba(230, 247, 255, 0.65);
   text-transform: lowercase;
 }
 
 .team-stats-wdl {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  align-items: flex-end;
-  text-align: right;
+  gap: 8px;
+  align-items: flex-start;
+  justify-content: center;
 }
 
 .team-stats-wdl-item {
   display: grid;
-  grid-template-columns: 12px auto auto;
-  gap: 12px;
+  grid-template-columns: 8px 80px 32px;
+  gap: 10px;
   align-items: center;
-  margin-left: auto;
 }
 
 .team-stats-wdl-bullet {
@@ -303,7 +302,6 @@
   height: 8px;
   border-radius: 50%;
   background: rgba(230, 247, 255, 0.38);
-  justify-self: end;
 }
 
 .team-stats-wdl-bullet.tone-wins {
@@ -319,15 +317,16 @@
 }
 
 .team-stats-wdl-label {
-  font-size: 13px;
-  letter-spacing: 0.6px;
-  color: rgba(230, 247, 255, 0.74);
+  font-size: 12px;
+  letter-spacing: 0.4px;
+  color: rgba(230, 247, 255, 0.7);
 }
 
 .team-stats-wdl-value {
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 700;
   color: rgba(230, 247, 255, 0.96);
+  text-align: right;
   justify-self: end;
 }
 
@@ -335,36 +334,42 @@
 .team-stats-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
+  gap: 4px;
 }
 
 .team-stats-card {
-  border-radius: 16px;
-  padding: 8px 4px;
-  background: rgba(0, 240, 255, 0.08);
-  border: 1px solid rgba(0, 240, 255, 0.16);
+  border-radius: 12px;
+  padding: 10px 6px;
+  background: linear-gradient(145deg, rgba(0, 240, 255, 0.05), rgba(120, 31, 143, 0.03));
+  border: 1px solid rgba(0, 240, 255, 0.1);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+.team-stats-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 240, 255, 0.08);
 }
 
 .team-stats-card-icon {
-  font-size: 30px;
-  opacity: 0.9;
+  font-size: 22px;
+  opacity: 0.85;
 }
 
 .team-stats-card-value {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
   color: rgba(230, 247, 255, 0.95);
   line-height: 1;
 }
 
 .team-stats-card-label {
-  font-size: 12px;
-  letter-spacing: 0.5px;
-  color: rgba(230, 247, 255, 0.72);
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  color: rgba(230, 247, 255, 0.65);
   text-align: center;
 }
 
@@ -377,15 +382,15 @@
 }
 
 .team-section {
-  margin-bottom: 28px;
+  margin-bottom: 20px;
 }
 
 .team-section-title {
-  font-size: 16px;
-  letter-spacing: 0.8px;
+  font-size: 13px;
+  letter-spacing: 0.6px;
   text-transform: uppercase;
-  color: rgba(230, 247, 255, 0.86);
-  margin: 0 0 16px 0;
+  color: rgba(230, 247, 255, 0.75);
+  margin: 0 0 12px 0;
   font-weight: 600;
 }
 
@@ -403,23 +408,24 @@
 
 .team-form-compact {
   display: flex;
-  gap: 16px;
+  gap: 10px;
   overflow-x: auto;
   justify-content: center;
+  padding: 4px 0;
 }
 
 .team-form-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex-shrink: 0;
 }
 
 .team-form-date-compact {
-  font-size: 11px;
-  letter-spacing: 0.6px;
-  color: rgba(230, 247, 255, 0.68);
+  font-size: 9px;
+  letter-spacing: 0.4px;
+  color: rgba(230, 247, 255, 0.55);
 }
 
 .team-form-match {
@@ -430,35 +436,38 @@
 }
 
 .team-form-logo {
-  width: 50px;
-  height: 50px;
+  width: 38px;
+  height: 38px;
   object-fit: cover;
+  border-radius: 8px;
 }
 
 .team-form-logo.fallback {
-  width: 56px;
-  height: 56px;
+  width: 38px;
+  height: 38px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--neon-cyan);
+  border-radius: 8px;
+  background: rgba(0, 240, 255, 0.06);
 }
 
 .team-form-result-badge {
   position: absolute;
-  bottom: -4px;
+  bottom: -3px;
   left: 50%;
   transform: translateX(-50%);
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 11px;
+  font-size: 9px;
   border: 2px solid rgba(12, 20, 36, 0.92);
 }
 
@@ -478,10 +487,10 @@
 }
 
 .team-form-score-compact {
-  font-size: 13px;
-  letter-spacing: 0.6px;
+  font-size: 11px;
+  letter-spacing: 0.4px;
   font-weight: 600;
-  color: rgba(230, 247, 255, 0.86);
+  color: rgba(230, 247, 255, 0.8);
 }
 
 .team-form-empty,
@@ -497,18 +506,18 @@
 
 .team-achievements-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
 }
 
 .team-achievement-card {
-  border-radius: 14px;
-  border: 2px solid rgba(120, 31, 143, 0.3);
-  background: rgba(120, 31, 143, 0.12);
-  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(120, 31, 143, 0.25);
+  background: linear-gradient(135deg, rgba(120, 31, 143, 0.08), rgba(0, 240, 255, 0.03));
+  padding: 10px 12px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   transition: all 0.2s ease;
 }
 
@@ -533,7 +542,7 @@
 }
 
 .team-achievement-icon {
-  font-size: 32px;
+  font-size: 24px;
   line-height: 1;
   flex-shrink: 0;
 }
@@ -559,16 +568,16 @@
 }
 
 .team-achievement-place {
-  font-size: 15px;
-  letter-spacing: 0.6px;
+  font-size: 13px;
+  letter-spacing: 0.4px;
   font-weight: 700;
   color: rgba(230, 247, 255, 0.96);
 }
 
 .team-achievement-season {
-  font-size: 12px;
-  letter-spacing: 0.5px;
-  color: rgba(230, 247, 255, 0.7);
+  font-size: 10px;
+  letter-spacing: 0.3px;
+  color: rgba(230, 247, 255, 0.6);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -779,7 +788,7 @@
 
 @media (max-width: 720px) {
   .team-view-panel {
-    padding: 20px;
+    padding: 18px;
     width: min(94vw, 720px);
     max-height: 92vh;
   }
@@ -791,30 +800,29 @@
   }
 
   .team-stats-wide-block {
-    gap: 20px;
-    justify-items: center;
+    gap: 16px;
+    padding: 14px 16px;
   }
 
   .team-stats-gauge {
-    --team-gauge-stroke: 14px;
+    width: 100px;
+    --team-gauge-stroke: 10px;
+  }
+
+  .team-stats-matches-value {
+    font-size: 28px;
   }
 
   .team-stats-wdl {
     align-items: flex-start;
-    text-align: center;
   }
 
   .team-stats-wdl-item {
-    margin-left: 0;
-    justify-items: center;
-  }
-
-  .team-stats-wdl-bullet {
-    justify-self: center;
+    grid-template-columns: 8px 70px 28px;
   }
 
   .team-stats-wdl-value {
-    justify-self: center;
+    font-size: 16px;
   }
 
   .team-matches-tabs {
@@ -824,11 +832,103 @@
 
 @media (max-width: 520px) {
   .team-view-backdrop {
-    padding: 16px;
+    padding: 12px;
   }
 
   .team-view-panel {
-    padding: 18px;
+    padding: 14px;
+    gap: 14px;
+  }
+
+  .team-section {
+    margin-bottom: 16px;
+  }
+
+  .team-section-title {
+    font-size: 12px;
+    margin-bottom: 10px;
+  }
+
+  .team-stats-wide-block {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .team-stats-gauge {
+    width: 90px;
+    --team-gauge-stroke: 8px;
+  }
+
+  .team-stats-matches-value {
+    font-size: 24px;
+  }
+
+  .team-stats-wdl {
+    flex-direction: row;
+    justify-content: center;
+    gap: 16px;
+    width: 100%;
+  }
+
+  .team-stats-wdl-item {
+    flex-direction: column;
+    gap: 4px;
+    grid-template-columns: unset;
+  }
+
+  .team-stats-wdl-label {
+    font-size: 10px;
+    order: 2;
+  }
+
+  .team-stats-wdl-value {
+    font-size: 18px;
+    order: 1;
+  }
+
+  .team-stats-wdl-bullet {
+    display: none;
+  }
+
+  .team-stats-card {
+    padding: 8px 4px;
+  }
+
+  .team-stats-card-icon {
+    font-size: 18px;
+  }
+
+  .team-stats-card-value {
+    font-size: 16px;
+  }
+
+  .team-stats-card-label {
+    font-size: 9px;
+  }
+
+  .team-form-logo,
+  .team-form-logo.fallback {
+    width: 32px;
+    height: 32px;
+  }
+
+  .team-form-result-badge {
+    width: 14px;
+    height: 14px;
+    font-size: 8px;
+  }
+
+  .team-achievement-card {
+    padding: 8px 10px;
+  }
+
+  .team-achievement-icon {
+    font-size: 20px;
+  }
+
+  .team-achievement-place {
+    font-size: 12px;
   }
 
   .team-match-card .league-match-main {
@@ -852,16 +952,8 @@
 
   .team-view-logo,
   .team-view-logo.fallback {
-    width: 64px;
-    height: 64px;
-  }
-
-  .team-stats-gauge {
-    --team-gauge-stroke: 8px;
-  }
-
-  .team-stats-matches-value {
-    font-size: 48px;
+    width: 56px;
+    height: 56px;
   }
 
   .team-matches-tabs {

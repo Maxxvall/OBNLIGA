@@ -29,6 +29,12 @@ const ACHIEVEMENT_LEVEL_NAMES: Record<string, Record<number, string>> = {
     2: 'Голеадор',
     3: 'Легенда',
   },
+  bet_wins: {
+    0: 'Новичок',
+    1: 'Счастливчик',
+    2: 'Снайпер',
+    3: 'Чемпион',
+  },
 }
 
 // Группа для отображения
@@ -36,6 +42,7 @@ const ACHIEVEMENT_GROUP_LABELS: Record<string, string> = {
   streak: 'Игровая серия',
   predictions: 'Прогнозы',
   credits: 'Очки сезона',
+  bet_wins: 'Угаданные прогнозы',
 }
 
 // Конфигурация порогов и очков для каждой группы
@@ -55,13 +62,45 @@ const ACHIEVEMENT_THRESHOLDS: Record<string, { level: number; threshold: number;
     { level: 2, threshold: 1000, points: 0 },
     { level: 3, threshold: 5000, points: 0 },
   ],
+  bet_wins: [
+    { level: 1, threshold: 10, points: 20 },
+    { level: 2, threshold: 50, points: 200 },
+    { level: 3, threshold: 200, points: 1000 },
+  ],
 }
 
-// Единицы измерения прогресса
-const ACHIEVEMENT_PROGRESS_UNITS: Record<string, string> = {
-  streak: 'дней подряд',
-  predictions: 'прогнозов',
-  credits: 'очков',
+// Функции склонения единиц измерения прогресса
+// Правило: 1 день, 2-4 дня, 5-20 дней, 21 день, 22-24 дня и т.д.
+function pluralize(n: number, one: string, few: string, many: string): string {
+  const absN = Math.abs(n)
+  const mod10 = absN % 10
+  const mod100 = absN % 100
+
+  if (mod100 >= 11 && mod100 <= 19) {
+    return many
+  }
+  if (mod10 === 1) {
+    return one
+  }
+  if (mod10 >= 2 && mod10 <= 4) {
+    return few
+  }
+  return many
+}
+
+function getProgressUnit(group: string, count: number): string {
+  switch (group) {
+  case 'streak':
+    return pluralize(count, 'день подряд', 'дня подряд', 'дней подряд')
+  case 'predictions':
+    return pluralize(count, 'прогноз', 'прогноза', 'прогнозов')
+  case 'credits':
+    return pluralize(count, 'очко', 'очка', 'очков')
+  case 'bet_wins':
+    return pluralize(count, 'угаданный прогноз', 'угаданных прогноза', 'угаданных прогнозов')
+  default:
+    return ''
+  }
 }
 
 const DEFAULT_ACHIEVEMENTS: UserAchievementSummaryItem[] = [
@@ -97,6 +136,18 @@ const DEFAULT_ACHIEVEMENTS: UserAchievementSummaryItem[] = [
     nextThreshold: 200,
     iconSrc: '/achievements/credits-locked.png',
     shortTitle: 'Дебютант',
+    shouldPlayAnimation: false,
+    animationRewardId: null,
+    animationPoints: null,
+  },
+  {
+    achievementId: -4,
+    group: 'bet_wins',
+    currentLevel: 0,
+    currentProgress: 0,
+    nextThreshold: 10,
+    iconSrc: '/achievements/betwins-locked.png',
+    shortTitle: 'Новичок',
     shouldPlayAnimation: false,
     animationRewardId: null,
     animationPoints: null,
@@ -150,13 +201,16 @@ interface AchievementModalProps {
 function AchievementModal({ achievement, onClose }: AchievementModalProps) {
   const groupLabel = ACHIEVEMENT_GROUP_LABELS[achievement.group] ?? achievement.group
   const levelName = getAchievementLevelName(achievement.group, achievement.currentLevel)
-  const unit = ACHIEVEMENT_PROGRESS_UNITS[achievement.group] ?? ''
   const thresholds = ACHIEVEMENT_THRESHOLDS[achievement.group] ?? []
   const maxLevel = thresholds.length
 
   const isMaxLevel = achievement.currentLevel >= maxLevel
   const nextThreshold = thresholds.find(t => t.level === achievement.currentLevel + 1)
   const remaining = nextThreshold ? nextThreshold.threshold - achievement.currentProgress : 0
+
+  // Единицы измерения с правильным склонением
+  const progressUnit = getProgressUnit(achievement.group, achievement.currentProgress)
+  const remainingUnit = getProgressUnit(achievement.group, remaining)
 
   // Закрытие по Escape
   useEffect(() => {
@@ -200,14 +254,14 @@ function AchievementModal({ achievement, onClose }: AchievementModalProps) {
         <div className="achievement-modal-status">
           <div className="achievement-modal-status-label">Текущий прогресс</div>
           <div className="achievement-modal-status-value">
-            {achievement.currentProgress} {unit}
+            {achievement.currentProgress} {progressUnit}
           </div>
         </div>
 
         <div className="achievement-modal-next">
           {isMaxLevel
             ? 'Вы достигли максимального уровня!'
-            : `До следующего уровня: ${remaining} ${unit}`}
+            : `До следующего уровня: ${remaining} ${remainingUnit}`}
         </div>
 
         <div className="achievement-modal-levels">
@@ -216,13 +270,14 @@ function AchievementModal({ achievement, onClose }: AchievementModalProps) {
             const tLevelName = getAchievementLevelName(achievement.group, t.level)
             const isCurrent = t.level === achievement.currentLevel
             const isUnlocked = t.level <= achievement.currentLevel
+            const thresholdUnit = getProgressUnit(achievement.group, t.threshold)
 
             return (
               <div key={t.level} className="achievement-modal-level-row">
                 <span className={`achievement-modal-level-name ${isCurrent ? 'current' : ''}`}>
                   {isUnlocked ? '✓ ' : ''}{tLevelName}
                 </span>
-                <span className="achievement-modal-level-threshold">{t.threshold} {unit}</span>
+                <span className="achievement-modal-level-threshold">{t.threshold} {thresholdUnit}</span>
                 {t.points > 0 && (
                   <span className="achievement-modal-level-points">+{t.points} очков</span>
                 )}

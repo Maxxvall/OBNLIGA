@@ -614,7 +614,16 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
                       aria-controls={bodyId}
                     >
                       <span className="round-toggle-icon" aria-hidden>
-                        {isExpanded ? '-' : '+'}
+                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                          {isExpanded ? (
+                            <line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                          ) : (
+                            <>
+                              <line x1="5" y1="0" x2="5" y2="10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                              <line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                            </>
+                          )}
+                        </svg>
                       </span>
                       <span className="round-header-main">
                         <span className="round-title">{round.roundLabel}</span>

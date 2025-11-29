@@ -25,6 +25,7 @@ import { refreshLeagueMatchAggregates } from './leagueSchedule'
 import { refreshLeagueStats } from './leagueStats'
 import { publicClubSummaryKey, refreshClubSummary } from './clubSummary'
 import { USER_PREDICTION_CACHE_KEY, PREDICTION_UPCOMING_MAX_DAYS } from './predictionConstants'
+import { incrementAchievementProgress } from './achievementProgress'
 import {
   addDays,
   applyTimeToDate,
@@ -745,6 +746,13 @@ async function updatePredictions(
         pointsAwarded: isCorrect ? 3 : 0,
       },
     })
+
+    // Инкрементируем прогресс достижения "Угаданные прогнозы" при верном прогнозе
+    if (isCorrect) {
+      await incrementAchievementProgress(prediction.userId, AchievementMetric.CORRECT_PREDICTIONS, 1, tx).catch(err => {
+        logger.warn({ err, userId: prediction.userId }, 'Failed to increment CORRECT_PREDICTIONS achievement')
+      })
+    }
 
     await tx.appUser.update({
       where: { id: prediction.userId },

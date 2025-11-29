@@ -832,12 +832,14 @@ const PredictionsPageInner: React.FC = () => {
                                       // Открыть модалку для просмотра
                                       expressCart.setModalOpen(true)
                                     } else {
+                                      const choicePoints = choiceObj?.points ?? computeExpectedPoints(selectedTemplate)
                                       const cartItem = createCartItem(
                                         selectedTemplate,
                                         match,
                                         selection,
                                         selectionLabel,
-                                        meta.title
+                                        meta.title,
+                                        choicePoints
                                       )
                                       expressCart.addItem(cartItem)
                                     }

@@ -31,14 +31,17 @@ export const createCartItem = (
   match: ActivePredictionMatch,
   selection: string,
   selectionLabel: string,
-  marketTitle: string
+  marketTitle: string,
+  points: number
 ): ExpressCartItem => ({
   templateId: template.id,
   matchId: match.matchId,
   selection,
   selectionLabel,
   marketTitle,
-  matchLabel: `${match.homeClub.shortName ?? match.homeClub.name} vs ${match.awayClub.shortName ?? match.awayClub.name}`,
+  // Показываем полные названия команд в модалке (требование)
+  matchLabel: `${match.homeClub.name} vs ${match.awayClub.name}`,
   matchDateTime: match.matchDateTime,
-  basePoints: template.basePoints,
+  // Используем именно те очки, которые видны в интерфейсе выбора (points)
+  basePoints: points,
 })

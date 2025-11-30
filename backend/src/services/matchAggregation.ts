@@ -97,6 +97,8 @@ export async function handleMatchFinalization(
   options?: FinalizationOptions
 )
 {
+  logger.info({ matchId: matchId.toString() }, 'handleMatchFinalization: starting')
+  
   const match = await prisma.match.findUnique({
     where: { id: matchId },
     include: {
@@ -112,6 +114,11 @@ export async function handleMatchFinalization(
     logger.warn({ matchId: matchId.toString() }, 'handleMatchFinalization: match not found')
     return
   }
+
+  logger.info(
+    { matchId: matchId.toString(), status: match.status, homeScore: match.homeScore, awayScore: match.awayScore },
+    'handleMatchFinalization: match loaded'
+  )
 
   if (match.status !== MatchStatus.FINISHED) {
     logger.info(
@@ -825,6 +832,12 @@ async function updatePredictions(
       },
     })
 
+    const pendingEntriesCount = templates.reduce((sum, t) => sum + t.entries.length, 0)
+    logger.info(
+      { matchId: match.id.toString(), templatesCount: templates.length, pendingEntriesCount },
+      'updatePredictions: found templates and pending entries'
+    )
+
     if (templates.length > 0) {
       const settlement = await settlePredictionEntries(
         {
@@ -841,6 +854,10 @@ async function updatePredictions(
         logger
       )
   settlementSummary = settlement as PredictionSettlementResult
+      logger.info(
+        { matchId: match.id.toString(), settled: settlement.settled, won: settlement.won, lost: settlement.lost },
+        'updatePredictions: settlement completed'
+      )
     }
   } catch (err) {
     logger.error({ err, matchId: match.id.toString() }, 'failed to settle prediction entries')

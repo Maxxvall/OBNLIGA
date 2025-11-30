@@ -57,6 +57,17 @@ if (token) {
     await ctx.reply('Нажмите кнопку, чтобы открыть Приложение:', { reply_markup: keyboard as any })
   })
 
+  botInstance.command('capitan', async ctx => {
+    const keyboard = {
+      inline_keyboard: [[{ text: 'Открыть Портал капитана', url: 'https://obnligaadmin.onrender.com/' }]]
+    } as const
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await ctx.reply(
+      'Капитан — пожалуйста, заполните список игроков перед началом матча. Откройте Портал капитана по кнопке ниже:',
+      { reply_markup: keyboard as any }
+    )
+  })
+
   botInstance.on('message', async ctx => {
     if (ctx.message && 'text' in ctx.message) {
       const text = ctx.message.text

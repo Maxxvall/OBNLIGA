@@ -5033,6 +5033,43 @@ export default async function (server: FastifyInstance) {
         return reply.send({ ok: true })
       })
 
+      // Re-settle predictions for a finished match
+      admin.post('/matches/:matchId/resettle', async (request, reply) => {
+        const matchId = parseBigIntId(getParam(request.params, 'matchId'), 'matchId')
+        const match = await prisma.match.findUnique({
+          where: { id: matchId },
+          select: { id: true, status: true, seasonId: true }
+        })
+        
+        if (!match) {
+          return reply.status(404).send({ ok: false, error: 'match_not_found' })
+        }
+        
+        if (match.status !== MatchStatus.FINISHED) {
+          return reply.status(409).send({ ok: false, error: 'match_not_finished' })
+        }
+
+        const publishTopic =
+          typeof request.server.publishTopic === 'function'
+            ? request.server.publishTopic.bind(request.server)
+            : undefined
+
+        try {
+          await handleMatchFinalization(matchId, request.server.log, { publishTopic })
+          request.server.log.info(
+            { matchId: matchId.toString() },
+            'admin: re-settlement completed'
+          )
+          return reply.send({ ok: true, message: 'Settlement re-run successfully' })
+        } catch (err) {
+          request.server.log.error(
+            { err, matchId: matchId.toString() },
+            'admin: re-settlement failed'
+          )
+          return reply.status(500).send({ ok: false, error: 'settlement_failed' })
+        }
+      })
+
       // Lineups
       admin.get('/matches/:matchId/lineup', async (request, reply) => {
         const matchId = parseBigIntId(getParam(request.params, 'matchId'), 'matchId')

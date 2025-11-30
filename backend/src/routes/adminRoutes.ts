@@ -4935,6 +4935,7 @@ export default async function (server: FastifyInstance) {
         }
 
         if (body.status === MatchStatus.FINISHED && existing.status !== MatchStatus.FINISHED) {
+          console.log('[SETTLEMENT DEBUG] Admin triggering handleMatchFinalization for matchId:', matchId.toString())
           try {
             await handleMatchFinalization(matchId, request.server.log, { publishTopic })
           } catch (err) {

@@ -98,6 +98,43 @@ const computeAwardedPoints = (basePoints: number, multiplier: number): number =>
   return Math.max(0, Math.round(raw))
 }
 
+/**
+ * Получает очки для конкретного выбора из options.choices
+ * Шаблоны хранят очки для каждого варианта отдельно в options.choices[].points
+ */
+const getPointsForSelection = (
+  options: Record<string, unknown> | null,
+  selection: string,
+  fallbackPoints: number
+): number => {
+  if (!options) {
+    return fallbackPoints
+  }
+  
+  const choices = options.choices
+  if (!Array.isArray(choices)) {
+    return fallbackPoints
+  }
+  
+  const normalizedSelection = selection.trim().toUpperCase()
+  
+  for (const choice of choices) {
+    if (!choice || typeof choice !== 'object') {
+      continue
+    }
+    const choiceRecord = choice as Record<string, unknown>
+    const value = choiceRecord.value
+    if (typeof value === 'string' && value.trim().toUpperCase() === normalizedSelection) {
+      const points = choiceRecord.points
+      if (typeof points === 'number' && Number.isFinite(points)) {
+        return points
+      }
+    }
+  }
+  
+  return fallbackPoints
+}
+
 const normalizeOutcomeSelection = (value: string): 'ONE' | 'DRAW' | 'TWO' | null => {
   const trimmed = value.trim().toUpperCase()
   if (trimmed === 'ONE' || trimmed === '1' || trimmed === 'HOME') {
@@ -132,6 +169,7 @@ const determineMatchOutcome = (match: SettlementMatch): 'ONE' | 'DRAW' | 'TWO' =
 
 const evaluateOutcome = (
   entry: SettlementMatch['predictionTemplates'][number]['entries'][number],
+  template: SettlementMatch['predictionTemplates'][number],
   context: SettlementContext,
   templateContext: TemplateContext
 ): EntryResolution => {
@@ -145,13 +183,17 @@ const evaluateOutcome = (
   }
 
   const won = selection === context.outcome
-  const points = won ? computeAwardedPoints(templateContext.basePoints, templateContext.difficultyMultiplier) : 0
+  // Получаем очки из options.choices для конкретного выбора, а не basePoints шаблона
+  const options = ensureRecord(template.options)
+  const selectionPoints = getPointsForSelection(options, selection, templateContext.basePoints)
+  const points = won ? computeAwardedPoints(selectionPoints, templateContext.difficultyMultiplier) : 0
   return {
     status: won ? PredictionEntryStatus.WON : PredictionEntryStatus.LOST,
     awardedPoints: won ? points : 0,
     meta: {
       actualOutcome: context.outcome,
       normalizedSelection: selection,
+      selectionPoints,
     },
   }
 }
@@ -239,7 +281,9 @@ const evaluateTotalGoals = (
 
   const actualOutcome = delta > 0 ? expectedOver : expectedUnder
   const won = normalizedSelection === actualOutcome
-  const points = won ? computeAwardedPoints(templateContext.basePoints, templateContext.difficultyMultiplier) : 0
+  // Получаем очки из options.choices для конкретного выбора
+  const selectionPoints = getPointsForSelection(options, normalizedSelection, templateContext.basePoints)
+  const points = won ? computeAwardedPoints(selectionPoints, templateContext.difficultyMultiplier) : 0
 
   return {
     status: won ? PredictionEntryStatus.WON : PredictionEntryStatus.LOST,
@@ -248,6 +292,7 @@ const evaluateTotalGoals = (
       outcome: actualOutcome,
       totalGoals,
       targetLine: line,
+      selectionPoints,
     },
   }
 }
@@ -294,7 +339,9 @@ const evaluateBooleanMarket = (
   }
 
   const won = selection === actualValue
-  const points = won ? computeAwardedPoints(templateContext.basePoints, templateContext.difficultyMultiplier) : 0
+  // Получаем очки из options.choices для конкретного выбора
+  const selectionPoints = getPointsForSelection(options, selection, templateContext.basePoints)
+  const points = won ? computeAwardedPoints(selectionPoints, templateContext.difficultyMultiplier) : 0
 
   return {
     status: won ? PredictionEntryStatus.WON : PredictionEntryStatus.LOST,
@@ -303,6 +350,7 @@ const evaluateBooleanMarket = (
       eventOccurred,
       actualValue,
       relatedEvents,
+      selectionPoints,
     },
   }
 }
@@ -320,7 +368,7 @@ const evaluateEntry = (
 
   switch (template.marketType) {
     case PredictionMarketType.MATCH_OUTCOME:
-      return evaluateOutcome(entry, context, templateContext)
+      return evaluateOutcome(entry, template, context, templateContext)
     case PredictionMarketType.TOTAL_GOALS:
       return evaluateTotalGoals(entry, template, context, templateContext)
     case PredictionMarketType.CUSTOM_BOOLEAN:

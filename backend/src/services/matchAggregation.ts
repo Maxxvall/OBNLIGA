@@ -98,6 +98,7 @@ export async function handleMatchFinalization(
 )
 {
   logger.info({ matchId: matchId.toString() }, 'handleMatchFinalization: starting')
+  console.log('[SETTLEMENT DEBUG] handleMatchFinalization called for matchId:', matchId.toString())
   
   const match = await prisma.match.findUnique({
     where: { id: matchId },
@@ -112,6 +113,7 @@ export async function handleMatchFinalization(
 
   if (!match) {
     logger.warn({ matchId: matchId.toString() }, 'handleMatchFinalization: match not found')
+    console.log('[SETTLEMENT DEBUG] Match not found:', matchId.toString())
     return
   }
 
@@ -119,12 +121,20 @@ export async function handleMatchFinalization(
     { matchId: matchId.toString(), status: match.status, homeScore: match.homeScore, awayScore: match.awayScore },
     'handleMatchFinalization: match loaded'
   )
+  console.log('[SETTLEMENT DEBUG] Match loaded:', {
+    matchId: matchId.toString(),
+    status: match.status,
+    homeScore: match.homeScore,
+    awayScore: match.awayScore,
+    seasonId: match.seasonId,
+  })
 
   if (match.status !== MatchStatus.FINISHED) {
     logger.info(
       { matchId: matchId.toString(), status: match.status },
       'match not finished, skip aggregation'
     )
+    console.log('[SETTLEMENT DEBUG] Match not finished, skipping. Status:', match.status)
     return
   }
 
@@ -147,7 +157,9 @@ export async function handleMatchFinalization(
     async tx => {
       // Блокируем матч на время транзакции для предотвращения race condition
       // при одновременном завершении матча несколькими админами
-      await tx.$executeRaw`SELECT id FROM "Match" WHERE id = ${matchId} FOR UPDATE`
+      // Используем реальные имена таблицы и колонки из Prisma (@@map / @map)
+      // В БД таблица называется "match", PK колонка — "match_id"
+      await tx.$executeRaw`SELECT "match_id" FROM "match" WHERE "match_id" = ${matchId} FOR UPDATE`
       
       const includePlayoffRounds = isBracketFormat
       await rebuildClubSeasonStats(seasonId, tx, { includePlayoffRounds })
@@ -837,6 +849,12 @@ async function updatePredictions(
       { matchId: match.id.toString(), templatesCount: templates.length, pendingEntriesCount },
       'updatePredictions: found templates and pending entries'
     )
+    console.log('[SETTLEMENT DEBUG] Templates and entries found:', {
+      matchId: match.id.toString(),
+      templatesCount: templates.length,
+      pendingEntriesCount,
+      templateIds: templates.map(t => t.id.toString()),
+    })
 
     if (templates.length > 0) {
       const settlement = await settlePredictionEntries(
@@ -858,6 +876,13 @@ async function updatePredictions(
         { matchId: match.id.toString(), settled: settlement.settled, won: settlement.won, lost: settlement.lost },
         'updatePredictions: settlement completed'
       )
+      console.log('[SETTLEMENT DEBUG] Settlement completed:', {
+        matchId: match.id.toString(),
+        settled: settlement.settled,
+        won: settlement.won,
+        lost: settlement.lost,
+        userIds: Array.from(settlement.userIds),
+      })
     }
   } catch (err) {
     logger.error({ err, matchId: match.id.toString() }, 'failed to settle prediction entries')

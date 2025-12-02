@@ -290,6 +290,22 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
       }
     }
 
+    // Используем playoffPodium из бэкенда если он есть (более надёжно при lazy loading)
+    const podium = seasonResults.playoffPodium
+    if (podium?.champion && podium?.runnerUp) {
+      const { champion, runnerUp, thirdPlace } = podium
+      return {
+        hasSeries: true,
+        allSeriesFinished: true,
+        summary: {
+          champion: { club: champion },
+          runnerUp: { club: runnerUp },
+          thirdPlace: thirdPlace ? { club: thirdPlace } : undefined,
+        },
+      }
+    }
+
+    // Фолбэк: вычисляем из загруженных матчей
     const seriesById = new Map<string, NonNullable<LeagueMatchView['series']>>()
     let hasSeries = false
     let allSeriesFinished = true

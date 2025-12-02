@@ -79,6 +79,7 @@ export interface LeagueRoundCollection {
   season: LeagueSeasonSummary
   rounds: LeagueRoundMatches[]
   generatedAt: string
+  playoffPodium?: PlayoffPodiumData
 }
 
 
@@ -359,6 +360,129 @@ const shouldDisplaySeriesMatch = (
   return true
 }
 
+type PlayoffPodiumClub = {
+  id: number
+  name: string
+  shortName: string
+  logoUrl: string | null
+}
+
+type PlayoffPodiumData = {
+  champion?: PlayoffPodiumClub
+  runnerUp?: PlayoffPodiumClub
+  thirdPlace?: PlayoffPodiumClub
+}
+
+/**
+ * Вычисляет пьедестал плей-офф из завершенных серий
+ * Для кубков с Gold/Silver - ищет "Финал Золотого кубка" и "3 место Золотого кубка"
+ * Для обычных плей-офф - ищет "Финал" и "3 место"
+ */
+const computePlayoffPodium = async (seasonId: number): Promise<PlayoffPodiumData | undefined> => {
+  const finishedSeries = await prisma.matchSeries.findMany({
+    where: {
+      seasonId,
+      seriesStatus: SeriesStatus.FINISHED,
+      winnerClubId: { not: null },
+    },
+    select: {
+      stageName: true,
+      winnerClubId: true,
+      homeClubId: true,
+      awayClubId: true,
+      homeClub: {
+        select: { id: true, name: true, shortName: true, logoUrl: true },
+      },
+      awayClub: {
+        select: { id: true, name: true, shortName: true, logoUrl: true },
+      },
+    },
+  })
+
+  if (!finishedSeries.length) {
+    return undefined
+  }
+
+  // Проверяем кубковый формат (Gold/Silver)
+  const hasCupFormat = finishedSeries.some(
+    s =>
+      s.stageName.toLowerCase().includes('золот') ||
+      s.stageName.toLowerCase().includes('серебр')
+  )
+
+  let finalSeries: (typeof finishedSeries)[number] | undefined
+  let thirdSeries: (typeof finishedSeries)[number] | undefined
+
+  for (const series of finishedSeries) {
+    const normalized = series.stageName.toLowerCase()
+    const isSemi =
+      normalized.includes('1/2') ||
+      normalized.includes('semi') ||
+      normalized.includes('полу')
+
+    // Финал
+    if (!finalSeries && !isSemi && normalized.includes('финал')) {
+      if (hasCupFormat) {
+        if (normalized.includes('золот')) {
+          finalSeries = series
+        }
+      } else {
+        finalSeries = series
+      }
+    }
+
+    // 3 место
+    if (
+      !thirdSeries &&
+      (normalized.includes('3 место') || normalized.includes('за 3'))
+    ) {
+      if (hasCupFormat) {
+        if (normalized.includes('золот')) {
+          thirdSeries = series
+        }
+      } else {
+        thirdSeries = series
+      }
+    }
+  }
+
+  if (!finalSeries || finalSeries.winnerClubId == null) {
+    return undefined
+  }
+
+  const championIsHome = finalSeries.winnerClubId === finalSeries.homeClubId
+  const champion = championIsHome ? finalSeries.homeClub : finalSeries.awayClub
+  const runnerUp = championIsHome ? finalSeries.awayClub : finalSeries.homeClub
+
+  const podium: PlayoffPodiumData = {
+    champion: {
+      id: champion.id,
+      name: champion.name,
+      shortName: champion.shortName,
+      logoUrl: champion.logoUrl,
+    },
+    runnerUp: {
+      id: runnerUp.id,
+      name: runnerUp.name,
+      shortName: runnerUp.shortName,
+      logoUrl: runnerUp.logoUrl,
+    },
+  }
+
+  if (thirdSeries && thirdSeries.winnerClubId != null) {
+    const thirdIsHome = thirdSeries.winnerClubId === thirdSeries.homeClubId
+    const thirdClub = thirdIsHome ? thirdSeries.homeClub : thirdSeries.awayClub
+    podium.thirdPlace = {
+      id: thirdClub.id,
+      name: thirdClub.name,
+      shortName: thirdClub.shortName,
+      logoUrl: thirdClub.logoUrl,
+    }
+  }
+
+  return podium
+}
+
 const deriveSeriesStagePriority = (stageName: string): number => {
   if (!stageName) {
     return 1000
@@ -369,6 +493,22 @@ const deriveSeriesStagePriority = (stageName: string): number => {
     return 1000
   }
 
+  const isGold = normalized.includes('золот') || normalized.includes('gold')
+  const isSilver = normalized.includes('серебр') || normalized.includes('silver')
+
+  // Финал Золотого кубка → 1, Финал Серебряного кубка → 3
+  if (normalized.includes('финал') || normalized.includes('final')) {
+    // Исключаем полуфиналы
+    const isSemi = normalized.includes('полуфин') || normalized.includes('semi') ||
+      normalized.includes('1/2') || normalized.includes('1\\2')
+    if (!isSemi) {
+      if (isGold) return 1
+      if (isSilver) return 3
+      return 1
+    }
+  }
+
+  // 3 место Золотого кубка → 2, 3 место Серебряного кубка → 4
   if (
     normalized.includes('матч за 3') ||
     normalized.includes('треть') ||
@@ -376,44 +516,51 @@ const deriveSeriesStagePriority = (stageName: string): number => {
     normalized.includes('малый финал') ||
     normalized.includes('small final')
   ) {
+    if (isGold) return 2
+    if (isSilver) return 4
     return 2
   }
 
+  // Полуфинал Золотого кубка → 5, Полуфинал Серебряного кубка → 6
   if (
     normalized.includes('полуфин') ||
     normalized.includes('semi') ||
     normalized.includes('1/2') ||
     normalized.includes('1\\2')
   ) {
-    return 3
-  }
-
-  if (normalized.includes('четверть') || normalized.includes('1/4') || normalized.includes('1\\4')) {
-    return 4
-  }
-
-  if (normalized.includes('1/8') || normalized.includes('1\\8') || normalized.includes('восьм')) {
+    if (isGold) return 5
+    if (isSilver) return 6
     return 5
   }
 
-  if (normalized.includes('1/16') || normalized.includes('1\\16') || normalized.includes('шестнадц')) {
-    return 6
-  }
-
-  if (normalized.includes('1/32') || normalized.includes('1\\32') || normalized.includes('тридцат')) {
+  // 1/4 финала → 7
+  if (normalized.includes('четверть') || normalized.includes('1/4') || normalized.includes('1\\4')) {
     return 7
   }
 
-  if (normalized.includes('1/64') || normalized.includes('1\\64')) {
+  // Квалификация → 8
+  if (normalized.includes('квалифик') || normalized.includes('qualif')) {
     return 8
+  }
+
+  if (normalized.includes('1/8') || normalized.includes('1\\8') || normalized.includes('восьм')) {
+    return 9
+  }
+
+  if (normalized.includes('1/16') || normalized.includes('1\\16') || normalized.includes('шестнадц')) {
+    return 10
+  }
+
+  if (normalized.includes('1/32') || normalized.includes('1\\32') || normalized.includes('тридцат')) {
+    return 11
+  }
+
+  if (normalized.includes('1/64') || normalized.includes('1\\64')) {
+    return 12
   }
 
   if (normalized.includes('плей-ин') || normalized.includes('play-in') || normalized.includes('плейин')) {
     return 20
-  }
-
-  if (normalized.includes('финал') || normalized.includes('final')) {
-    return 1
   }
 
   return 1000
@@ -786,10 +933,14 @@ export const buildLeagueResultsIndex = async (
     lastMatchAt: new Date(round.lastMatchAt).toISOString(),
   }))
 
+  // Вычисляем пьедестал плей-офф для индекса результатов
+  const playoffPodium = await computePlayoffPodium(season.id)
+
   return {
     season: ensureSeasonSummary(season),
     rounds: summaries,
     generatedAt: new Date().toISOString(),
+    playoffPodium,
   }
 }
 

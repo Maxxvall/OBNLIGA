@@ -1784,10 +1784,15 @@ export const MatchesTab = () => {
   const selectedMatchIsFriendly = selectedMatch ? isFriendlyMatch(selectedMatch) : false
   const selectedSeriesMatch =
     selectedMatch && !selectedMatchIsFriendly ? (selectedMatch as MatchSummary) : null
-  const isPenaltyEligible =
-    Boolean(selectedSeriesMatch?.seriesId) &&
+  // Для Лиги: плей-офф форматы (BEST_OF_N, DOUBLE_ROUND_PLAYOFF)
+  const isLeaguePlayoff =
     competitionType === 'LEAGUE' &&
     (competitionSeriesFormat === 'BEST_OF_N' || competitionSeriesFormat === 'DOUBLE_ROUND_PLAYOFF')
+  // Для Кубка: все плей-офф стадии (есть bracketType)
+  const isCupPlayoff =
+    competitionType === 'CUP' && Boolean(selectedSeriesMatch?.series?.bracketType)
+  const isPenaltyEligible =
+    Boolean(selectedSeriesMatch?.seriesId) && (isLeaguePlayoff || isCupPlayoff)
   const isRegulationDraw = homeScoreForControls === awayScoreForControls
 
   return (

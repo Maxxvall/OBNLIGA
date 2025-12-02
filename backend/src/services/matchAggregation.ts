@@ -1630,7 +1630,7 @@ async function maybeCreateCupNextStage(
 
   // Обработка Квалификации (4x3) — создаем 1/4 финала
   if (currentStage === CUP_STAGE_NAMES.QUALIFICATION) {
-    // Получаем победителей групп из ClubSeasonStats
+    // Получаем группы
     const groups = await tx.seasonGroup.findMany({
       where: { seasonId: context.seasonId },
       include: { slots: true },
@@ -1645,26 +1645,73 @@ async function maybeCreateCupNextStage(
       return
     }
 
-    // Получаем таблицу по группам
-    const allStats = await tx.clubSeasonStats.findMany({
-      where: { seasonId: context.seasonId },
+    // Получаем только ГРУППОВЫЕ матчи (с groupId != null)
+    const groupMatches = await tx.match.findMany({
+      where: {
+        seasonId: context.seasonId,
+        groupId: { not: null },
+        status: MatchStatus.FINISHED,
+      },
+      select: {
+        groupId: true,
+        homeTeamId: true,
+        awayTeamId: true,
+        homeScore: true,
+        awayScore: true,
+      },
     })
 
-    // Собираем победителей групп (1-е места)
+    // Группируем матчи по groupId (это id группы, не groupIndex!)
+    const matchesByGroupId = new Map<number, typeof groupMatches>()
+    for (const match of groupMatches) {
+      if (match.groupId === null) continue
+      const existing = matchesByGroupId.get(match.groupId) ?? []
+      existing.push(match)
+      matchesByGroupId.set(match.groupId, existing)
+    }
+
+    // Собираем победителей групп (1-е места) по групповым матчам
     const groupWinners: Array<{ groupIndex: number; clubId: number }> = []
     for (const group of groups) {
       const groupClubIds = group.slots.map(s => s.clubId).filter(id => id !== null) as number[]
-      const groupStats = allStats.filter(s => groupClubIds.includes(s.clubId))
-      groupStats.sort((a, b) => {
-        if (b.points !== a.points) return b.points - a.points
-        const diffA = a.goalsFor - a.goalsAgainst
-        const diffB = b.goalsFor - b.goalsAgainst
-        if (diffB !== diffA) return diffB - diffA
-        if (b.goalsFor !== a.goalsFor) return b.goalsFor - a.goalsFor
-        return a.clubId - b.clubId
+      const gMatches = matchesByGroupId.get(group.id) ?? []
+      
+      // Считаем статистику по групповым матчам
+      const clubStats = new Map<number, { points: number; goalDiff: number; goalsFor: number }>()
+      for (const clubId of groupClubIds) {
+        clubStats.set(clubId, { points: 0, goalDiff: 0, goalsFor: 0 })
+      }
+
+      for (const m of gMatches) {
+        const homeStat = clubStats.get(m.homeTeamId)
+        const awayStat = clubStats.get(m.awayTeamId)
+        if (!homeStat || !awayStat) continue
+
+        homeStat.goalsFor += m.homeScore
+        homeStat.goalDiff += m.homeScore - m.awayScore
+        awayStat.goalsFor += m.awayScore
+        awayStat.goalDiff += m.awayScore - m.homeScore
+
+        if (m.homeScore > m.awayScore) {
+          homeStat.points += 3
+        } else if (m.homeScore < m.awayScore) {
+          awayStat.points += 3
+        } else {
+          homeStat.points += 1
+          awayStat.points += 1
+        }
+      }
+
+      // Сортируем по очкам, разнице голов, забитым
+      const sorted = Array.from(clubStats.entries()).sort((a, b) => {
+        if (b[1].points !== a[1].points) return b[1].points - a[1].points
+        if (b[1].goalDiff !== a[1].goalDiff) return b[1].goalDiff - a[1].goalDiff
+        if (b[1].goalsFor !== a[1].goalsFor) return b[1].goalsFor - a[1].goalsFor
+        return a[0] - b[0]
       })
-      if (groupStats[0]) {
-        groupWinners.push({ groupIndex: group.groupIndex, clubId: groupStats[0].clubId })
+
+      if (sorted[0]) {
+        groupWinners.push({ groupIndex: group.groupIndex, clubId: sorted[0][0] })
       }
     }
 

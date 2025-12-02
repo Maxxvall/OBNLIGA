@@ -552,6 +552,68 @@ const resolveRoundKey = (round: LeagueRoundMatches): string => {
   return round.roundLabel
 }
 
+/**
+ * Мерж расписания — использует ТОЛЬКО раунды из incoming.
+ * Старые раунды, которых нет в incoming, удаляются.
+ * Это нужно для расписания, где завершённые матчи должны исчезать.
+ */
+const mergeScheduleCollection = (
+  previous: LeagueRoundCollection | undefined,
+  incoming: LeagueRoundCollection
+): LeagueRoundCollection => {
+  if (!previous || previous.season.id !== incoming.season.id) {
+    return incoming
+  }
+
+  const season = reuseSeason(previous.season, incoming.season)
+  const previousRounds = new Map<string, LeagueRoundMatches>()
+  previous.rounds.forEach(round => {
+    const key = resolveRoundKey(round)
+    previousRounds.set(key, round)
+  })
+
+  let changed = season !== previous.season || incoming.generatedAt !== previous.generatedAt
+
+  // Для расписания берём ТОЛЬКО раунды из incoming — старые удаляются
+  const mergedRounds: LeagueRoundMatches[] = incoming.rounds.map(round => {
+    const key = resolveRoundKey(round)
+    const existing = previousRounds.get(key)
+
+    if (!existing) {
+      changed = true
+      return {
+        ...round,
+        roundKey: round.roundKey ?? key,
+        matchesCount: round.matchesCount ?? round.matches.length,
+      }
+    }
+
+    const merged = mergeRoundMatches(existing, round)
+    if (merged !== existing) {
+      changed = true
+    }
+    return merged
+  })
+
+  // Если количество раундов изменилось — это изменение
+  if (mergedRounds.length !== previous.rounds.length) {
+    changed = true
+  }
+
+  if (
+    !changed &&
+    mergedRounds.every((round: LeagueRoundMatches, index: number) => round === previous.rounds[index])
+  ) {
+    return previous
+  }
+
+  return {
+    season,
+    rounds: mergedRounds,
+    generatedAt: incoming.generatedAt,
+  }
+}
+
 const mergeRoundCollection = (
   previous: LeagueRoundCollection | undefined,
   incoming: LeagueRoundCollection
@@ -1744,7 +1806,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     const nextVersion = response.version ?? state.scheduleVersions[seasonId]
     set(prev => {
-      const nextSchedule = mergeRoundCollection(prev.schedules[seasonId], response.data)
+      const nextSchedule = mergeScheduleCollection(prev.schedules[seasonId], response.data)
       const nextSchedules = { ...prev.schedules, [seasonId]: nextSchedule }
       const nextScheduleVersions = { ...prev.scheduleVersions, [seasonId]: nextVersion }
       

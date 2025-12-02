@@ -197,6 +197,8 @@ type PlayoffWinners = {
   championId: number | null
   runnerUpId: number | null
   thirdPlaceId: number | null
+  isCupFormat: boolean
+  competitionName: string | null
 }
 
 const detectPlayoffWinners = async (seasonId: number): Promise<PlayoffWinners> => {
@@ -204,6 +206,18 @@ const detectPlayoffWinners = async (seasonId: number): Promise<PlayoffWinners> =
     championId: null,
     runnerUpId: null,
     thirdPlaceId: null,
+    isCupFormat: false,
+    competitionName: null,
+  }
+
+  // Получаем сезон с соревнованием
+  const season = await prisma.season.findUnique({
+    where: { id: seasonId },
+    include: { competition: true },
+  })
+
+  if (season?.competition) {
+    result.competitionName = season.competition.name
   }
 
   // Получаем все серии плей-офф для этого сезона
@@ -221,6 +235,7 @@ const detectPlayoffWinners = async (seasonId: number): Promise<PlayoffWinners> =
 
   // Проверяем, есть ли кубковый формат с Gold/Silver
   const hasCupFormat = series.some((s) => s.bracketType != null)
+  result.isCupFormat = hasCupFormat
 
   // Ищем финал
   // Для кубков с Gold/Silver - приоритет отдаём "Финал Золотого кубка"
@@ -326,10 +341,30 @@ const buildClubAchievements = async (
 
     // Если есть место из плей-офф, добавляем достижение
     if (place !== null) {
+      // Формируем title в зависимости от типа соревнования
+      let title: string
+      if (playoffWinners.isCupFormat) {
+        // Для кубков: "1 место в Золотом кубке" + название соревнования
+        title = `${place} место в Золотом кубке`
+      } else if (playoffWinners.competitionName) {
+        // Для лиг с плей-офф: "1 место" + название соревнования
+        title = `${place} место`
+      } else {
+        title = `${place} место`
+      }
+
+      // Формируем subtitle: название соревнования и сезон
+      let subtitle: string
+      if (playoffWinners.competitionName && playoffWinners.competitionName !== season.name) {
+        subtitle = `${playoffWinners.competitionName} — ${season.name}`
+      } else {
+        subtitle = season.name
+      }
+
       achievements.push({
         id: `season-${seasonId}-place-${place}`,
-        title: `${place} место`,
-        subtitle: season.name,
+        title,
+        subtitle,
       })
       continue // Переходим к следующему сезону
     }
@@ -345,10 +380,19 @@ const buildClubAchievements = async (
       // Если клуб в топ-3
       if (clubPosition !== -1 && clubPosition < 3) {
         const tablePlace = clubPosition + 1
+        
+        // Формируем subtitle с названием соревнования
+        let subtitle: string
+        if (season.competition?.name && season.competition.name !== season.name) {
+          subtitle = `${season.competition.name} — ${season.name}`
+        } else {
+          subtitle = season.name
+        }
+        
         achievements.push({
           id: `season-${seasonId}-place-${tablePlace}`,
           title: `${tablePlace} место`,
-          subtitle: season.name,
+          subtitle,
         })
       }
     } catch (err) {

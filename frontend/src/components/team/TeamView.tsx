@@ -329,14 +329,17 @@ const renderAchievements = (summary: ClubSummaryResponse) => {
   return (
     <div className="team-achievements-grid">
       {summary.achievements.map(item => {
-        // Парсим данные достижения: ожидаем формат "1 место" или "2 место" в title
-        const placeMatch = item.title.match(/^(\d+)\s*место$/i)
+        // Парсим данные достижения: ожидаем формат "1 место" или "1 место в Золотом кубке" в title
+        const placeMatch = item.title.match(/^(\d+)\s*место/i)
         const place = placeMatch ? parseInt(placeMatch[1], 10) : null
         const placeClass = place ? `place-${place}` : 'place-default'
+        // Определяем иконку: для кубка - кубок, для лиги - медаль
+        const isCup = item.title.toLowerCase().includes('кубк')
+        const icon = isCup ? '🏆' : (place === 1 ? '🥇' : place === 2 ? '🥈' : place === 3 ? '🥉' : '🏆')
         
         return (
           <div key={item.id} className={`team-achievement-card ${placeClass}`}>
-            <div className="team-achievement-icon">🏆</div>
+            <div className="team-achievement-icon">{icon}</div>
             <div className="team-achievement-content">
               <span className="team-achievement-place">{item.title}</span>
               {item.subtitle && <span className="team-achievement-season">{item.subtitle}</span>}
@@ -347,7 +350,6 @@ const renderAchievements = (summary: ClubSummaryResponse) => {
     </div>
   )
 }
-
 const renderForm = (summary: ClubSummaryResponse) => {
   if (summary.form.length === 0) {
     return (

@@ -440,10 +440,24 @@ export interface LeagueRoundMatches {
   lastMatchAt?: string
 }
 
+export interface PlayoffPodiumClub {
+  id: number
+  name: string
+  shortName: string
+  logoUrl: string | null
+}
+
+export interface PlayoffPodiumData {
+  champion?: PlayoffPodiumClub
+  runnerUp?: PlayoffPodiumClub
+  thirdPlace?: PlayoffPodiumClub
+}
+
 export interface LeagueRoundCollection {
   season: LeagueSeasonSummary
   rounds: LeagueRoundMatches[]
   generatedAt: string
+  playoffPodium?: PlayoffPodiumData
 }
 
 export interface ClubMatchCompactTeam {

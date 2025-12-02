@@ -3,6 +3,7 @@ import { RatingScope } from '@prisma/client'
 import { defaultCache } from '../cache'
 import {
   RATING_CACHE_OPTIONS,
+  cleanupOldRatingSnapshots,
   loadRatingLeaderboard,
   ratingPublicCacheKey,
   recalculateUserRatings,
@@ -82,6 +83,17 @@ const runAggregation = async (logger: FastifyBaseLogger) => {
       },
       'rating scheduler: ratings recalculated'
     )
+
+    // Очистка старых снимков (retention policy)
+    try {
+      const deletedCount = await cleanupOldRatingSnapshots()
+      if (deletedCount > 0) {
+        logger.info({ deletedCount }, 'rating scheduler: cleaned up old rating snapshots')
+      }
+    } catch (cleanupErr) {
+      logger.warn({ err: cleanupErr }, 'rating scheduler: failed to cleanup old snapshots')
+    }
+
     await warmLeaderboardCache(logger)
   } catch (err) {
     logger.error({ err }, 'rating scheduler: failed to recalculate ratings')

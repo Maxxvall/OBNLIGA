@@ -5,7 +5,7 @@ export const RATING_LEADERBOARD_TTL_SECONDS = 120 // 2 минуты - свежи
 export const RATING_LEADERBOARD_STALE_SECONDS = 600 // 10 минут - устаревшие данные (SWR)
 export const RATING_DEFAULT_PAGE_SIZE = 25
 export const RATING_MAX_PAGE_SIZE = 100
-export const RATING_SNAPSHOT_LIMIT = 50
+export const RATING_SNAPSHOT_LIMIT = 10
 
 export const resolveRatingLevel = (totalPoints: number): RatingLevel => {
   if (totalPoints >= 1300) {

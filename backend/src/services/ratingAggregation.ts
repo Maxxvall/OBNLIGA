@@ -427,7 +427,25 @@ export const recalculateUserRatings = async (
     await executeInChunks(ratingOperations)
     await executeInChunks(streakOperations)
 
+    // Снимки рейтинга: храним только один снимок в сутки на пользователя-scope
+    // Это предотвращает накопление мусора в БД при частых пересчётах
     if (!userIds || userIds.length === 0) {
+      // Вычисляем начало текущего дня (UTC)
+      const todayStart = new Date(capturedAt)
+      todayStart.setUTCHours(0, 0, 0, 0)
+      const tomorrowStart = new Date(todayStart)
+      tomorrowStart.setUTCDate(tomorrowStart.getUTCDate() + 1)
+
+      // Удаляем все снимки за сегодня — будем создавать свежие
+      await tx.ratingSnapshot.deleteMany({
+        where: {
+          capturedAt: {
+            gte: todayStart,
+            lt: tomorrowStart,
+          },
+        },
+      })
+
       const snapshotPayload: Prisma.RatingSnapshotCreateManyInput[] = []
 
       const currentSorted = [...entries].sort((a, b) => b.seasonalPoints - a.seasonalPoints)
@@ -623,4 +641,30 @@ export const ratingPublicCacheKey = (
 export const RATING_CACHE_OPTIONS = {
   ttlSeconds: RATING_LEADERBOARD_TTL_SECONDS,
   staleWhileRevalidateSeconds: RATING_LEADERBOARD_STALE_SECONDS,
+}
+
+/**
+ * Retention policy: удаляет снимки рейтинга старше N дней.
+ * По умолчанию храним 30 дней истории — достаточно для аналитики,
+ * но не засоряет БД.
+ */
+export const RATING_SNAPSHOT_RETENTION_DAYS = 7
+
+export const cleanupOldRatingSnapshots = async (
+  retentionDays: number = RATING_SNAPSHOT_RETENTION_DAYS,
+  client: PrismaClient = prisma
+): Promise<number> => {
+  const cutoffDate = new Date()
+  cutoffDate.setUTCDate(cutoffDate.getUTCDate() - retentionDays)
+  cutoffDate.setUTCHours(0, 0, 0, 0)
+
+  const result = await client.ratingSnapshot.deleteMany({
+    where: {
+      capturedAt: {
+        lt: cutoffDate,
+      },
+    },
+  })
+
+  return result.count
 }

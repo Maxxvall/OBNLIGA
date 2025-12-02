@@ -12,6 +12,9 @@
 import { FastifyBaseLogger } from 'fastify'
 import {
   generateQuarterFinalPairs2Groups,
+  generateQualificationPairs4x3,
+  CUP_STAGE_NAMES,
+  needsQualification,
   type GroupStandingEntry,
 } from './cupBracketLogic'
 
@@ -1413,25 +1416,96 @@ export const createSeasonPlayoffs = async (
       : null
     const playoffStart = addDays(season.endDate, 7)
 
+    // Определяем конфигурацию групп для кубков
+    const uniqueGroupIndexes = groupSeedDetails
+      ? new Set(groupSeedDetails.map(s => s.groupIndex))
+      : new Set<number>()
+    const groupCount = uniqueGroupIndexes.size
+
+    // Определяем размер группы (предполагаем одинаковый размер)
+    const groupSize = groupSeedDetails && groupCount > 0
+      ? Math.floor(groupSeedDetails.length / groupCount)
+      : 0
+
     // Определяем, является ли это кубком с 2 группами по 4-5 команд
     const isCupWith2Groups =
       season.competition.type === CompetitionType.CUP &&
       isGroupPlayoffFormat &&
       groupSeedDetails &&
-      new Set(groupSeedDetails.map(s => s.groupIndex)).size === 2
+      groupCount === 2
+
+    // Определяем, является ли это эталонной конфигурацией 4 группы × 3 команды
+    const isCup4x3 =
+      season.competition.type === CompetitionType.CUP &&
+      isGroupPlayoffFormat &&
+      groupSeedDetails &&
+      needsQualification(groupCount, groupSize)
 
     let plans: PlayoffSeriesPlan[] = []
     let byeSeries: PlayoffByePlan[] = []
 
-    if (isCupWith2Groups && groupSeedDetails) {
+    if (isCup4x3 && groupSeedDetails) {
+      // Эталонная конфигурация: 4 группы × 3 команды
+      // Создаём КВАЛИФИКАЦИЮ: 2-е места vs 3-и места
+      // Схема: H=C2vsB3, I=B2vsC3, G=D2vsA3, F=A2vsD3
+
+      // Получаем label для каждой группы
+      const groups = await tx.seasonGroup.findMany({
+        where: { seasonId },
+        select: { groupIndex: true, label: true },
+      })
+      const groupLabelMap = new Map<number, string>()
+      for (const g of groups) {
+        groupLabelMap.set(g.groupIndex, g.label)
+      }
+
+      // Преобразуем в GroupStandingEntry для generateQualificationPairs4x3
+      const standings: GroupStandingEntry[] = groupSeedDetails.map(seed => ({
+        clubId: seed.clubId,
+        groupIndex: seed.groupIndex,
+        groupLabel: groupLabelMap.get(seed.groupIndex) ?? `Группа ${seed.groupIndex}`,
+        placement: seed.placement,
+        points: seed.points,
+        goalDiff: seed.goalDiff,
+        goalsFor: seed.goalsFor,
+        goalsAgainst: 0,
+        wins: seed.wins,
+        draws: 0,
+        losses: 0,
+      }))
+
+      // Генерируем пары квалификации
+      const qualificationPairs = generateQualificationPairs4x3(standings)
+
+      // Преобразуем QualificationPair в PlayoffSeriesPlan
+      let dateOffset = 0
+      plans = qualificationPairs.map(pair => {
+        const matchDates: Date[] = []
+        for (let game = 0; game < bestOfLength; game++) {
+          const scheduled = addDays(playoffStart, dateOffset + game * 3)
+          matchDates.push(applyTimeToDate(scheduled, matchTime))
+        }
+        dateOffset += 2
+
+        return {
+          stageName: CUP_STAGE_NAMES.QUALIFICATION,
+          homeClubId: pair.home.clubId,
+          awayClubId: pair.away.clubId,
+          homeSeed: pair.home.seed,
+          awaySeed: pair.away.seed,
+          targetSlot: pair.slot,
+          bracketType: BracketType.QUALIFICATION,
+          matchDateTimes: matchDates,
+        }
+      })
+
+      logger.info(
+        { seasonId, qualificationPairs: plans.length, configuration: '4x3' },
+        'cup 4x3: creating qualification stage'
+      )
+    } else if (isCupWith2Groups && groupSeedDetails) {
       // Для кубков с 2 группами используем кросс-групповой паринг
       // A1vsB4, B1vsA4, A2vsB3, B2vsA3
-      const groupsByIndex = new Map<number, typeof groupSeedDetails>()
-      for (const seed of groupSeedDetails) {
-        const arr = groupsByIndex.get(seed.groupIndex) ?? []
-        arr.push(seed)
-        groupsByIndex.set(seed.groupIndex, arr)
-      }
 
       // Получаем label для каждой группы
       const groups = await tx.seasonGroup.findMany({
@@ -1452,10 +1526,10 @@ export const createSeasonPlayoffs = async (
         points: seed.points,
         goalDiff: seed.goalDiff,
         goalsFor: seed.goalsFor,
-        goalsAgainst: 0, // У нас нет этого значения в GroupPlayoffSeed
+        goalsAgainst: 0,
         wins: seed.wins,
-        draws: 0, // У нас нет этого значения в GroupPlayoffSeed
-        losses: 0, // У нас нет этого значения в GroupPlayoffSeed
+        draws: 0,
+        losses: 0,
       }))
 
       const cupPairs = generateQuarterFinalPairs2Groups(standings)
@@ -1481,6 +1555,11 @@ export const createSeasonPlayoffs = async (
           matchDateTimes: matchDates,
         }
       })
+
+      logger.info(
+        { seasonId, quarterFinalPairs: plans.length, configuration: '2 groups' },
+        'cup 2 groups: creating quarter-finals'
+      )
     } else {
       // Стандартная логика для лиг и других форматов
       const result = createInitialPlayoffPlans(

@@ -319,14 +319,27 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
       return { hasSeries: false, allSeriesFinished: false, summary: null }
     }
 
+    // Проверяем, есть ли кубковый формат с Gold/Silver
+    const hasCupFormat = Array.from(seriesById.values()).some(
+      (s) => s.stageName.toLowerCase().includes('золот') || s.stageName.toLowerCase().includes('серебр')
+    )
+
     const detectFinal = (series: NonNullable<LeagueMatchView['series']>) => {
       const normalized = series.stageName.toLowerCase()
       const isSemi = normalized.includes('1/2') || normalized.includes('semi') || normalized.includes('полу')
+      // Для кубков с Gold/Silver - ищем "Финал Золотого кубка"
+      if (hasCupFormat) {
+        return normalized.includes('финал') && normalized.includes('золот')
+      }
       return !isSemi && normalized.includes('финал')
     }
 
     const detectThird = (series: NonNullable<LeagueMatchView['series']>) => {
       const normalized = series.stageName.toLowerCase()
+      // Для кубков с Gold/Silver - ищем "3 место Золотого кубка"
+      if (hasCupFormat) {
+        return normalized.includes('3') && normalized.includes('мест') && normalized.includes('золот')
+      }
       return normalized.includes('3') && normalized.includes('мест')
     }
 

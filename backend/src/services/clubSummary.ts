@@ -219,12 +219,32 @@ const detectPlayoffWinners = async (seasonId: number): Promise<PlayoffWinners> =
     return result
   }
 
+  // Проверяем, есть ли кубковый формат с Gold/Silver
+  const hasCupFormat = series.some((s) => s.bracketType != null)
+
   // Ищем финал
-  const finalSeries = series.find((s) => {
+  // Для кубков с Gold/Silver - приоритет отдаём "Финал Золотого кубка"
+  // Для обычных плей-офф - любая серия с "финал" (исключая полуфиналы и 3 место)
+  let finalSeries = series.find((s) => {
     const normalized = s.stageName.toLowerCase()
+    // Для Gold/Silver кубков - ищем именно "финал золотого"
+    if (hasCupFormat) {
+      return normalized.includes('финал') && normalized.includes('золот')
+    }
+    // Стандартный плей-офф
     const isSemi = normalized.includes('1/2') || normalized.includes('semi') || normalized.includes('полу')
     return !isSemi && normalized.includes('финал') && !normalized.includes('3')
   })
+
+  // Если не нашли Gold финал, но есть кубковый формат - пробуем найти обычный финал
+  if (!finalSeries && hasCupFormat) {
+    finalSeries = series.find((s) => {
+      const normalized = s.stageName.toLowerCase()
+      const isSemi = normalized.includes('1/2') || normalized.includes('semi') || normalized.includes('полу')
+      const isSilver = normalized.includes('серебр')
+      return !isSemi && !isSilver && normalized.includes('финал') && !normalized.includes('3')
+    })
+  }
 
   if (finalSeries && finalSeries.winnerClubId) {
     result.championId = finalSeries.winnerClubId
@@ -236,10 +256,23 @@ const detectPlayoffWinners = async (seasonId: number): Promise<PlayoffWinners> =
   }
 
   // Ищем матч за 3 место
-  const thirdPlaceSeries = series.find((s) => {
+  // Для кубков с Gold/Silver - приоритет "3 место Золотого кубка"
+  let thirdPlaceSeries = series.find((s) => {
     const normalized = s.stageName.toLowerCase()
+    if (hasCupFormat) {
+      return normalized.includes('3') && normalized.includes('мест') && normalized.includes('золот')
+    }
     return normalized.includes('3') && normalized.includes('мест')
   })
+
+  // Если не нашли Gold 3 место, пробуем найти обычный матч за 3 место (исключая Silver)
+  if (!thirdPlaceSeries && hasCupFormat) {
+    thirdPlaceSeries = series.find((s) => {
+      const normalized = s.stageName.toLowerCase()
+      const isSilver = normalized.includes('серебр')
+      return !isSilver && normalized.includes('3') && normalized.includes('мест')
+    })
+  }
 
   if (thirdPlaceSeries && thirdPlaceSeries.winnerClubId) {
     result.thirdPlaceId = thirdPlaceSeries.winnerClubId

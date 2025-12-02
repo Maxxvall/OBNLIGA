@@ -1619,6 +1619,116 @@ async function maybeCreateCupNextStage(
   let createdMatches = 0
   let latestDate: Date | null = latestMatch?.matchDateTime ?? null
 
+  // Обработка Квалификации (4x3) — создаем 1/4 финала
+  if (currentStage === CUP_STAGE_NAMES.QUALIFICATION) {
+    // Получаем победителей групп из ClubSeasonStats
+    const groups = await tx.seasonGroup.findMany({
+      where: { seasonId: context.seasonId },
+      include: { slots: true },
+      orderBy: { groupIndex: 'asc' },
+    })
+
+    if (groups.length !== 4) {
+      context.logger.warn(
+        { seasonId: context.seasonId, groupCount: groups.length },
+        'cup qualification: expected 4 groups for 4x3 configuration'
+      )
+      return
+    }
+
+    // Получаем таблицу по группам
+    const allStats = await tx.clubSeasonStats.findMany({
+      where: { seasonId: context.seasonId },
+    })
+
+    // Собираем победителей групп (1-е места)
+    const groupWinners: Array<{ groupIndex: number; clubId: number }> = []
+    for (const group of groups) {
+      const groupClubIds = group.slots.map(s => s.clubId).filter(id => id !== null) as number[]
+      const groupStats = allStats.filter(s => groupClubIds.includes(s.clubId))
+      groupStats.sort((a, b) => {
+        if (b.points !== a.points) return b.points - a.points
+        const diffA = a.goalsFor - a.goalsAgainst
+        const diffB = b.goalsFor - b.goalsAgainst
+        if (diffB !== diffA) return diffB - diffA
+        if (b.goalsFor !== a.goalsFor) return b.goalsFor - a.goalsFor
+        return a.clubId - b.clubId
+      })
+      if (groupStats[0]) {
+        groupWinners.push({ groupIndex: group.groupIndex, clubId: groupStats[0].clubId })
+      }
+    }
+
+    // Создаём 1/4 финала согласно эталонной схеме:
+    // QF1: A1 vs H (winner), QF2: D1 vs I, QF3: B1 vs F, QF4: C1 vs G
+    // Где H, I, G, F — слоты квалификации 1, 2, 3, 4
+    const qualWinnersBySlot = new Map<number, number>()
+    for (const series of stageSeries) {
+      if (series.winnerClubId && series.bracketSlot) {
+        qualWinnersBySlot.set(series.bracketSlot, series.winnerClubId)
+      }
+    }
+
+    const getGroupWinner = (groupIdx: number): number | null => {
+      return groupWinners.find(w => w.groupIndex === groupIdx)?.clubId ?? null
+    }
+
+    // Эталонная схема пар 1/4 финала:
+    // QF1 (slot=1): A1 vs winner(H=slot1)
+    // QF2 (slot=2): D1 vs winner(I=slot2)
+    // QF3 (slot=3): B1 vs winner(F=slot4)
+    // QF4 (slot=4): C1 vs winner(G=slot3)
+    const qfPairs = [
+      { slot: 1, groupIdx: 1, qualSlot: 1 }, // A1 vs H winner
+      { slot: 2, groupIdx: 4, qualSlot: 2 }, // D1 vs I winner
+      { slot: 3, groupIdx: 2, qualSlot: 4 }, // B1 vs F winner
+      { slot: 4, groupIdx: 3, qualSlot: 3 }, // C1 vs G winner
+    ]
+
+    for (const pair of qfPairs) {
+      const homeClubId = getGroupWinner(pair.groupIdx)
+      const awayClubId = qualWinnersBySlot.get(pair.qualSlot)
+
+      if (!homeClubId || !awayClubId) {
+        context.logger.warn(
+          { seasonId: context.seasonId, slot: pair.slot, homeClubId, awayClubId },
+          'cup qualification: missing team for quarter-final'
+        )
+        continue
+      }
+
+      const result = await createCupSeriesWithMatches(tx, {
+        seasonId: context.seasonId,
+        plan: {
+          stageName: CUP_STAGE_NAMES.QUARTER_FINAL,
+          homeClubId,
+          awayClubId,
+          bracketType: BracketType.GOLD, // 1/4 финала — часть Gold bracket
+          bracketSlot: pair.slot,
+          homeSeed: pair.groupIdx,
+          awaySeed: pair.qualSlot + 4, // Победители квалификации имеют seed 5-8
+        },
+        bestOfLength,
+        startDate,
+        matchTime,
+        latestDate,
+      })
+      createdSeries += result.seriesCreated
+      createdMatches += result.matchesCreated
+      if (result.latestDate) latestDate = result.latestDate
+    }
+
+    context.logger.info(
+      {
+        seasonId: context.seasonId,
+        stage: currentStage,
+        quarterFinalsCreated: createdSeries,
+        matchesCreated: createdMatches,
+      },
+      'cup qualification completed, quarter-finals created'
+    )
+  }
+
   // Обработка 1/4 финала — создаем Gold полуфиналы и Silver полуфиналы
   if (currentStage === CUP_STAGE_NAMES.QUARTER_FINAL) {
     // Создаем полуфиналы Золотого кубка (победители QF)

@@ -12,6 +12,7 @@
 import { FastifyBaseLogger } from 'fastify'
 import {
   generateQuarterFinalPairs2Groups,
+  generateSemiFinalPairs2x3,
   generateQualificationPairs4x3,
   CUP_STAGE_NAMES,
   needsQualification,
@@ -1159,7 +1160,8 @@ type GroupPlayoffSeed = {
 
 const computeGroupPlayoffSeeds = (
   groups: SeasonGroupWithSlots[],
-  matches: GroupMatchSummary[]
+  matches: GroupMatchSummary[],
+  includeAllTeams = false // Для 4×3 нужны все команды включая 3-и места
 ): GroupPlayoffSeed[] => {
   if (!groups.length) {
     throw new Error('group_playoffs_not_configured')
@@ -1212,7 +1214,10 @@ const computeGroupPlayoffSeeds = (
       }
     }
 
-    for (let index = 0; index < group.qualifyCount; index += 1) {
+    // Для 4×3 включаем все команды, иначе только qualifyCount
+    const teamsToInclude = includeAllTeams ? standings.length : group.qualifyCount
+
+    for (let index = 0; index < teamsToInclude; index += 1) {
       const row = standings[index]
       const goalDiff = row.goalsFor - row.goalsAgainst
       const slotRank = slotRankByClub.get(row.clubId) ?? index + 1
@@ -1336,7 +1341,17 @@ export const createSeasonPlayoffs = async (
         },
       })
 
-      groupSeedDetails = computeGroupPlayoffSeeds(groups, groupMatchSummaries)
+      // Определяем конфигурацию групп ДО вызова computeGroupPlayoffSeeds
+      const detectedGroupCount = groups.length
+      const detectedGroupSize = groups.length > 0
+        ? groups[0].slots.filter(slot => typeof slot.clubId === 'number' && slot.clubId > 0).length
+        : 0
+
+      // Для 4×3 нужны ВСЕ команды (включая 3-и места) для квалификации
+      const is4x3Configuration = season.competition.type === CompetitionType.CUP &&
+        needsQualification(detectedGroupCount, detectedGroupSize)
+
+      groupSeedDetails = computeGroupPlayoffSeeds(groups, groupMatchSummaries, is4x3Configuration)
       seededClubIds = groupSeedDetails.map(entry => entry.clubId)
       bestOfLength = 1
     } else {
@@ -1416,30 +1431,45 @@ export const createSeasonPlayoffs = async (
       : null
     const playoffStart = addDays(season.endDate, 7)
 
-    // Определяем конфигурацию групп для кубков
+    // Определяем реальную конфигурацию групп для кубков
+    // Используем данные из SeasonGroup для точного определения размера
+    let actualGroupCount = 0
+    let actualGroupSize = 0
+
+    if (isGroupPlayoffFormat) {
+      const seasonGroups = await tx.seasonGroup.findMany({
+        where: { seasonId },
+        include: { slots: true },
+      })
+      actualGroupCount = seasonGroups.length
+      if (seasonGroups.length > 0) {
+        // Берём размер первой группы (предполагаем одинаковый размер)
+        actualGroupSize = seasonGroups[0].slots.filter(
+          slot => typeof slot.clubId === 'number' && slot.clubId > 0
+        ).length
+      }
+    }
+
+    // Fallback на старую логику если не удалось получить из SeasonGroup
     const uniqueGroupIndexes = groupSeedDetails
       ? new Set(groupSeedDetails.map(s => s.groupIndex))
       : new Set<number>()
-    const groupCount = uniqueGroupIndexes.size
+    const groupCount = actualGroupCount > 0 ? actualGroupCount : uniqueGroupIndexes.size
+    const groupSize = actualGroupSize > 0 
+      ? actualGroupSize 
+      : (groupSeedDetails && groupCount > 0 ? Math.floor(groupSeedDetails.length / groupCount) : 0)
 
-    // Определяем размер группы (предполагаем одинаковый размер)
-    const groupSize = groupSeedDetails && groupCount > 0
-      ? Math.floor(groupSeedDetails.length / groupCount)
-      : 0
+    // Определяем тип кубковой конфигурации
+    const isCup = season.competition.type === CompetitionType.CUP && isGroupPlayoffFormat
 
-    // Определяем, является ли это кубком с 2 группами по 4-5 команд
-    const isCupWith2Groups =
-      season.competition.type === CompetitionType.CUP &&
-      isGroupPlayoffFormat &&
-      groupSeedDetails &&
-      groupCount === 2
+    // 2×3: 6 команд → сразу полуфинал (A1vsB2, B1vsA2)
+    const isCup2x3 = isCup && groupCount === 2 && groupSize === 3
 
-    // Определяем, является ли это эталонной конфигурацией 4 группы × 3 команды
-    const isCup4x3 =
-      season.competition.type === CompetitionType.CUP &&
-      isGroupPlayoffFormat &&
-      groupSeedDetails &&
-      needsQualification(groupCount, groupSize)
+    // 2×4 или 2×5: 8-10 команд → 1/4 финала с кросс-парингом
+    const isCup2GroupsQF = isCup && groupCount === 2 && groupSize >= 4
+
+    // 4×3: 12 команд → эталонная система с квалификацией
+    const isCup4x3 = isCup && needsQualification(groupCount, groupSize)
 
     let plans: PlayoffSeriesPlan[] = []
     let byeSeries: PlayoffByePlan[] = []
@@ -1503,9 +1533,63 @@ export const createSeasonPlayoffs = async (
         { seasonId, qualificationPairs: plans.length, configuration: '4x3' },
         'cup 4x3: creating qualification stage'
       )
-    } else if (isCupWith2Groups && groupSeedDetails) {
-      // Для кубков с 2 группами используем кросс-групповой паринг
-      // A1vsB4, B1vsA4, A2vsB3, B2vsA3
+    } else if (isCup2x3 && groupSeedDetails) {
+      // Для кубков с 2 группами по 3 команды — сразу полуфинал
+      // Схема: SF1=A1vsB2, SF2=B1vsA2
+
+      const groups = await tx.seasonGroup.findMany({
+        where: { seasonId },
+        select: { groupIndex: true, label: true },
+      })
+      const groupLabelMap = new Map<number, string>()
+      for (const g of groups) {
+        groupLabelMap.set(g.groupIndex, g.label)
+      }
+
+      const standings: GroupStandingEntry[] = groupSeedDetails.map(seed => ({
+        clubId: seed.clubId,
+        groupIndex: seed.groupIndex,
+        groupLabel: groupLabelMap.get(seed.groupIndex) ?? `Группа ${seed.groupIndex}`,
+        placement: seed.placement,
+        points: seed.points,
+        goalDiff: seed.goalDiff,
+        goalsFor: seed.goalsFor,
+        goalsAgainst: 0,
+        wins: seed.wins,
+        draws: 0,
+        losses: 0,
+      }))
+
+      const cupPairs = generateSemiFinalPairs2x3(standings)
+
+      let dateOffset = 0
+      plans = cupPairs.map(pair => {
+        const matchDates: Date[] = []
+        for (let game = 0; game < bestOfLength; game++) {
+          const scheduled = addDays(playoffStart, dateOffset + game * 3)
+          matchDates.push(applyTimeToDate(scheduled, matchTime))
+        }
+        dateOffset += 2
+
+        return {
+          stageName: pair.stageName,
+          homeClubId: pair.homeClubId,
+          awayClubId: pair.awayClubId,
+          homeSeed: pair.homeSeed ?? 0,
+          awaySeed: pair.awaySeed ?? 0,
+          targetSlot: pair.bracketSlot,
+          bracketType: pair.bracketType,
+          matchDateTimes: matchDates,
+        }
+      })
+
+      logger.info(
+        { seasonId, semiFinalPairs: plans.length, configuration: '2x3' },
+        'cup 2x3: creating semi-finals'
+      )
+    } else if (isCup2GroupsQF && groupSeedDetails) {
+      // Для кубков с 2 группами по 4-5 команд — 1/4 финала
+      // Схема: A1vsB4, B1vsA4, A2vsB3, B2vsA3
 
       // Получаем label для каждой группы
       const groups = await tx.seasonGroup.findMany({

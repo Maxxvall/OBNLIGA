@@ -19,7 +19,7 @@ import {
   SeriesStatus,
 } from '@prisma/client'
 import prisma from '../db'
-import { defaultCache, resolveCacheOptions, PUBLIC_LEAGUE_TABLE_KEY } from '../cache'
+import { defaultCache, resolveCacheOptions, PUBLIC_LEAGUE_TABLE_KEY, PUBLIC_LEAGUE_SCHEDULE_KEY, PUBLIC_LEAGUE_RESULTS_KEY } from '../cache'
 import { buildLeagueTable } from './leagueTable'
 import { refreshLeagueMatchAggregates } from './leagueSchedule'
 import { refreshLeagueStats } from './leagueStats'
@@ -147,6 +147,15 @@ export async function handleMatchFinalization(
   }
 
   const seasonId = match.seasonId
+
+  // Инвалидируем кэш расписания и результатов сразу при завершении матча,
+  // чтобы гарантировать, что клиенты получат актуальные данные
+  await Promise.all([
+    defaultCache.invalidate(PUBLIC_LEAGUE_SCHEDULE_KEY).catch(() => undefined),
+    defaultCache.invalidate(`${PUBLIC_LEAGUE_SCHEDULE_KEY}:${seasonId}`).catch(() => undefined),
+    defaultCache.invalidate(PUBLIC_LEAGUE_RESULTS_KEY).catch(() => undefined),
+    defaultCache.invalidate(`${PUBLIC_LEAGUE_RESULTS_KEY}:${seasonId}`).catch(() => undefined),
+  ])
   const competitionFormat = resolveSeasonSeriesFormat(match.season)
   const isBracketFormat =
     competitionFormat === ('PLAYOFF_BRACKET' as SeriesFormat) ||

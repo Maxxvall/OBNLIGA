@@ -81,11 +81,12 @@ export interface QuarterFinalPair {
 
 /** Допустимые конфигурации групп для кубка */
 const VALID_CUP_CONFIGS = [
-  { groupCount: 2, groupSize: 4 }, // 8 команд: все 8 в плей-офф
-  { groupCount: 2, groupSize: 5 }, // 10 команд: 8 лучших в плей-офф
+  { groupCount: 2, groupSize: 3 }, // 6 команд: 4 в полуфинал (кросс A1vsB2, B1vsA2)
+  { groupCount: 2, groupSize: 4 }, // 8 команд: все 8 в 1/4 финала
+  { groupCount: 2, groupSize: 5 }, // 10 команд: 8 лучших в 1/4 финала
   { groupCount: 3, groupSize: 3 }, // 9 команд: 6 лучших + 2 best third
-  { groupCount: 3, groupSize: 4 }, // 12 команд: 8 лучших в плей-офф
-  { groupCount: 4, groupSize: 3 }, // 12 команд: эталонная система
+  { groupCount: 3, groupSize: 4 }, // 12 команд: 8 лучших в 1/4 финала
+  { groupCount: 4, groupSize: 3 }, // 12 команд: эталонная система с квалификацией
 ] as const
 
 /**
@@ -124,11 +125,11 @@ export const validateCupConfiguration = (
 
   if (!isValidCombo) {
     // Особые правила:
-    // - 2 группы: 4 или 5 команд
+    // - 2 группы: 3, 4 или 5 команд
     // - 3 группы: 3 или 4 команды
     // - 4 группы: только 3 команды
-    if (groupCount === 2 && (groupSize < 4 || groupSize > 5)) {
-      return { valid: false, error: 'cup_2_groups_need_4_or_5_teams' }
+    if (groupCount === 2 && (groupSize < 3 || groupSize > 5)) {
+      return { valid: false, error: 'cup_2_groups_need_3_to_5_teams' }
     }
     if (groupCount === 3 && (groupSize < 3 || groupSize > 4)) {
       return { valid: false, error: 'cup_3_groups_need_3_or_4_teams' }
@@ -213,6 +214,17 @@ export const getCupPlayoffStructure = (
       hasQualification: false,
       qualificationPairs: 0,
       quarterFinalPairs: 4,
+    }
+  }
+
+  // Для 2 групп по 3 команды (6 команд) — полуфинал
+  if (groupCount === 2 && groupSize === 3) {
+    return {
+      totalTeams: 6,
+      playoffTeams: 4, // по 2 из каждой группы
+      hasQualification: false,
+      qualificationPairs: 0,
+      quarterFinalPairs: 0, // нет 1/4, сразу полуфинал
     }
   }
 
@@ -712,6 +724,67 @@ export const generateQuarterFinalPairs2Groups = (
       bracketSlot: 4,
       homeSeed: 4,
       awaySeed: 5,
+    })
+  }
+
+  return plans
+}
+
+/**
+ * Генерирует пары полуфинала для 2 групп по 3 команды (6 команд)
+ * Схема кросс-матчей: SF1=A1vsB2, SF2=B1vsA2
+ */
+export const generateSemiFinalPairs2x3 = (
+  standings: GroupStandingEntry[]
+): SeriesPlan[] => {
+  const plans: SeriesPlan[] = []
+
+  // Группируем по группам
+  const byGroup = new Map<number, GroupStandingEntry[]>()
+  for (const entry of standings) {
+    const group = byGroup.get(entry.groupIndex) ?? []
+    group.push(entry)
+    byGroup.set(entry.groupIndex, group)
+  }
+
+  // Сортируем внутри каждой группы
+  for (const [, entries] of byGroup) {
+    entries.sort((a, b) => a.placement - b.placement)
+  }
+
+  const groupA = byGroup.get(1) ?? []
+  const groupB = byGroup.get(2) ?? []
+
+  const getTeam = (group: GroupStandingEntry[], placement: number) =>
+    group.find(e => e.placement === placement)
+
+  // SF1: A1 vs B2
+  const a1 = getTeam(groupA, 1)
+  const b2 = getTeam(groupB, 2)
+  if (a1 && b2) {
+    plans.push({
+      stageName: CUP_STAGE_NAMES.SEMI_FINAL_GOLD,
+      homeClubId: a1.clubId,
+      awayClubId: b2.clubId,
+      bracketType: BracketType.GOLD,
+      bracketSlot: 1,
+      homeSeed: 1,
+      awaySeed: 4,
+    })
+  }
+
+  // SF2: B1 vs A2
+  const b1 = getTeam(groupB, 1)
+  const a2 = getTeam(groupA, 2)
+  if (b1 && a2) {
+    plans.push({
+      stageName: CUP_STAGE_NAMES.SEMI_FINAL_GOLD,
+      homeClubId: b1.clubId,
+      awayClubId: a2.clubId,
+      bracketType: BracketType.GOLD,
+      bracketSlot: 2,
+      homeSeed: 2,
+      awaySeed: 3,
     })
   }
 

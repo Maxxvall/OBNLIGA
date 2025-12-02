@@ -4909,6 +4909,18 @@ export default async function (server: FastifyInstance) {
             ? request.server.publishTopic.bind(request.server)
             : undefined
 
+        // Инвалидируем кэш расписания и результатов при смене статуса матча
+        // чтобы клиенты получили актуальные данные вместо 304 Not Modified
+        const statusChanged = body.status !== undefined && body.status !== existing.status
+        if (statusChanged && existing.seasonId != null) {
+          await Promise.all([
+            defaultCache.invalidate(PUBLIC_LEAGUE_SCHEDULE_KEY).catch(() => undefined),
+            defaultCache.invalidate(`${PUBLIC_LEAGUE_SCHEDULE_KEY}:${existing.seasonId}`).catch(() => undefined),
+            defaultCache.invalidate(PUBLIC_LEAGUE_RESULTS_KEY).catch(() => undefined),
+            defaultCache.invalidate(`${PUBLIC_LEAGUE_RESULTS_KEY}:${existing.seasonId}`).catch(() => undefined),
+          ])
+        }
+
         if (
           existing.seasonId != null &&
           (nextStatus !== MatchStatus.FINISHED || existing.status === MatchStatus.FINISHED)

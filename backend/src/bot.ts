@@ -61,9 +61,9 @@ if (token) {
     const keyboard = {
       inline_keyboard: [[{ text: 'Открыть Портал капитана', url: 'https://obnligaadmin.onrender.com/' }]]
     } as const
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await ctx.reply(
       'Капитан — пожалуйста, заполните список игроков перед началом матча. Откройте Портал капитана по кнопке ниже:',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       { reply_markup: keyboard as any }
     )
   })

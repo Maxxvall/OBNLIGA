@@ -14,6 +14,33 @@ type ExpressListProps = {
   onRefresh?: () => void
 }
 
+// =================== ХРАНЕНИЕ ПОКАЗАННЫХ АНИМАЦИЙ ===================
+
+const SHOWN_ANIMATIONS_KEY = 'express_shown_animations'
+
+const getShownAnimationIds = (): Set<string> => {
+  try {
+    const raw = localStorage.getItem(SHOWN_ANIMATIONS_KEY)
+    if (!raw) return new Set()
+    const parsed = JSON.parse(raw) as string[]
+    return new Set(parsed)
+  } catch {
+    return new Set()
+  }
+}
+
+const markAnimationShown = (expressId: string): void => {
+  try {
+    const shown = getShownAnimationIds()
+    shown.add(expressId)
+    // Храним только последние 100 ID для экономии места
+    const arr = Array.from(shown).slice(-100)
+    localStorage.setItem(SHOWN_ANIMATIONS_KEY, JSON.stringify(arr))
+  } catch {
+    // Игнорируем ошибки localStorage
+  }
+}
+
 // =================== КОНСТАНТЫ ===================
 
 const STATUS_LABELS: Record<ExpressStatus, string> = {
@@ -97,13 +124,16 @@ const ExpressList: React.FC<ExpressListProps> = ({ onRefresh: _onRefresh }) => {
         if (!cancelled) {
           setExpresses(result.data)
 
-          // Проверяем, есть ли новый выигрыш для анимации
+          // Проверяем, есть ли новый выигрыш для анимации (который ещё не показывали)
+          const shownIds = getShownAnimationIds()
           const recentWin = result.data.find(
             e => e.status === 'WON' && e.resolvedAt &&
-              Date.now() - new Date(e.resolvedAt).getTime() < 60_000 // < 1 минуты
+              Date.now() - new Date(e.resolvedAt).getTime() < 60_000 && // < 1 минуты
+              !shownIds.has(e.id) // Ещё не показывали
           )
           if (recentWin) {
             setCelebratingId(recentWin.id)
+            markAnimationShown(recentWin.id)
             setTimeout(() => setCelebratingId(null), 4000)
           }
         }

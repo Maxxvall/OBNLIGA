@@ -436,38 +436,38 @@
 }
 
 .team-form-logo {
-  width: 38px;
-  height: 38px;
+  width: 48px;
+  height: 48px;
   object-fit: cover;
-  border-radius: 8px;
+  border-radius: 10px;
 }
 
 .team-form-logo.fallback {
-  width: 38px;
-  height: 38px;
+  width: 48px;
+  height: 48px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--neon-cyan);
-  border-radius: 8px;
+  border-radius: 10px;
   background: rgba(0, 240, 255, 0.06);
 }
 
 .team-form-result-badge {
   position: absolute;
-  bottom: -3px;
+  bottom: -4px;
   left: 50%;
   transform: translateX(-50%);
-  width: 16px;
-  height: 16px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 9px;
+  font-size: 12px;
   border: 2px solid rgba(12, 20, 36, 0.92);
 }
 
@@ -487,7 +487,7 @@
 }
 
 .team-form-score-compact {
-  font-size: 11px;
+  font-size: 14px;
   letter-spacing: 0.4px;
   font-weight: 600;
   color: rgba(230, 247, 255, 0.8);
@@ -850,7 +850,7 @@
   }
 
   .team-stats-wide-block {
-    grid-template-columns: 1fr;
+    grid-template-columns: auto 1fr;
     gap: 12px;
     padding: 12px;
   }
@@ -865,29 +865,31 @@
   }
 
   .team-stats-wdl {
-    flex-direction: row;
+    flex-direction: column;
     justify-content: center;
-    gap: 16px;
+    align-items: flex-start;
+    gap: 6px;
     width: 100%;
   }
 
   .team-stats-wdl-item {
-    flex-direction: column;
-    gap: 4px;
-    grid-template-columns: unset;
+    display: grid;
+    grid-template-columns: 8px 70px auto;
+    gap: 8px;
   }
 
   .team-stats-wdl-label {
-    font-size: 10px;
-    order: 2;
+    font-size: 11px;
+    order: unset;
   }
 
   .team-stats-wdl-value {
-    font-size: 18px;
-    order: 1;
+    font-size: 16px;
+    order: unset;
   }
 
   .team-stats-wdl-bullet {
+    display: block;
     display: none;
   }
 
@@ -909,14 +911,14 @@
 
   .team-form-logo,
   .team-form-logo.fallback {
-    width: 32px;
-    height: 32px;
+    width: 40px;
+    height: 40px;
   }
 
   .team-form-result-badge {
-    width: 14px;
-    height: 14px;
-    font-size: 8px;
+    width: 18px;
+    height: 18px;
+    font-size: 10px;
   }
 
   .team-achievement-card {

@@ -94,7 +94,8 @@
   background: linear-gradient(145deg, rgba(100, 220, 150, 0.06), rgba(15, 20, 32, 0.98));
 }
 
-.express-card.express-status-lost {
+.express-card.express-status-lost,
+.express-card.express-status-lost-no-animation {
   border-color: rgba(255, 100, 100, 0.25);
   background: linear-gradient(145deg, rgba(255, 100, 100, 0.04), rgba(15, 20, 32, 0.98));
 }
@@ -468,6 +469,11 @@
 
 .express-card.express-status-lost {
   animation: lose-shake 0.4s ease-in-out;
+}
+
+/* Проигрыш без анимации (для уже показанных) */
+.express-card.express-status-lost-no-animation {
+  /* Стили как у lost, но без анимации */
 }
 
 @keyframes lose-shake {

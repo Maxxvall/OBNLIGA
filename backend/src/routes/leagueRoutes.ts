@@ -3,6 +3,7 @@ import prisma from '../db'
 import {
   defaultCache,
   resolveCacheOptions,
+  ARCHIVE_TTL_SECONDS,
   PUBLIC_FRIENDLY_RESULTS_KEY,
   PUBLIC_FRIENDLY_SCHEDULE_KEY,
   PUBLIC_LEAGUE_RESULTS_KEY,
@@ -16,6 +17,7 @@ import {
   SeasonWithCompetition,
   buildLeagueTable,
   fetchLeagueSeasons,
+  ensureSeasonSummary,
 } from '../services/leagueTable'
 import {
   type LeagueRoundCollection,
@@ -34,7 +36,7 @@ const SEASONS_TTL_SECONDS = 60
 const TABLE_CACHE_RESOURCE = 'leagueTable' as const
 
 type SeasonResolution =
-  | { ok: true; season: SeasonWithCompetition; requestedSeasonId?: number }
+  | { ok: true; season: SeasonWithCompetition; requestedSeasonId?: number; isArchived: boolean }
   | { ok: false; status: number; error: string }
 
 const resolveSeason = async (seasonIdRaw?: string): Promise<SeasonResolution> => {
@@ -69,7 +71,7 @@ const resolveSeason = async (seasonIdRaw?: string): Promise<SeasonResolution> =>
     return { ok: false, status: 404, error: 'season_not_found' }
   }
 
-  return { ok: true, season, requestedSeasonId }
+  return { ok: true, season, requestedSeasonId, isArchived: season.isArchived }
 }
 
 const leagueRoutes: FastifyPluginAsync = async fastify => {
@@ -104,8 +106,85 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
         .send({ ok: false, error: seasonResolution.error })
     }
 
-    const { season, requestedSeasonId } = seasonResolution
+    const { season, requestedSeasonId, isArchived } = seasonResolution
 
+    // Для архивных сезонов — берём из SeasonArchive с длинным TTL
+    if (isArchived) {
+      const { getSeasonArchive } = await import('../services/seasonArchive')
+      const archiveCacheKey = `public:archive:season:${season.id}:table`
+
+      const loader = async (): Promise<LeagueTableResponse | null> => {
+        const archive = await getSeasonArchive(season.id)
+        if (!archive) return null
+
+        // Преобразуем архивные standings в LeagueTableResponse
+        // Собираем все записи standings из всех групп
+        const standings: import('../services/leagueTable').LeagueTableEntry[] = []
+
+        archive.standings.groups.forEach((g, groupIndex) => {
+          g.standings.forEach((e, idx) => {
+            standings.push({
+              position: e.position ?? idx + 1,
+              clubId: e.clubId,
+              clubName: e.clubName,
+              clubShortName: e.shortName,
+              clubLogoUrl: e.logoUrl,
+              matchesPlayed: e.played,
+              wins: e.wins,
+              draws: e.draws,
+              losses: e.losses,
+              goalsFor: e.goalsFor,
+              goalsAgainst: e.goalsAgainst,
+              goalDifference: e.goalsFor - e.goalsAgainst,
+              points: e.points,
+              groupIndex,
+              groupLabel: g.groupLabel,
+            })
+          })
+        })
+
+        // Информация о группах
+        const groups: import('../services/leagueTable').LeagueTableGroup[] = archive.groups.map(g => ({
+          groupIndex: g.groupIndex,
+          label: g.label,
+          qualifyCount: g.qualifyCount,
+          clubIds: g.clubs.map(c => c.id),
+        }))
+
+        return {
+          season: ensureSeasonSummary(season),
+          standings,
+          groups: groups.length > 0 ? groups : undefined,
+        }
+      }
+
+      const { value, version } = await defaultCache.getWithMeta(
+        archiveCacheKey,
+        loader,
+        ARCHIVE_TTL_SECONDS
+      )
+
+      if (!value) {
+        return reply.status(404).send({ ok: false, error: 'archive_not_found' })
+      }
+
+      const etag = buildWeakEtag(archiveCacheKey, version)
+
+      if (matchesIfNoneMatch(request.headers, etag)) {
+        return reply
+          .status(304)
+          .header('ETag', etag)
+          .header('X-Resource-Version', String(version))
+          .send()
+      }
+
+      reply.header('ETag', etag)
+      reply.header('X-Resource-Version', String(version))
+      reply.header('Cache-Control', 'public, max-age=86400') // 24 часа клиентский кеш для архивов
+      return reply.send({ ok: true, data: value, meta: { version, archived: true } })
+    }
+
+    // Для активных сезонов — обычная логика
     const cacheKey = requestedSeasonId
       ? `${PUBLIC_LEAGUE_TABLE_KEY}:${season.id}`
       : PUBLIC_LEAGUE_TABLE_KEY
@@ -319,8 +398,78 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
         .send({ ok: false, error: seasonResolution.error })
     }
 
-    const { season, requestedSeasonId } = seasonResolution
+    const { season, requestedSeasonId, isArchived } = seasonResolution
 
+    // Для архивных сезонов — берём из SeasonArchive с длинным TTL
+    if (isArchived) {
+      const { getSeasonArchive } = await import('../services/seasonArchive')
+      const archiveCacheKey = `public:archive:season:${season.id}:stats`
+
+      const loader = async () => {
+        const archive = await getSeasonArchive(season.id)
+        if (!archive) return null
+
+        return {
+          season: {
+            id: season.id,
+            name: season.name,
+            competitionId: season.competitionId,
+            competitionName: season.competition.name,
+            isArchived: true,
+          },
+          topScorers: archive.topScorers.map(p => ({
+            personId: p.personId,
+            firstName: p.firstName,
+            lastName: p.lastName,
+            clubId: p.clubId,
+            clubName: p.clubName,
+            clubShortName: p.clubShortName,
+            clubLogoUrl: p.clubLogoUrl,
+            goals: p.goals,
+            penaltyGoals: p.penaltyGoals,
+            matchesPlayed: p.matchesPlayed,
+          })),
+          topAssists: archive.topAssists.map(p => ({
+            personId: p.personId,
+            firstName: p.firstName,
+            lastName: p.lastName,
+            clubId: p.clubId,
+            clubName: p.clubName,
+            clubShortName: p.clubShortName,
+            clubLogoUrl: p.clubLogoUrl,
+            assists: p.assists,
+            matchesPlayed: p.matchesPlayed,
+          })),
+        }
+      }
+
+      const { value, version } = await defaultCache.getWithMeta(
+        archiveCacheKey,
+        loader,
+        ARCHIVE_TTL_SECONDS
+      )
+
+      if (!value) {
+        return reply.status(404).send({ ok: false, error: 'archive_not_found' })
+      }
+
+      const etag = buildWeakEtag(archiveCacheKey, version)
+
+      if (matchesIfNoneMatch(request.headers, etag)) {
+        return reply
+          .status(304)
+          .header('ETag', etag)
+          .header('X-Resource-Version', String(version))
+          .send()
+      }
+
+      reply.header('ETag', etag)
+      reply.header('X-Resource-Version', String(version))
+      reply.header('Cache-Control', 'public, max-age=86400')
+      return reply.send({ ok: true, data: value, meta: { version, archived: true } })
+    }
+
+    // Для активных сезонов — обычная логика
     const cacheKey = requestedSeasonId
       ? `${PUBLIC_LEAGUE_STATS_KEY}:${season.id}`
       : PUBLIC_LEAGUE_STATS_KEY

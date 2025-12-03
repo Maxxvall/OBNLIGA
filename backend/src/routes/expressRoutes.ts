@@ -203,13 +203,22 @@ export default async function expressRoutes(server: FastifyInstance) {
 
     const loader = async (): Promise<ExpressBetView[]> => {
       const expressBets = await prisma.expressBet.findMany({
-        where: { userId: user.id },
+        where: {
+          userId: user.id,
+          // Фильтруем только экспрессы с событиями
+          items: {
+            some: {},
+          },
+        },
         orderBy: { createdAt: 'desc' },
         take: 50,
         include: EXPRESS_WITH_ITEMS_INCLUDE,
       })
 
-      return expressBets.map(serializeExpressBet)
+      // Дополнительная проверка: не возвращаем экспрессы с 0 событий
+      return expressBets
+        .filter(bet => bet.items.length > 0)
+        .map(serializeExpressBet)
     }
 
     const { value, version } = await defaultCache.getWithMeta(cacheKey, loader, {

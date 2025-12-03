@@ -111,6 +111,8 @@ const ExpressList: React.FC<ExpressListProps> = ({ onRefresh: _onRefresh }) => {
   const [error, setError] = useState<string | undefined>()
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [celebratingId, setCelebratingId] = useState<string | null>(null)
+  // Храним ID экспрессов, для которых уже показали анимацию проигрыша
+  const [shownLossIds, setShownLossIds] = useState<Set<string>>(() => getShownAnimationIds())
 
   // Загрузка экспрессов
   useEffect(() => {
@@ -122,11 +124,13 @@ const ExpressList: React.FC<ExpressListProps> = ({ onRefresh: _onRefresh }) => {
       try {
         const result = await fetchMyExpresses()
         if (!cancelled) {
-          setExpresses(result.data)
+          // Фильтруем экспрессы с 0 событий (на случай если бекенд ещё не обновился)
+          const validExpresses = result.data.filter(e => e.items.length > 0)
+          setExpresses(validExpresses)
 
           // Проверяем, есть ли новый выигрыш для анимации (который ещё не показывали)
           const shownIds = getShownAnimationIds()
-          const recentWin = result.data.find(
+          const recentWin = validExpresses.find(
             e => e.status === 'WON' && e.resolvedAt &&
               Date.now() - new Date(e.resolvedAt).getTime() < 60_000 && // < 1 минуты
               !shownIds.has(e.id) // Ещё не показывали
@@ -136,6 +140,17 @@ const ExpressList: React.FC<ExpressListProps> = ({ onRefresh: _onRefresh }) => {
             markAnimationShown(recentWin.id)
             setTimeout(() => setCelebratingId(null), 4000)
           }
+
+          // Отмечаем проигрыши как показанные (для CSS-анимации)
+          const newShown = new Set(shownIds)
+          validExpresses.forEach(e => {
+            if (e.status === 'LOST' && !newShown.has(e.id)) {
+              // Помечаем как показанный после первого рендера
+              markAnimationShown(e.id)
+              newShown.add(e.id)
+            }
+          })
+          setShownLossIds(newShown)
         }
       } catch (err) {
         if (!cancelled) {
@@ -191,15 +206,23 @@ const ExpressList: React.FC<ExpressListProps> = ({ onRefresh: _onRefresh }) => {
         {expresses.map(express => {
           const isExpanded = expandedId === express.id
           const isCelebrating = celebratingId === express.id
+          // Для проигрышей: показываем анимацию только если ещё не показывали
+          const isLost = express.status === 'LOST'
+          const shouldAnimateLoss = isLost && !shownLossIds.has(express.id)
           const statusClass = express.status.toLowerCase()
           const pendingCount = express.items.filter(i => i.status === 'PENDING').length
           const wonCount = express.items.filter(i => i.status === 'WON').length
           const lostCount = express.items.filter(i => i.status === 'LOST').length
 
+          // Класс для анимации: не применяем express-status-lost если уже показывали
+          const animationClass = shouldAnimateLoss
+            ? `express-status-${statusClass}`
+            : (isLost ? 'express-status-lost-no-animation' : `express-status-${statusClass}`)
+
           return (
             <li
               key={express.id}
-              className={`express-card express-status-${statusClass} ${isCelebrating ? 'celebrating' : ''}`}
+              className={`express-card ${animationClass} ${isCelebrating ? 'celebrating' : ''}`}
             >
               {/* Анимация выигрыша */}
               {isCelebrating && (

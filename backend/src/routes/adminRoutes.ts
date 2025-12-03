@@ -5976,8 +5976,12 @@ export default async function (server: FastifyInstance) {
         async (request, reply) => {
           const seasonId = parseNumericId(request.params.seasonId, 'seasonId')
 
-          const { validateSeasonForArchive } = await import('../services/seasonArchive')
-          const result = await validateSeasonForArchive(seasonId)
+          const { getSeasonArchiveValidationDetails } = await import('../services/seasonArchive')
+          const result = await getSeasonArchiveValidationDetails(seasonId)
+
+          if (!result) {
+            return reply.status(404).send({ ok: false, error: 'season_not_found' })
+          }
 
           return reply.send({ ok: true, data: result })
         }

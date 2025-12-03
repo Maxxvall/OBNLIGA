@@ -361,6 +361,7 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
       }
 
       const { getSeasonArchive, isSeasonArchived } = await import('../services/seasonArchive')
+      const { ARCHIVE_TTL_SECONDS } = await import('../cache')
 
       // Проверяем, архивирован ли сезон
       const archived = await isSeasonArchived(seasonId)
@@ -370,12 +371,11 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
 
       // Кеширование архивных данных с длинным TTL (30 дней)
       const cacheKey = `public:archive:season:${seasonId}`
-      const archiveTtlSeconds = 60 * 60 * 24 * 30 // 30 дней
 
       const { value, version } = await defaultCache.getWithMeta(
         cacheKey,
         () => getSeasonArchive(seasonId),
-        archiveTtlSeconds
+        ARCHIVE_TTL_SECONDS
       )
 
       if (!value) {

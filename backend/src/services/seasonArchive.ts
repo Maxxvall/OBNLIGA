@@ -175,6 +175,22 @@ export interface ArchiveValidationResult {
 }
 
 /**
+ * Расширенный результат валидации для UI админки
+ */
+export interface ArchiveValidationDetails {
+  canArchive: boolean
+  seasonId: number
+  isAlreadyArchived: boolean
+  isSeasonActive: boolean
+  allMatchesFinished: boolean
+  allSeriesFinished: boolean
+  unfinishedMatches: number
+  unfinishedSeries: number
+  totalMatches: number
+  totalSeries: number
+}
+
+/**
  * Проверяет готовность сезона к архивации
  */
 export const validateSeasonForArchive = async (
@@ -231,6 +247,71 @@ export const validateSeasonForArchive = async (
   }
 
   return { valid: true }
+}
+
+/**
+ * Возвращает детальную информацию о готовности сезона к архивации
+ * Используется в админке для отображения статуса валидации
+ */
+export const getSeasonArchiveValidationDetails = async (
+  seasonId: number
+): Promise<ArchiveValidationDetails | null> => {
+  const season = await prisma.season.findUnique({
+    where: { id: seasonId },
+    select: { id: true, isArchived: true, isActive: true },
+  })
+
+  if (!season) {
+    return null
+  }
+
+  // Считаем статистику матчей
+  const [totalMatches, unfinishedMatches] = await Promise.all([
+    prisma.match.count({
+      where: { seasonId, isFriendly: false },
+    }),
+    prisma.match.count({
+      where: {
+        seasonId,
+        status: { not: MatchStatus.FINISHED },
+        isFriendly: false,
+      },
+    }),
+  ])
+
+  // Считаем статистику серий плей-офф
+  const [totalSeries, unfinishedSeries] = await Promise.all([
+    prisma.matchSeries.count({
+      where: { seasonId },
+    }),
+    prisma.matchSeries.count({
+      where: {
+        seasonId,
+        seriesStatus: { not: SeriesStatus.FINISHED },
+      },
+    }),
+  ])
+
+  const allMatchesFinished = unfinishedMatches === 0
+  const allSeriesFinished = unfinishedSeries === 0
+  const canArchive =
+    !season.isArchived &&
+    !season.isActive &&
+    allMatchesFinished &&
+    allSeriesFinished
+
+  return {
+    canArchive,
+    seasonId: season.id,
+    isAlreadyArchived: season.isArchived,
+    isSeasonActive: season.isActive,
+    allMatchesFinished,
+    allSeriesFinished,
+    unfinishedMatches,
+    unfinishedSeries,
+    totalMatches,
+    totalSeries,
+  }
 }
 
 // =================== ПОСТРОЕНИЕ АРХИВА ===================

@@ -54,6 +54,10 @@ const computeMatchWindow = async (): Promise<MatchWindowState> => {
       status: { in: [MatchStatus.SCHEDULED, MatchStatus.LIVE, MatchStatus.FINISHED] },
       isArchived: false,
       isFriendly: false,
+      // Исключаем матчи из архивированных сезонов
+      season: {
+        isArchived: false,
+      },
     },
     select: {
       id: true,
@@ -137,6 +141,20 @@ export type AdaptiveCacheResource =
   | 'leagueStats'
   | 'friendliesSchedule'
   | 'friendliesResults'
+
+// Константы TTL для архивных данных (30 дней)
+export const ARCHIVE_TTL_SECONDS = 60 * 60 * 24 * 30 // 30 дней
+export const ARCHIVE_STALE_SECONDS = 60 * 60 * 24 * 7 // 7 дней SWR
+
+/**
+ * Опции кеширования для архивных данных
+ * Архивные данные immutable, поэтому используем очень долгий TTL
+ */
+export const archiveCacheOptions: CacheFetchOptions = {
+  ttlSeconds: ARCHIVE_TTL_SECONDS,
+  staleWhileRevalidateSeconds: ARCHIVE_STALE_SECONDS,
+  lockTimeoutSeconds: 15,
+}
 
 const adaptivePolicies: Record<AdaptiveCacheResource, { outside: CacheFetchOptions; matchWindow: CacheFetchOptions }> = {
   leagueTable: {

@@ -25,6 +25,7 @@ import type {
 import { leagueApi } from '../api/leagueApi'
 import { clubApi } from '../api/clubApi'
 import { matchApi } from '../api/matchApi'
+import { archiveApi, type SeasonArchiveData } from '../api/archiveApi'
 import { readFromStorage, writeToStorage } from '../utils/leaguePersistence'
 import { fetchShopItems, fetchShopHistory, createShopOrder } from '../api/shopApi'
 import {
@@ -282,6 +283,7 @@ const areSeasonsEqual = (left: LeagueSeasonSummary, right: LeagueSeasonSummary):
   left.startDate === right.startDate &&
   left.endDate === right.endDate &&
   left.isActive === right.isActive &&
+  left.isArchived === right.isArchived &&
   left.city === right.city &&
   areCompetitionsEqual(left.competition, right.competition)
 
@@ -1134,6 +1136,11 @@ interface AppState {
   shopContact: ShopContactInfo
   shopOrderSubmitting: boolean
   shopOrderError?: string
+  // Архивные данные сезонов (lazy loading)
+  seasonArchives: Record<number, SeasonArchiveData>
+  seasonArchivesFetchedAt: Record<number, number>
+  seasonArchivesLoading: Record<number, boolean>
+  seasonArchivesErrors: Record<number, string | undefined>
   setTab: (tab: UITab) => void
   setLeagueSubTab: (tab: LeagueSubTab) => void
   toggleLeagueMenu: (force?: boolean) => void
@@ -1178,6 +1185,9 @@ interface AppState {
   clearCart: () => void
   setShopContact: (contact: ShopContactInfo) => void
   submitShopOrder: (options?: { note?: string }) => Promise<FetchResult>
+  // Архивные данные сезонов
+  fetchSeasonArchive: (seasonId: number, options?: { force?: boolean }) => Promise<FetchResult>
+  isSeasonArchived: (seasonId: number) => boolean
 }
 
 const orderSeasons = (items: LeagueSeasonSummary[]) =>
@@ -1498,6 +1508,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   shopContact: initialShopContact,
   shopOrderSubmitting: false,
   shopOrderError: undefined,
+  // Архивные данные сезонов
+  seasonArchives: {},
+  seasonArchivesFetchedAt: {},
+  seasonArchivesLoading: {},
+  seasonArchivesErrors: {},
   setTab: tab => {
     set(state => ({
       currentTab: tab,
@@ -3269,6 +3284,76 @@ export const useAppStore = create<AppState>((set, get) => ({
     void get().fetchShopItems({ force: true })
     void get().fetchShopHistory({ force: true })
     return { ok: true }
+  },
+
+  // =================== АРХИВНЫЕ ДАННЫЕ СЕЗОНОВ ===================
+
+  fetchSeasonArchive: async (seasonId, options = {}) => {
+    const ARCHIVE_TTL_MS = 24 * 60 * 60 * 1000 // 24 часа — архивы редко меняются
+    const state = get()
+    const now = Date.now()
+    const force = options.force ?? false
+
+    // Проверяем, нужна ли загрузка
+    const fetchedAt = state.seasonArchivesFetchedAt[seasonId] ?? 0
+    const cached = state.seasonArchives[seasonId]
+    if (!force && cached && now - fetchedAt < ARCHIVE_TTL_MS) {
+      return { ok: true }
+    }
+
+    // Проверяем, не идёт ли уже загрузка
+    if (state.seasonArchivesLoading[seasonId]) {
+      return { ok: true }
+    }
+
+    set(prev => ({
+      seasonArchivesLoading: { ...prev.seasonArchivesLoading, [seasonId]: true },
+      seasonArchivesErrors: { ...prev.seasonArchivesErrors, [seasonId]: undefined },
+    }))
+
+    try {
+      const response = await archiveApi.fetchSeasonArchive(seasonId)
+
+      if (!response.ok) {
+        const errorCode = response.error ?? 'archive_not_found'
+        set(prev => ({
+          seasonArchivesLoading: { ...prev.seasonArchivesLoading, [seasonId]: false },
+          seasonArchivesErrors: { ...prev.seasonArchivesErrors, [seasonId]: errorCode },
+        }))
+        return { ok: false, error: errorCode }
+      }
+
+      const archiveData = 'data' in response ? response.data : null
+      if (!archiveData) {
+        set(prev => ({
+          seasonArchivesLoading: { ...prev.seasonArchivesLoading, [seasonId]: false },
+          seasonArchivesErrors: { ...prev.seasonArchivesErrors, [seasonId]: 'archive_not_found' },
+        }))
+        return { ok: false, error: 'archive_not_found' }
+      }
+
+      set(prev => ({
+        seasonArchives: { ...prev.seasonArchives, [seasonId]: archiveData },
+        seasonArchivesFetchedAt: { ...prev.seasonArchivesFetchedAt, [seasonId]: now },
+        seasonArchivesLoading: { ...prev.seasonArchivesLoading, [seasonId]: false },
+        seasonArchivesErrors: { ...prev.seasonArchivesErrors, [seasonId]: undefined },
+      }))
+
+      return { ok: true }
+    } catch (err) {
+      const errorCode = err instanceof Error ? err.message : 'archive_fetch_failed'
+      set(prev => ({
+        seasonArchivesLoading: { ...prev.seasonArchivesLoading, [seasonId]: false },
+        seasonArchivesErrors: { ...prev.seasonArchivesErrors, [seasonId]: errorCode },
+      }))
+      return { ok: false, error: errorCode }
+    }
+  },
+
+  isSeasonArchived: (seasonId) => {
+    const state = get()
+    const season = state.seasons.find(s => s.id === seasonId)
+    return season?.isArchived ?? false
   },
 }))
 

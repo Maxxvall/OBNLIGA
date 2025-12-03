@@ -206,8 +206,13 @@ export const LeagueStatsView: React.FC<LeagueStatsViewProps> = ({
     >
       <header className="stats-header">
         <div className="stats-meta">
-          <h2>{stats.season.name}</h2>
+          <h2>
+            {stats.season.isArchived ? '📦 ' : ''}{stats.season.name}
+          </h2>
           <p>{stats.season.competition.name}</p>
+          {stats.season.isArchived && (
+            <span className="archived-badge">Архивный сезон</span>
+          )}
         </div>
         <div className="stats-controls">
           <button

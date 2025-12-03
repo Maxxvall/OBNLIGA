@@ -1234,6 +1234,7 @@ const buildFriendlySeasonSummary = (matches: FriendlyMatchView[]): LeagueSeasonS
       startDate: nowIso,
       endDate: nowIso,
       isActive: false,
+      isArchived: false,
       city: null,
       competition: {
         id: FRIENDLY_COMPETITION_ID,
@@ -1258,6 +1259,7 @@ const buildFriendlySeasonSummary = (matches: FriendlyMatchView[]): LeagueSeasonS
     startDate,
     endDate,
     isActive,
+    isArchived: false,
     city: null,
     competition: {
       id: FRIENDLY_COMPETITION_ID,

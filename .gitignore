@@ -46,3 +46,4 @@ prisma/schema.prisma.new2
 # Audit and docs
 audit/
 docs/
+backend/src/tests/seasonArchive.test.ts

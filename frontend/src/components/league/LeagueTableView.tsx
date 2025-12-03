@@ -241,8 +241,13 @@ export const LeagueTableView: React.FC<LeagueTableViewProps> = ({
     <section className="league-table" aria-label="Турнирная таблица" data-refreshing={isRefreshing || undefined}>
       <header className="league-table-header">
         <div>
-          <h2>{season.name}</h2>
+          <h2>
+            {season.isArchived ? '📦 ' : ''}{season.name}
+          </h2>
           <p>{season.competition.name}</p>
+          {season.isArchived && (
+            <span className="archived-badge">Архивный сезон</span>
+          )}
         </div>
       </header>
       {hasGroups ? (

@@ -610,15 +610,18 @@ const LeaguePage: React.FC = () => {
                           {group.seasons.map(season => {
                             const isActive = season.id === activeSeasonId
                             const isSelected = season.id === selectedSeasonId
+                            const isArchived = season.isArchived === true
                             return (
                               <button
                                 key={season.id}
                                 type="button"
                                 role="listitem"
-                                className={`season-item${isSelected ? ' selected' : ''}${isActive ? ' active' : ''}`}
+                                className={`season-item${isSelected ? ' selected' : ''}${isActive ? ' active' : ''}${isArchived ? ' archived' : ''}`}
                                 onClick={() => handleSeasonClick(season.id)}
                               >
-                                <span className="season-name">{season.name}</span>
+                                <span className="season-name">
+                                  {isArchived ? '📦 ' : ''}{season.name}
+                                </span>
                                 <span className="season-range muted">{formatSeasonRange(season)}</span>
                               </button>
                             )

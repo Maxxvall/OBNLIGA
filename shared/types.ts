@@ -330,6 +330,7 @@ export interface LeagueSeasonSummary {
   startDate: string
   endDate: string
   isActive: boolean
+  isArchived: boolean
   city?: string | null
   competition: {
     id: number

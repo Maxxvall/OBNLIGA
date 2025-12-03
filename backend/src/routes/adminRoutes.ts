@@ -5968,6 +5968,63 @@ export default async function (server: FastifyInstance) {
       })
 
       // ============================================================
+      // Season Archive (архивирование сезонов)
+      // ============================================================
+
+      admin.get<{ Params: { seasonId: string } }>(
+        '/seasons/:seasonId/archive/validate',
+        async (request, reply) => {
+          const seasonId = parseNumericId(request.params.seasonId, 'seasonId')
+
+          const { validateSeasonForArchive } = await import('../services/seasonArchive')
+          const result = await validateSeasonForArchive(seasonId)
+
+          return reply.send({ ok: true, data: result })
+        }
+      )
+
+      admin.post<{ Params: { seasonId: string } }>(
+        '/seasons/:seasonId/archive',
+        async (request, reply) => {
+          const seasonId = parseNumericId(request.params.seasonId, 'seasonId')
+          const adminIdentifier = request.admin?.sub ?? 'unknown'
+
+          const { archiveSeason, getSeasonArchive } = await import('../services/seasonArchive')
+          const result = await archiveSeason(seasonId, adminIdentifier)
+
+          if (!result.success) {
+            const statusMap: Record<string, number> = {
+              season_not_found: 404,
+              season_already_archived: 400,
+              season_has_unfinished_matches: 400,
+              season_has_unfinished_series: 400,
+              season_is_active: 400,
+              archive_build_failed: 500,
+            }
+            const status = result.error ? statusMap[result.error] ?? 400 : 400
+            return reply.status(status).send({
+              ok: false,
+              error: result.error,
+              details: result.details,
+            })
+          }
+
+          // Загружаем полный архив для ответа
+          const archive = await getSeasonArchive(seasonId)
+
+          return reply.send({
+            ok: true,
+            data: {
+              seasonId: result.seasonId,
+              archiveId: result.archiveId,
+              archivedAt: result.archivedAt,
+              summary: archive?.summary ?? null,
+            },
+          })
+        }
+      )
+
+      // ============================================================
       // Achievement Jobs Processing (для ручного запуска обработки)
       // ============================================================
 

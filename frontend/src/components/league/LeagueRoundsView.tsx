@@ -491,7 +491,12 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
       <header className="league-rounds-header">
         <div className="league-rounds-header-primary">
           <h2>{headerTitle}</h2>
-          <p>{season.name}</p>
+          <p>
+            {season.isArchived ? '📦 ' : ''}{season.name}
+          </p>
+          {season.isArchived && (
+            <span className="archived-badge">Архивный сезон</span>
+          )}
         </div>
       </header>
 

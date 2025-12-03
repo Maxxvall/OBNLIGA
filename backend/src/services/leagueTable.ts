@@ -8,6 +8,7 @@ export interface LeagueSeasonSummary {
   startDate: string
   endDate: string
   isActive: boolean
+  isArchived: boolean
   city: string | null
   competition: {
     id: number
@@ -59,6 +60,7 @@ export const ensureSeasonSummary = (season: SeasonWithCompetition): LeagueSeason
   startDate: season.startDate.toISOString(),
   endDate: season.endDate.toISOString(),
   isActive: season.isActive,
+  isArchived: season.isArchived,
   city: season.city ?? null,
   competition: {
     id: season.competitionId,

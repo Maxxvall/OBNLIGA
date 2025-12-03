@@ -8,6 +8,8 @@ import {
   createSeasonAutomation,
   createSeasonPlayoffs,
   fetchMatchStatistics,
+  adminValidateSeasonArchive,
+  adminArchiveSeason,
 } from '../../api/adminClient'
 import type { SeasonGroupStagePayload } from '../../api/adminClient'
 import { useAdminStore } from '../../store/adminStore'
@@ -26,6 +28,7 @@ import {
   PlayoffCreationResult,
   SeasonParticipant,
   SeriesFormat,
+  SeasonArchiveValidation,
 } from '../../types'
 import { PlayoffBracket } from '../PlayoffBracket'
 import { formatDateTime, formatDateTimeInput, toMoscowISOString } from '../../utils/date'
@@ -404,6 +407,12 @@ export const MatchesTab = () => {
   const [seasonExportDialogOpen, setSeasonExportDialogOpen] = useState(false)
   const [seasonExportStatus, setSeasonExportStatus] = useState<'SCHEDULED' | 'FINISHED'>('FINISHED')
 
+  // Состояние архивирования сезона
+  const [archiveValidation, setArchiveValidation] = useState<SeasonArchiveValidation | null>(null)
+  const [archiveValidating, setArchiveValidating] = useState(false)
+  const [archiving, setArchiving] = useState(false)
+  const [archiveModalOpen, setArchiveModalOpen] = useState(false)
+
   const isLoading = Boolean(loading.matches || loading.seasons)
   const activatingSeason = Boolean(loading.activateSeason)
   const deletingSeason = Boolean(loading.deleteSeason)
@@ -435,6 +444,56 @@ export const MatchesTab = () => {
     if (!confirmed) return
     void deleteSeason(selectedSeason.id)
   }, [deleteSeason, deletingSeason, selectedSeason])
+
+  // Обработчики архивирования сезона
+  const handleOpenArchiveModal = useCallback(async () => {
+    if (!selectedSeason || !token) return
+    setArchiveValidating(true)
+    setArchiveValidation(null)
+    try {
+      const validation = await adminValidateSeasonArchive(token, selectedSeason.id)
+      setArchiveValidation(validation)
+      setArchiveModalOpen(true)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Не удалось проверить сезон'
+      handleFeedback(message, 'error')
+    } finally {
+      setArchiveValidating(false)
+    }
+  }, [selectedSeason, token])
+
+  const handleArchiveSeason = useCallback(async () => {
+    if (!selectedSeason || !token || !archiveValidation?.canArchive) return
+    setArchiving(true)
+    try {
+      const result = await adminArchiveSeason(token, selectedSeason.id)
+      handleFeedback(
+        `Сезон «${result.summary?.seasonName ?? selectedSeason.name}» успешно архивирован`,
+        'success'
+      )
+      setArchiveModalOpen(false)
+      setArchiveValidation(null)
+      // Обновляем данные сезонов
+      await fetchSeasons({ force: true })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Не удалось архивировать сезон'
+      handleFeedback(message, 'error')
+    } finally {
+      setArchiving(false)
+    }
+  }, [selectedSeason, token, archiveValidation, fetchSeasons])
+
+  const handleCloseArchiveModal = useCallback(() => {
+    setArchiveModalOpen(false)
+    setArchiveValidation(null)
+  }, [])
+
+  // Проверка доступности кнопки архивирования
+  const canShowArchiveButton = useMemo(() => {
+    if (!selectedSeason) return false
+    // Можно архивировать только неактивные, неархивированные сезоны
+    return !selectedSeason.isActive && !selectedSeason.isArchived
+  }, [selectedSeason])
 
   const clubsById = useMemo(() => {
     const map = new Map<number, Club>()
@@ -2263,7 +2322,7 @@ export const MatchesTab = () => {
                 <option value="">—</option>
                 {data.seasons.map(season => (
                   <option key={season.id} value={season.id}>
-                    {season.name} — {season.competition.name} (
+                    {season.isArchived ? '📦 ' : ''}{season.name} — {season.competition.name} (
                     {competitionTypeLabels[season.competition.type]})
                   </option>
                 ))}
@@ -2301,7 +2360,26 @@ export const MatchesTab = () => {
                     Город проведения: <strong>{selectedSeason.city}</strong>
                   </p>
                 ) : null}
+                {selectedSeason.isArchived ? (
+                  <p className="season-archived-badge">
+                    📦 <strong>Архивирован</strong>
+                    {selectedSeason.archivedAt ? (
+                      <> — {selectedSeason.archivedAt.slice(0, 10)}</>
+                    ) : null}
+                  </p>
+                ) : null}
                 <div className="season-actions season-details-actions">
+                  {canShowArchiveButton && (
+                    <button
+                      className="button-archive"
+                      type="button"
+                      onClick={handleOpenArchiveModal}
+                      disabled={archiveValidating || archiving || !token}
+                      title="Создать архивный снимок сезона"
+                    >
+                      {archiveValidating ? 'Проверяем…' : '📦 Архивировать'}
+                    </button>
+                  )}
                   <button
                     className="button-danger"
                     type="button"
@@ -3604,6 +3682,94 @@ export const MatchesTab = () => {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Модальное окно архивирования сезона */}
+      {archiveModalOpen && selectedSeason && archiveValidation ? (
+        <div className="modal-backdrop" onClick={handleCloseArchiveModal}>
+          <div
+            className="modal-content archive-modal"
+            onClick={event => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="archive-modal-title"
+          >
+            <header className="modal-header">
+              <h3 id="archive-modal-title">📦 Архивирование сезона</h3>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={handleCloseArchiveModal}
+                aria-label="Закрыть"
+              >
+                ×
+              </button>
+            </header>
+            <div className="modal-body">
+              <p className="archive-season-name">
+                <strong>{selectedSeason.name}</strong> — {selectedSeason.competition.name}
+              </p>
+
+              {archiveValidation.isAlreadyArchived ? (
+                <div className="archive-status error">
+                  ⚠️ Сезон уже архивирован
+                </div>
+              ) : archiveValidation.canArchive ? (
+                <>
+                  <div className="archive-status success">
+                    ✅ Сезон готов к архивированию
+                  </div>
+                  <div className="archive-stats">
+                    <p>Всего матчей: <strong>{archiveValidation.totalMatches}</strong></p>
+                    <p>Всего серий: <strong>{archiveValidation.totalSeries}</strong></p>
+                  </div>
+                  <div className="archive-warning">
+                    <p>
+                      <strong>Внимание:</strong> После архивирования сезон будет помечен как архивный.
+                      Данные сезона будут сохранены в JSON-снимок, а сам сезон исключён из активных запросов.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="archive-status error">
+                    ❌ Невозможно архивировать сезон
+                  </div>
+                  <div className="archive-blockers">
+                    {!archiveValidation.allMatchesFinished && (
+                      <p className="blocker">
+                        🚫 Незавершённых матчей: <strong>{archiveValidation.unfinishedMatches}</strong> из {archiveValidation.totalMatches}
+                      </p>
+                    )}
+                    {!archiveValidation.allSeriesFinished && (
+                      <p className="blocker">
+                        🚫 Незавершённых серий: <strong>{archiveValidation.unfinishedSeries}</strong> из {archiveValidation.totalSeries}
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+            <footer className="modal-footer">
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={handleCloseArchiveModal}
+                disabled={archiving}
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                className="button-primary"
+                onClick={handleArchiveSeason}
+                disabled={!archiveValidation.canArchive || archiving}
+              >
+                {archiving ? 'Архивируем…' : 'Подтвердить архивирование'}
+              </button>
+            </footer>
           </div>
         </div>
       ) : null}

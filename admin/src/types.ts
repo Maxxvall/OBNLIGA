@@ -79,10 +79,39 @@ export interface Season {
   city?: string | null
   seriesFormat?: SeriesFormat | null
   isActive: boolean
+  isArchived: boolean
+  archivedAt?: string | null
+  archivedBy?: string | null
   competition: Competition
   participants: SeasonParticipant[]
   rosters?: SeasonRosterEntry[]
   groups?: SeasonGroup[]
+}
+
+/** Результат валидации сезона перед архивацией */
+export interface SeasonArchiveValidation {
+  canArchive: boolean
+  seasonId: number
+  isAlreadyArchived: boolean
+  allMatchesFinished: boolean
+  allSeriesFinished: boolean
+  unfinishedMatches: number
+  unfinishedSeries: number
+  totalMatches: number
+  totalSeries: number
+}
+
+/** Результат архивации сезона */
+export interface SeasonArchiveResult {
+  seasonId: number
+  archiveId: string
+  archivedAt: string
+  summary: {
+    seasonName: string
+    competitionName: string
+    totalMatches: number
+    totalGoals: number
+  } | null
 }
 
 export interface SeasonAutomationResult {

@@ -587,6 +587,9 @@ model Season {
   groupRounds       Int                 @default(1) @map("group_rounds")
   playoffBestOf     Int                 @default(1) @map("playoff_best_of")
   isActive          Boolean             @default(false) @map("is_active")
+  isArchived        Boolean             @default(false) @map("is_archived")
+  archivedAt        DateTime?           @map("archived_at")
+  archivedBy        String?             @map("archived_by")
   createdAt         DateTime            @default(now()) @map("created_at")
   updatedAt         DateTime            @updatedAt @map("updated_at")
   clubSeasonStats   ClubSeasonStats[]
@@ -598,8 +601,37 @@ model Season {
   participants      SeasonParticipant[]
   rosters           SeasonRoster[]
   rounds            SeasonRound[]
+  archive           SeasonArchive?
 
+  @@index([isArchived, startDate], map: "season_archived_start_idx")
+  @@index([isArchived, competitionId], map: "season_archived_competition_idx")
   @@map("season")
+}
+
+model SeasonArchive {
+  id                BigInt   @id @default(autoincrement()) @map("season_archive_id")
+  seasonId          Int      @unique @map("season_id")
+  archivedAt        DateTime @default(now()) @map("archived_at")
+  archivedBy        String?  @map("archived_by")
+  schemaVersion     Int      @default(1) @map("schema_version")
+  summary           Json
+  standings         Json
+  topScorers        Json     @map("top_scorers")
+  topAssists        Json     @map("top_assists")
+  playoffBracket    Json     @map("playoff_bracket")
+  groups            Json
+  matchSummaries    Json     @map("match_summaries")
+  achievements      Json
+  totalMatches      Int      @map("total_matches")
+  totalGoals        Int      @map("total_goals")
+  totalCards        Int      @map("total_cards")
+  participantsCount Int      @map("participants_count")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  season            Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@index([archivedAt], map: "season_archive_archived_idx")
+  @@map("season_archive")
 }
 
 model SeasonGroup {

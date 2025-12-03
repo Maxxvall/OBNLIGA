@@ -51,13 +51,15 @@ const resolveSeason = async (seasonIdRaw?: string): Promise<SeasonResolution> =>
   let season: SeasonWithCompetition | null
 
   if (requestedSeasonId) {
+    // При запросе конкретного сезона — возвращаем его даже если он архивирован
     season = await prisma.season.findUnique({
       where: { id: requestedSeasonId },
       include: { competition: true },
     })
   } else {
+    // При поиске активного сезона — исключаем архивированные
     season = await prisma.season.findFirst({
-      where: { isActive: true },
+      where: { isActive: true, isArchived: false },
       orderBy: { startDate: 'desc' },
       include: { competition: true },
     })
@@ -343,6 +345,59 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
     reply.header('Cache-Control', 'no-cache')
     return reply.send({ ok: true, data: value, meta: { version } })
   })
+
+  // ============================================================
+  // Season Archive (публичный доступ к архивам сезонов)
+  // ============================================================
+
+  fastify.get<{ Params: { seasonId: string } }>(
+    '/api/archive/seasons/:seasonId',
+    async (request, reply) => {
+      const seasonIdRaw = request.params.seasonId
+      const seasonId = Number(seasonIdRaw)
+
+      if (!Number.isFinite(seasonId) || seasonId <= 0) {
+        return reply.status(400).send({ ok: false, error: 'season_id_invalid' })
+      }
+
+      const { getSeasonArchive, isSeasonArchived } = await import('../services/seasonArchive')
+
+      // Проверяем, архивирован ли сезон
+      const archived = await isSeasonArchived(seasonId)
+      if (!archived) {
+        return reply.status(404).send({ ok: false, error: 'archive_not_found' })
+      }
+
+      // Кеширование архивных данных с длинным TTL (30 дней)
+      const cacheKey = `public:archive:season:${seasonId}`
+      const archiveTtlSeconds = 60 * 60 * 24 * 30 // 30 дней
+
+      const { value, version } = await defaultCache.getWithMeta(
+        cacheKey,
+        () => getSeasonArchive(seasonId),
+        archiveTtlSeconds
+      )
+
+      if (!value) {
+        return reply.status(404).send({ ok: false, error: 'archive_not_found' })
+      }
+
+      const etag = buildWeakEtag(cacheKey, version)
+
+      if (matchesIfNoneMatch(request.headers, etag)) {
+        return reply
+          .status(304)
+          .header('ETag', etag)
+          .header('X-Resource-Version', String(version))
+          .send()
+      }
+
+      reply.header('ETag', etag)
+      reply.header('X-Resource-Version', String(version))
+      reply.header('Cache-Control', 'public, max-age=86400') // 24 часа клиентский кеш
+      return reply.send({ ok: true, data: value, meta: { version } })
+    }
+  )
 }
 
 export default leagueRoutes

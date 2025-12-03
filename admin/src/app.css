@@ -3968,3 +3968,167 @@
     padding: 20px;
   }
 }
+
+/* =================== АРХИВИРОВАНИЕ СЕЗОНА =================== */
+
+.button-archive {
+  border: 1px solid rgba(255, 193, 7, 0.5);
+  border-radius: 12px;
+  padding: 10px 18px;
+  font-size: 13px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  background: rgba(255, 193, 7, 0.1);
+  color: #ffd54f;
+  transition:
+    transform 120ms ease,
+    box-shadow 160ms ease,
+    background 160ms ease;
+}
+
+.button-archive:hover,
+.button-archive:focus-visible {
+  background: rgba(255, 193, 7, 0.2);
+  box-shadow: 0 12px 26px rgba(255, 193, 7, 0.25);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.button-archive:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+.season-archived-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 193, 7, 0.12);
+  color: #ffd54f;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+/* Модальное окно архивирования */
+.archive-modal {
+  width: min(520px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  background: rgba(8, 14, 26, 0.95);
+  border: 1px solid rgba(255, 193, 7, 0.2);
+  border-radius: 18px;
+  box-shadow: 0 26px 58px rgba(3, 8, 18, 0.7);
+}
+
+.archive-modal .modal-header {
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid rgba(255, 193, 7, 0.15);
+}
+
+.archive-modal .modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: 0.6px;
+}
+
+.archive-modal .modal-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 24px;
+  cursor: pointer;
+  padding: 4px 8px;
+  line-height: 1;
+  transition: color 120ms ease;
+}
+
+.archive-modal .modal-close:hover {
+  color: var(--text-primary);
+}
+
+.archive-modal .modal-body {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.archive-modal .modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid rgba(255, 193, 7, 0.15);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.archive-season-name {
+  margin: 0;
+  font-size: 15px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.archive-status {
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.archive-status.success {
+  background: rgba(76, 175, 80, 0.15);
+  color: #81c784;
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.archive-status.error {
+  background: rgba(244, 67, 54, 0.15);
+  color: #ef9a9a;
+  border: 1px solid rgba(244, 67, 54, 0.3);
+}
+
+.archive-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.archive-stats p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.archive-warning {
+  background: rgba(255, 152, 0, 0.1);
+  border: 1px solid rgba(255, 152, 0, 0.25);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.archive-warning p {
+  margin: 0;
+  font-size: 13px;
+  color: #ffcc80;
+  line-height: 1.5;
+}
+
+.archive-blockers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.archive-blockers .blocker {
+  margin: 0;
+  font-size: 14px;
+  color: #ef9a9a;
+}

@@ -14,6 +14,8 @@ import type {
   AdminRatingLeaderboardResponse,
   AdminRatingSeasonView,
   AdminRatingSeasonsCollection,
+  SeasonArchiveValidation,
+  SeasonArchiveResult,
 } from '../types'
 import type {
   AdBanner,
@@ -27,6 +29,7 @@ import type {
 const API_BASE = import.meta.env.VITE_ADMIN_API_BASE || 'http://localhost:3000'
 
 const DEFAULT_ERROR_MESSAGE = 'Произошла ошибка. Попробуйте ещё раз.'
+
 
 const ERROR_DICTIONARY: Record<string, string> = {
   request_failed: 'Не удалось выполнить запрос. Попробуйте ещё раз.',
@@ -178,6 +181,11 @@ const ERROR_DICTIONARY: Record<string, string> = {
   season_start_invalid: 'Некорректная дата начала сезона.',
   season_end_invalid: 'Некорректная дата завершения сезона.',
   season_already_active: 'Сезон уже активен. Сначала завершите текущий.',
+  season_already_archived: 'Сезон уже архивирован.',
+  season_has_unfinished_matches: 'Невозможно архивировать: есть незавершённые матчи.',
+  season_has_unfinished_series: 'Невозможно архивировать: есть незавершённые серии плей-офф.',
+  archive_not_found: 'Архив сезона не найден.',
+  archive_build_failed: 'Не удалось создать архив сезона. Попробуйте ещё раз.',
   series_already_exist: 'Серии уже созданы.',
   series_fields_required: 'Заполните поля серии.',
   series_format_locked: 'Формат серий изменить нельзя.',
@@ -969,3 +977,25 @@ export const lineupUpdateRoster = async (
     method: 'PUT',
     body: JSON.stringify(payload),
   })
+
+// =================== АРХИВИРОВАНИЕ СЕЗОНОВ ===================
+
+/**
+ * Валидация сезона перед архивацией — проверяет готовность к архивированию
+ */
+export const adminValidateSeasonArchive = async (
+  token: string | undefined,
+  seasonId: number
+): Promise<SeasonArchiveValidation> => {
+  return adminGet<SeasonArchiveValidation>(token, `/api/admin/seasons/${seasonId}/archive/validate`)
+}
+
+/**
+ * Архивирование сезона — создаёт JSON-снимок и помечает сезон как архивированный
+ */
+export const adminArchiveSeason = async (
+  token: string | undefined,
+  seasonId: number
+): Promise<SeasonArchiveResult> => {
+  return adminPost(token, `/api/admin/seasons/${seasonId}/archive`, {})
+}

@@ -4849,10 +4849,17 @@ export default async function (server: FastifyInstance) {
         }
 
         const competition = existing.season?.competition
-        const isBestOfSeries =
+        // Пенальти доступны для:
+        // 1. LEAGUE с форматом BEST_OF_N или DOUBLE_ROUND_PLAYOFF (серия матчей)
+        // 2. CUP с форматом GROUP_SINGLE_ROUND_PLAYOFF (плей-офф кубка)
+        const isLeagueSeries =
           competition?.type === CompetitionType.LEAGUE &&
           (competition.seriesFormat === SeriesFormat.BEST_OF_N ||
             competition.seriesFormat === SeriesFormat.DOUBLE_ROUND_PLAYOFF)
+        const isCupPlayoff =
+          competition?.type === CompetitionType.CUP &&
+          competition.seriesFormat === SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF
+        const canHavePenaltyShootout = isLeagueSeries || isCupPlayoff
 
         const penaltyToggleRequested = body.hasPenaltyShootout !== undefined
         const penaltyScoreProvided =
@@ -4865,7 +4872,7 @@ export default async function (server: FastifyInstance) {
         let penaltyAwayScore = existing.penaltyAwayScore
 
         if (targetHasPenaltyShootout) {
-          if (!existing.seriesId || !isBestOfSeries) {
+          if (!existing.seriesId || !canHavePenaltyShootout) {
             return reply.status(409).send({ ok: false, error: 'penalty_shootout_not_available' })
           }
 

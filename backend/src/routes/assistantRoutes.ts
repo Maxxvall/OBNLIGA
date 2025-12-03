@@ -457,13 +457,20 @@ export default async function assistantRoutes(server: FastifyInstance) {
         let penaltyAwayScore = match.penaltyAwayScore ?? 0
 
         const competition = match.season?.competition
-        const isBestOfSeries =
+        // Пенальти доступны для:
+        // 1. LEAGUE с форматом BEST_OF_N или DOUBLE_ROUND_PLAYOFF (серия матчей)
+        // 2. CUP с форматом GROUP_SINGLE_ROUND_PLAYOFF (плей-офф кубка)
+        const isLeagueSeries =
           competition?.type === CompetitionType.LEAGUE &&
           (competition.seriesFormat === SeriesFormat.BEST_OF_N ||
             competition.seriesFormat === SeriesFormat.DOUBLE_ROUND_PLAYOFF)
+        const isCupPlayoff =
+          competition?.type === CompetitionType.CUP &&
+          competition.seriesFormat === SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF
+        const canHavePenaltyShootout = isLeagueSeries || isCupPlayoff
 
         if (hasPenalty) {
-          if (!match.seriesId || !isBestOfSeries) {
+          if (!match.seriesId || !canHavePenaltyShootout) {
             return reply.status(409).send({ ok: false, error: 'penalty_shootout_not_available' })
           }
 

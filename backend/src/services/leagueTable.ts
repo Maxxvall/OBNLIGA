@@ -1,5 +1,6 @@
 import prisma from '../db'
-import { MatchStatus, Prisma, RoundType } from '@prisma/client'
+import { CompetitionType, MatchStatus, Prisma, RoundType, SeriesFormat } from '@prisma/client'
+import { getCupQualifyCount } from './cupBracketLogic'
 
 export interface LeagueSeasonSummary {
   id: number
@@ -191,6 +192,17 @@ export const buildLeagueTable = async (
     return entry
   }
 
+  // Проверяем, является ли сезон кубком с групповым этапом
+  const isCupWithGroups =
+    season.competition.type === CompetitionType.CUP &&
+    season.seriesFormat === SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF &&
+    seasonGroups.length > 0
+
+  // Вычисляем qualifyCount для кубка
+  const groupCount = seasonGroups.length
+  const groupSize = seasonGroups[0]?.slots.length ?? 0
+  const cupQualifyCount = isCupWithGroups ? getCupQualifyCount(groupCount, groupSize) : 0
+
   const rawGroups = seasonGroups
     .map(group => {
       const clubIds = group.slots
@@ -201,10 +213,13 @@ export const buildLeagueTable = async (
         return null
       }
 
+      // Для кубка используем вычисленный qualifyCount, иначе берём из группы
+      const effectiveQualifyCount = isCupWithGroups ? cupQualifyCount : group.qualifyCount
+
       return {
         groupIndex: group.groupIndex,
         label: group.label,
-        qualifyCount: group.qualifyCount,
+        qualifyCount: effectiveQualifyCount,
         clubIds,
       }
     })

@@ -193,21 +193,43 @@ const buildFormEntry = (match: MatchRow, clubId: number): ClubSummarySnapshot['f
   }
 }
 
-type PlayoffWinners = {
+type CupWinners = {
   championId: number | null
   runnerUpId: number | null
   thirdPlaceId: number | null
-  isCupFormat: boolean
-  competitionName: string | null
+  cupType: 'gold' | 'silver' | 'regular'
+  cupName: string
 }
 
-const detectPlayoffWinners = async (seasonId: number): Promise<PlayoffWinners> => {
-  const result: PlayoffWinners = {
-    championId: null,
-    runnerUpId: null,
-    thirdPlaceId: null,
-    isCupFormat: false,
+type SeasonAchievementsResult = {
+  goldCup: CupWinners | null
+  silverCup: CupWinners | null
+  regularPlayoff: CupWinners | null
+  competitionName: string | null
+  seasonName: string
+}
+
+// Проверяем, является ли название настоящим финалом (не 1/4, 1/8, 1/2, полуфинал)
+const isActualFinal = (stageName: string): boolean => {
+  const normalized = stageName.toLowerCase()
+  if (!normalized.includes('финал')) return false
+  if (normalized.includes('1/4')) return false
+  if (normalized.includes('1/8')) return false
+  if (normalized.includes('1/2')) return false
+  if (normalized.includes('1/16')) return false
+  if (normalized.includes('полу')) return false
+  if (normalized.includes('semi')) return false
+  if (normalized.includes('3 мест') || normalized.includes('третье')) return false
+  return true
+}
+
+const detectSeasonAchievements = async (seasonId: number): Promise<SeasonAchievementsResult> => {
+  const result: SeasonAchievementsResult = {
+    goldCup: null,
+    silverCup: null,
+    regularPlayoff: null,
     competitionName: null,
+    seasonName: '',
   }
 
   // Получаем сезон с соревнованием
@@ -216,7 +238,10 @@ const detectPlayoffWinners = async (seasonId: number): Promise<PlayoffWinners> =
     include: { competition: true },
   })
 
-  if (season?.competition) {
+  if (!season) return result
+
+  result.seasonName = season.name
+  if (season.competition) {
     result.competitionName = season.competition.name
   }
 
@@ -235,62 +260,81 @@ const detectPlayoffWinners = async (seasonId: number): Promise<PlayoffWinners> =
 
   // Проверяем, есть ли кубковый формат с Gold/Silver
   const hasCupFormat = series.some((s) => s.bracketType != null)
-  result.isCupFormat = hasCupFormat
 
-  // Ищем финал
-  // Для кубков с Gold/Silver - приоритет отдаём "Финал Золотого кубка"
-  // Для обычных плей-офф - любая серия с "финал" (исключая полуфиналы и 3 место)
-  let finalSeries = series.find((s) => {
-    const normalized = s.stageName.toLowerCase()
-    // Для Gold/Silver кубков - ищем именно "финал золотого"
-    if (hasCupFormat) {
-      return normalized.includes('финал') && normalized.includes('золот')
-    }
-    // Стандартный плей-офф
-    const isSemi = normalized.includes('1/2') || normalized.includes('semi') || normalized.includes('полу')
-    return !isSemi && normalized.includes('финал') && !normalized.includes('3')
-  })
-
-  // Если не нашли Gold финал, но есть кубковый формат - пробуем найти обычный финал
-  if (!finalSeries && hasCupFormat) {
-    finalSeries = series.find((s) => {
+  if (hasCupFormat) {
+    // Ищем финал Золотого кубка
+    const goldFinal = series.find((s) => {
       const normalized = s.stageName.toLowerCase()
-      const isSemi = normalized.includes('1/2') || normalized.includes('semi') || normalized.includes('полу')
-      const isSilver = normalized.includes('серебр')
-      return !isSemi && !isSilver && normalized.includes('финал') && !normalized.includes('3')
+      return isActualFinal(s.stageName) && normalized.includes('золот')
     })
-  }
 
-  if (finalSeries && finalSeries.winnerClubId) {
-    result.championId = finalSeries.winnerClubId
-    // Второе место - проигравший в финале
-    result.runnerUpId =
-      finalSeries.winnerClubId === finalSeries.homeClubId
-        ? finalSeries.awayClubId
-        : finalSeries.homeClubId
-  }
+    if (goldFinal && goldFinal.winnerClubId) {
+      const loserId = goldFinal.winnerClubId === goldFinal.homeClubId
+        ? goldFinal.awayClubId
+        : goldFinal.homeClubId
 
-  // Ищем матч за 3 место
-  // Для кубков с Gold/Silver - приоритет "3 место Золотого кубка"
-  let thirdPlaceSeries = series.find((s) => {
-    const normalized = s.stageName.toLowerCase()
-    if (hasCupFormat) {
-      return normalized.includes('3') && normalized.includes('мест') && normalized.includes('золот')
+      // Ищем 3 место Золотого кубка
+      const goldThirdPlace = series.find((s) => {
+        const normalized = s.stageName.toLowerCase()
+        return normalized.includes('3') && normalized.includes('мест') && normalized.includes('золот')
+      })
+
+      result.goldCup = {
+        championId: goldFinal.winnerClubId,
+        runnerUpId: loserId,
+        thirdPlaceId: goldThirdPlace?.winnerClubId ?? null,
+        cupType: 'gold',
+        cupName: 'Золотом кубке',
+      }
     }
-    return normalized.includes('3') && normalized.includes('мест')
-  })
 
-  // Если не нашли Gold 3 место, пробуем найти обычный матч за 3 место (исключая Silver)
-  if (!thirdPlaceSeries && hasCupFormat) {
-    thirdPlaceSeries = series.find((s) => {
+    // Ищем финал Серебряного кубка
+    const silverFinal = series.find((s) => {
       const normalized = s.stageName.toLowerCase()
-      const isSilver = normalized.includes('серебр')
-      return !isSilver && normalized.includes('3') && normalized.includes('мест')
+      return isActualFinal(s.stageName) && normalized.includes('серебр')
     })
-  }
 
-  if (thirdPlaceSeries && thirdPlaceSeries.winnerClubId) {
-    result.thirdPlaceId = thirdPlaceSeries.winnerClubId
+    if (silverFinal && silverFinal.winnerClubId) {
+      const loserId = silverFinal.winnerClubId === silverFinal.homeClubId
+        ? silverFinal.awayClubId
+        : silverFinal.homeClubId
+
+      // Ищем 3 место Серебряного кубка
+      const silverThirdPlace = series.find((s) => {
+        const normalized = s.stageName.toLowerCase()
+        return normalized.includes('3') && normalized.includes('мест') && normalized.includes('серебр')
+      })
+
+      result.silverCup = {
+        championId: silverFinal.winnerClubId,
+        runnerUpId: loserId,
+        thirdPlaceId: silverThirdPlace?.winnerClubId ?? null,
+        cupType: 'silver',
+        cupName: 'Серебряном кубке',
+      }
+    }
+  } else {
+    // Обычный плей-офф без Gold/Silver
+    const regularFinal = series.find((s) => isActualFinal(s.stageName))
+
+    if (regularFinal && regularFinal.winnerClubId) {
+      const loserId = regularFinal.winnerClubId === regularFinal.homeClubId
+        ? regularFinal.awayClubId
+        : regularFinal.homeClubId
+
+      const thirdPlace = series.find((s) => {
+        const normalized = s.stageName.toLowerCase()
+        return normalized.includes('3') && normalized.includes('мест')
+      })
+
+      result.regularPlayoff = {
+        championId: regularFinal.winnerClubId,
+        runnerUpId: loserId,
+        thirdPlaceId: thirdPlace?.winnerClubId ?? null,
+        cupType: 'regular',
+        cupName: '',
+      }
+    }
   }
 
   return result
@@ -301,6 +345,48 @@ const buildClubAchievements = async (
   seasonIds: Set<number>
 ): Promise<ClubSummarySnapshot['achievements']> => {
   const achievements: ClubSummarySnapshot['achievements'] = []
+
+  // Вспомогательная функция для добавления достижения из кубка
+  const addCupAchievement = (
+    cup: CupWinners,
+    seasonId: number,
+    seasonName: string,
+    competitionName: string | null
+  ) => {
+    let place: number | null = null
+
+    if (cup.championId === clubId) {
+      place = 1
+    } else if (cup.runnerUpId === clubId) {
+      place = 2
+    } else if (cup.thirdPlaceId === clubId) {
+      place = 3
+    }
+
+    if (place !== null) {
+      let title: string
+      if (cup.cupType === 'gold') {
+        title = `${place} место в Золотом кубке`
+      } else if (cup.cupType === 'silver') {
+        title = `${place} место в Серебряном кубке`
+      } else {
+        title = `${place} место`
+      }
+
+      let subtitle: string
+      if (competitionName && competitionName !== seasonName) {
+        subtitle = `${competitionName} — ${seasonName}`
+      } else {
+        subtitle = seasonName
+      }
+
+      achievements.push({
+        id: `season-${seasonId}-${cup.cupType}-place-${place}`,
+        title,
+        subtitle,
+      })
+    }
+  }
 
   // Проверяем каждый сезон
   for (const seasonId of seasonIds) {
@@ -326,78 +412,93 @@ const buildClubAchievements = async (
       continue // Пропускаем сезоны с незавершёнными матчами
     }
 
-    // Сначала проверяем плей-офф
-    const playoffWinners = await detectPlayoffWinners(seasonId)
-    
-    let place: number | null = null
-    
-    if (playoffWinners.championId === clubId) {
-      place = 1
-    } else if (playoffWinners.runnerUpId === clubId) {
-      place = 2
-    } else if (playoffWinners.thirdPlaceId === clubId) {
-      place = 3
+    // Получаем все достижения сезона (Золотой кубок, Серебряный кубок, обычный плей-офф)
+    const seasonAchievements = await detectSeasonAchievements(seasonId)
+
+    let hasPlayoffAchievement = false
+
+    // Проверяем Золотой кубок
+    if (seasonAchievements.goldCup) {
+      addCupAchievement(
+        seasonAchievements.goldCup,
+        seasonId,
+        seasonAchievements.seasonName,
+        seasonAchievements.competitionName
+      )
+      if (
+        seasonAchievements.goldCup.championId === clubId ||
+        seasonAchievements.goldCup.runnerUpId === clubId ||
+        seasonAchievements.goldCup.thirdPlaceId === clubId
+      ) {
+        hasPlayoffAchievement = true
+      }
     }
 
-    // Если есть место из плей-офф, добавляем достижение
-    if (place !== null) {
-      // Формируем title в зависимости от типа соревнования
-      let title: string
-      if (playoffWinners.isCupFormat) {
-        // Для кубков: "1 место в Золотом кубке" + название соревнования
-        title = `${place} место в Золотом кубке`
-      } else if (playoffWinners.competitionName) {
-        // Для лиг с плей-офф: "1 место" + название соревнования
-        title = `${place} место`
-      } else {
-        title = `${place} место`
+    // Проверяем Серебряный кубок
+    if (seasonAchievements.silverCup) {
+      addCupAchievement(
+        seasonAchievements.silverCup,
+        seasonId,
+        seasonAchievements.seasonName,
+        seasonAchievements.competitionName
+      )
+      if (
+        seasonAchievements.silverCup.championId === clubId ||
+        seasonAchievements.silverCup.runnerUpId === clubId ||
+        seasonAchievements.silverCup.thirdPlaceId === clubId
+      ) {
+        hasPlayoffAchievement = true
       }
-
-      // Формируем subtitle: название соревнования и сезон
-      let subtitle: string
-      if (playoffWinners.competitionName && playoffWinners.competitionName !== season.name) {
-        subtitle = `${playoffWinners.competitionName} — ${season.name}`
-      } else {
-        subtitle = season.name
-      }
-
-      achievements.push({
-        id: `season-${seasonId}-place-${place}`,
-        title,
-        subtitle,
-      })
-      continue // Переходим к следующему сезону
     }
 
-    // Если плей-офф не определил место, используем турнирную таблицу
-    try {
-      const tableData = await buildLeagueTable(season)
-      const standings = tableData.standings
+    // Проверяем обычный плей-офф (без Gold/Silver)
+    if (seasonAchievements.regularPlayoff) {
+      addCupAchievement(
+        seasonAchievements.regularPlayoff,
+        seasonId,
+        seasonAchievements.seasonName,
+        seasonAchievements.competitionName
+      )
+      if (
+        seasonAchievements.regularPlayoff.championId === clubId ||
+        seasonAchievements.regularPlayoff.runnerUpId === clubId ||
+        seasonAchievements.regularPlayoff.thirdPlaceId === clubId
+      ) {
+        hasPlayoffAchievement = true
+      }
+    }
 
-      // Находим позицию клуба
-      const clubPosition = standings.findIndex((entry) => entry.clubId === clubId)
+    // Если в плей-офф нет достижений, проверяем турнирную таблицу
+    if (!hasPlayoffAchievement) {
+      try {
+        const tableData = await buildLeagueTable(season)
+        const standings = tableData.standings
 
-      // Если клуб в топ-3
-      if (clubPosition !== -1 && clubPosition < 3) {
-        const tablePlace = clubPosition + 1
-        
-        // Формируем subtitle с названием соревнования
-        let subtitle: string
-        if (season.competition?.name && season.competition.name !== season.name) {
-          subtitle = `${season.competition.name} — ${season.name}`
-        } else {
-          subtitle = season.name
+        // Находим позицию клуба
+        const clubPosition = standings.findIndex((entry) => entry.clubId === clubId)
+
+        // Если клуб в топ-3
+        if (clubPosition !== -1 && clubPosition < 3) {
+          const tablePlace = clubPosition + 1
+
+          // Формируем subtitle с названием соревнования
+          let subtitle: string
+          if (season.competition?.name && season.competition.name !== season.name) {
+            subtitle = `${season.competition.name} — ${season.name}`
+          } else {
+            subtitle = season.name
+          }
+
+          achievements.push({
+            id: `season-${seasonId}-table-place-${tablePlace}`,
+            title: `${tablePlace} место`,
+            subtitle,
+          })
         }
-        
-        achievements.push({
-          id: `season-${seasonId}-place-${tablePlace}`,
-          title: `${tablePlace} место`,
-          subtitle,
-        })
+      } catch (err) {
+        // Если не удалось построить таблицу, пропускаем этот сезон
+        console.warn(`Failed to build league table for season ${seasonId}:`, err)
       }
-    } catch (err) {
-      // Если не удалось построить таблицу, пропускаем этот сезон
-      console.warn(`Failed to build league table for season ${seasonId}:`, err)
     }
   }
 

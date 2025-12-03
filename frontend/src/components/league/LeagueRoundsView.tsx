@@ -256,9 +256,11 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
   const seasonTable = seasonId ? tablesBySeason[seasonId] : undefined
   const seasonResults = seasonId ? resultsBySeason[seasonId] : undefined
   const rounds = data?.rounds ?? []
-  const hasFinishedMatches = seasonResults
-    ? seasonResults.rounds.some(round => round.matches.length > 0)
-    : false
+  // Учитываем playoffPodium из data (schedule) или seasonResults при проверке наличия завершённых матчей
+  const hasFinishedMatches =
+    Boolean(data?.playoffPodium?.champion) ||
+    Boolean(seasonResults?.playoffPodium?.champion) ||
+    (seasonResults?.rounds?.some(round => round.matches.length > 0) ?? false)
   const podium = seasonTable ? seasonTable.standings.slice(0, 3) : []
   const [expandedRounds, setExpandedRounds] = React.useState<Set<string>>(() => new Set())
   const roundLoadingMap = roundLoading ?? {}
@@ -282,18 +284,14 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
     allSeriesFinished: boolean
     summary: PlayoffPodiumSummary | null
   }>(() => {
-    if (!seasonResults) {
-      return {
-        hasSeries: false,
-        allSeriesFinished: false,
-        summary: null,
-      }
-    }
+    // Приоритет: используем playoffPodium из переданных данных (data),
+    // затем из seasonResults, затем вычисляем из матчей
+    // Это позволяет показывать пьедестал как в режиме schedule, так и в results
 
-    // Используем playoffPodium из бэкенда если он есть (более надёжно при lazy loading)
-    const podium = seasonResults.playoffPodium
-    if (podium?.champion && podium?.runnerUp) {
-      const { champion, runnerUp, thirdPlace } = podium
+    // Проверяем playoffPodium из текущих данных (schedule или results)
+    const dataPodium = data?.playoffPodium
+    if (dataPodium?.champion && dataPodium?.runnerUp) {
+      const { champion, runnerUp, thirdPlace } = dataPodium
       return {
         hasSeries: true,
         allSeriesFinished: true,
@@ -302,6 +300,29 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
           runnerUp: { club: runnerUp },
           thirdPlace: thirdPlace ? { club: thirdPlace } : undefined,
         },
+      }
+    }
+
+    // Проверяем playoffPodium из seasonResults (если данные results загружены)
+    const resultsPodium = seasonResults?.playoffPodium
+    if (resultsPodium?.champion && resultsPodium?.runnerUp) {
+      const { champion, runnerUp, thirdPlace } = resultsPodium
+      return {
+        hasSeries: true,
+        allSeriesFinished: true,
+        summary: {
+          champion: { club: champion },
+          runnerUp: { club: runnerUp },
+          thirdPlace: thirdPlace ? { club: thirdPlace } : undefined,
+        },
+      }
+    }
+
+    if (!seasonResults) {
+      return {
+        hasSeries: false,
+        allSeriesFinished: false,
+        summary: null,
       }
     }
 
@@ -401,7 +422,7 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
         thirdPlace,
       },
     }
-  }, [seasonResults])
+  }, [data, seasonResults])
 
   const isInitialLoading = loading && !data
   if (isInitialLoading) {
@@ -445,6 +466,19 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
     hasFinishedMatches &&
     ((playoffState.hasSeries && playoffState.allSeriesFinished && playoffState.summary) ||
       (allowTableFallback && podium.length >= 3))
+
+  // DEBUG: удалить после отладки
+  console.log('[LeagueRoundsView] showCompletedState debug:', {
+    mode,
+    roundsLength: rounds.length,
+    hasFinishedMatches,
+    playoffState,
+    allowTableFallback,
+    podiumLength: podium.length,
+    showCompletedState,
+    dataPodium: data?.playoffPodium,
+  })
+
   const headerTitle = mode === 'schedule' ? 'Календарь матчей' : 'Результаты'
   const isRefreshing = loading && Boolean(data)
 

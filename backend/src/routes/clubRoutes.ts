@@ -3,11 +3,33 @@ import {
   ClubSummaryNotFoundError,
   getClubSummary,
   publicClubSummaryKey,
+  refreshClubSummary,
 } from '../services/clubSummary'
 import { getClubMatches, publicClubMatchesKey } from '../services/clubMatches'
 import { buildWeakEtag, matchesIfNoneMatch } from '../utils/httpCaching'
 
 const clubRoutes: FastifyPluginAsync = async fastify => {
+  // Endpoint для принудительного обновления summary (для отладки)
+  fastify.get<{ Params: { clubId: string } }>('/api/clubs/:clubId/summary/refresh', async (request, reply) => {
+    const raw = request.params.clubId
+    const clubId = Number(raw)
+
+    if (!Number.isFinite(clubId) || clubId <= 0) {
+      return reply.status(400).send({ ok: false, error: 'club_invalid' })
+    }
+
+    try {
+      const value = await refreshClubSummary(clubId)
+      if (!value) {
+        return reply.status(404).send({ ok: false, error: 'club_not_found' })
+      }
+      return reply.send({ ok: true, data: value })
+    } catch (err) {
+      fastify.log.error({ err, clubId }, 'club summary refresh failed')
+      return reply.status(500).send({ ok: false, error: 'club_summary_refresh_failed' })
+    }
+  })
+
   fastify.get<{ Params: { clubId: string } }>('/api/clubs/:clubId/summary', async (request, reply) => {
     const raw = request.params.clubId
     const clubId = Number(raw)

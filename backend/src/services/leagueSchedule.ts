@@ -819,10 +819,15 @@ export const buildLeagueSchedule = async (
 
   const grouped = groupMatchViewsByRound(transformed, { limit: limitRounds, order: 'asc' })
 
+  // Вычисляем пьедестал плей-офф для календаря (нужен для отображения пьедестала
+  // при завершённом турнире, когда нет предстоящих матчей)
+  const playoffPodium = await computePlayoffPodium(season.id)
+
   return {
     season: ensureSeasonSummary(season),
     rounds: grouped,
     generatedAt: new Date().toISOString(),
+    playoffPodium,
   }
 }
 
@@ -904,21 +909,19 @@ export const buildLeagueResultsIndex = async (
     }
   }
 
+  // Сортировка: от новых матчей к старым по дате (lastMatchAt)
+  // Это даёт пользователю сразу видеть последние результаты при входе
   const rounds = Array.from(map.values()).sort((left, right) => {
-    const leftPriority = left.stagePriority ?? Number.POSITIVE_INFINITY
-    const rightPriority = right.stagePriority ?? Number.POSITIVE_INFINITY
-    if (leftPriority !== rightPriority) {
-      return leftPriority - rightPriority
-    }
-    const leftNumber = left.roundNumber ?? Number.NEGATIVE_INFINITY
-    const rightNumber = right.roundNumber ?? Number.NEGATIVE_INFINITY
-    if (leftNumber !== rightNumber) {
-      return rightNumber - leftNumber
-    }
+    // Первичный критерий: дата последнего матча (от новых к старым)
     if (left.lastMatchAt !== right.lastMatchAt) {
       return right.lastMatchAt - left.lastMatchAt
     }
-    return right.roundLabel.localeCompare(left.roundLabel, 'ru')
+    // Вторичный: дата первого матча (от новых к старым)
+    if (left.firstMatchAt !== right.firstMatchAt) {
+      return right.firstMatchAt - left.firstMatchAt
+    }
+    // Третичный: label по алфавиту (для стабильности)
+    return left.roundLabel.localeCompare(right.roundLabel, 'ru')
   })
 
   const summaries: LeagueRoundMatches[] = rounds.map(round => ({

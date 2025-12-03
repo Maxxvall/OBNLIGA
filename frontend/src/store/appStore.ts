@@ -677,8 +677,14 @@ const mergeRoundCollection = (
     return left.roundLabel.localeCompare(right.roundLabel)
   })
 
+  // Сравниваем playoffPodium
+  const playoffPodiumChanged =
+    incoming.playoffPodium !== undefined &&
+    JSON.stringify(previous.playoffPodium) !== JSON.stringify(incoming.playoffPodium)
+
   if (
     !changed &&
+    !playoffPodiumChanged &&
     mergedRounds.length === previous.rounds.length &&
     mergedRounds.every((round: LeagueRoundMatches, index: number) => round === previous.rounds[index])
   ) {
@@ -689,6 +695,7 @@ const mergeRoundCollection = (
     season,
     rounds: mergedRounds,
     generatedAt: incoming.generatedAt,
+    playoffPodium: incoming.playoffPodium ?? previous.playoffPodium,
   }
 }
 

@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { PredictionEntryStatus, PredictionMarketType } from '@prisma/client'
+// no runtime imports needed from Prisma here — тесты используют только локальные вспомогательные функции
 
 // ============================================================================
 // Вспомогательные функции для тестирования (копии из predictionSettlement.ts)

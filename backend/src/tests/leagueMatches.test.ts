@@ -394,7 +394,7 @@ describe('Уникальность матчей в туре', () => {
     }
 
     // Проверяем каждый тур
-    for (const [roundIndex, roundPairs] of roundsMap) {
+    for (const [, roundPairs] of roundsMap) {
       const teamsInRound = new Set<number>()
       for (const pair of roundPairs) {
         expect(teamsInRound.has(pair.homeClubId)).toBe(false)

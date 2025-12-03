@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { BracketType, SeriesStatus } from '@prisma/client'
+import { BracketType } from '@prisma/client'
 
 // ============================================================================
 // Типы (копии из cupBracketLogic.ts)
@@ -594,7 +594,7 @@ describe('Полный путь турнира - от 1/4 до финала', ()
 
   it('все команды проходят через все стадии без застревания', () => {
     // Имитируем 8 команд и проверяем, что все получают финальное место
-    const teams = [1, 2, 3, 4, 5, 6, 7, 8]
+    // teams array не используется — тест проверяет распределение через массивы победителей/проигравших
     const qfWinners = [1, 4, 2, 3]
     const qfLosers = [8, 5, 7, 6]
 

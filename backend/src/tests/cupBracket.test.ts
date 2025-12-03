@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { BracketType } from '@prisma/client'
+// no runtime imports required from Prisma in this test file
 
 // ============================================================================
 // Типы (копии из cupBracketLogic.ts)
@@ -37,15 +37,7 @@ interface GroupStandingEntry {
   losses: number
 }
 
-interface SeriesPlan {
-  stageName: string
-  homeClubId: number
-  awayClubId: number
-  bracketType: BracketType
-  bracketSlot: number
-  homeSeed?: number
-  awaySeed?: number
-}
+// SeriesPlan (type used in other tests) removed here to avoid unused-type lint errors
 
 interface PlayoffTeamEntry {
   clubId: number

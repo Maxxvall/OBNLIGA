@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { MatchStatus, SeriesStatus, PredictionEntryStatus } from '@prisma/client'
+import { SeriesStatus, PredictionEntryStatus } from '@prisma/client'
 
 // ============================================================================
 // Типы

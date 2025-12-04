@@ -8,6 +8,8 @@ import {
   SEASON_POINTS_REWARD_CONFIG,
   BET_WINS_REWARD_CONFIG,
   PREDICTION_STREAK_REWARD_CONFIG,
+  EXPRESS_WINS_REWARD_CONFIG,
+  BROADCAST_WATCH_REWARD_CONFIG,
 } from './achievementJobProcessor'
 
 const DEFAULT_CLIENT = prisma
@@ -131,6 +133,16 @@ export const incrementAchievementProgress = async (
         const points = PREDICTION_STREAK_REWARD_CONFIG[unlockedLevel]
         if (points) {
           await createAchievementRewardJob(userId, 'prediction_streak', unlockedLevel, points, seasonId, client)
+        }
+      } else if (metric === AchievementMetric.EXPRESS_WINS) {
+        const points = EXPRESS_WINS_REWARD_CONFIG[unlockedLevel]
+        if (points) {
+          await createAchievementRewardJob(userId, 'express_wins', unlockedLevel, points, seasonId, client)
+        }
+      } else if (metric === AchievementMetric.BROADCAST_WATCH_TIME) {
+        const points = BROADCAST_WATCH_REWARD_CONFIG[unlockedLevel]
+        if (points) {
+          await createAchievementRewardJob(userId, 'broadcast_watch', unlockedLevel, points, seasonId, client)
         }
       }
     }
@@ -396,3 +408,80 @@ export const syncPredictionStreakProgress = async (
   }
 }
 
+/**
+ * Синхронизирует прогресс достижения BROADCAST_WATCH_TIME с общим временем просмотра.
+ * Используется при синхронизации времени просмотра трансляций.
+ * Принимает totalHours — суммарное время просмотра в часах.
+ */
+export const syncBroadcastWatchProgress = async (
+  userId: number,
+  totalHours: number,
+  client: Prisma.TransactionClient | PrismaClient = DEFAULT_CLIENT
+) => {
+  if (totalHours <= 0) {
+    return
+  }
+
+  const types = await selectTypeByMetric(AchievementMetric.BROADCAST_WATCH_TIME, client)
+  if (!types.length) {
+    return
+  }
+
+  const now = new Date()
+
+  for (const type of types) {
+    const progress = await client.achievementProgress.upsert({
+      where: {
+        achievement_progress_unique: {
+          userId,
+          achievementId: type.id,
+        },
+      },
+      create: {
+        userId,
+        achievementId: type.id,
+        progressCount: Math.floor(totalHours),
+        currentLevel: 0,
+      },
+      update: {
+        progressCount: Math.floor(totalHours),
+      },
+    })
+
+    const unlockedLevel = resolveUnlockedLevel(type.levels, progress.progressCount)
+
+    if (unlockedLevel > progress.currentLevel) {
+      await client.achievementProgress.update({
+        where: { id: progress.id },
+        data: {
+          currentLevel: unlockedLevel,
+          lastUnlockedAt: now,
+        },
+      })
+
+      await client.userAchievement.upsert({
+        where: {
+          userId_achievementTypeId: {
+            userId,
+            achievementTypeId: type.id,
+          },
+        },
+        update: {
+          achievedDate: now,
+        },
+        create: {
+          userId,
+          achievementTypeId: type.id,
+          achievedDate: now,
+        },
+      })
+
+      // Создаём job для асинхронного начисления наград
+      const seasonId = getCurrentYearSeasonId()
+      const points = BROADCAST_WATCH_REWARD_CONFIG[unlockedLevel]
+      if (points) {
+        await createAchievementRewardJob(userId, 'broadcast_watch', unlockedLevel, points, seasonId, client)
+      }
+    }
+  }
+}

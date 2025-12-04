@@ -7,6 +7,7 @@
 
 import { FastifyBaseLogger } from 'fastify'
 import {
+  AchievementMetric,
   ExpressStatus,
   MatchStatus,
   PredictionEntryStatus,
@@ -20,6 +21,7 @@ import {
   EXPRESS_WEEKLY_LIMIT,
   EXPRESS_WEEKLY_LIMIT_DAYS,
 } from './predictionConstants'
+import { incrementAchievementProgress } from './achievementProgress'
 
 // =================== ТИПЫ ===================
 
@@ -530,6 +532,11 @@ export const settleExpressBet = async (
       resolvedAt,
     },
   })
+
+  // Начисляем достижение EXPRESS_WINS при победе экспресса
+  if (finalStatus === ExpressStatus.WON) {
+    await incrementAchievementProgress(express.userId, AchievementMetric.EXPRESS_WINS, 1, tx)
+  }
 
   logger.info(
     {

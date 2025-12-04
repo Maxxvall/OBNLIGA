@@ -95,6 +95,7 @@ import ratingsRoutes from './routes/ratingsRoutes'
 import shopRoutes from './routes/shopRoutes'
 import subscriptionRoutes from './routes/subscriptionRoutes'
 import cronRoutes from './routes/cronRoutes'
+import broadcastRoutes from './routes/broadcastRoutes'
 server.register(newsRoutes)
 server.register(adsRoutes)
 server.register(leagueRoutes)
@@ -106,6 +107,7 @@ server.register(ratingsRoutes)
 server.register(shopRoutes)
 server.register(subscriptionRoutes)
 server.register(cronRoutes)
+server.register(broadcastRoutes)
 // Duplicate registrations removed: `ratingsRoutes` and `shopRoutes`
 // were registered above already. Keeping single registration to avoid
 // Fastify "Method 'GET' already declared" errors.

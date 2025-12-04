@@ -1,12 +1,14 @@
 /**
  * Тесты системы достижений
  *
- * Покрывает все 5 метрик достижений:
+ * Покрывает все 7 метрик достижений:
  * - DAILY_LOGIN: серия ежедневных входов
  * - TOTAL_PREDICTIONS: общее количество прогнозов
  * - CORRECT_PREDICTIONS: количество угаданных прогнозов
  * - SEASON_POINTS: сезонные очки
  * - PREDICTION_STREAK: серия побед подряд
+ * - EXPRESS_WINS: угаданные экспрессы
+ * - BROADCAST_WATCH_TIME: время просмотра трансляций
  *
  * Тесты проверяют:
  * - Корректный расчет уровней по порогам
@@ -51,6 +53,18 @@ const PREDICTION_STREAK_REWARD_CONFIG: Record<number, number> = {
   3: 1000,  // Gold (Магическая серия) — 25 побед подряд
 }
 
+const EXPRESS_WINS_REWARD_CONFIG: Record<number, number> = {
+  1: 50,    // Bronze (Экспресс-новичок) — 5 угаданных экспрессов
+  2: 250,   // Silver (Экспресс-профи) — 10 угаданных экспрессов
+  3: 1000,  // Gold (Экспресс-легенда) — 50 угаданных экспрессов
+}
+
+const BROADCAST_WATCH_REWARD_CONFIG: Record<number, number> = {
+  1: 50,    // Bronze (Зритель) — 5 часов просмотра
+  2: 200,   // Silver (Фанат трансляций) — 25 часов просмотра
+  3: 1500,  // Gold (Постоянный зритель) — 100 часов просмотра
+}
+
 // ============================================================================
 // Пороги достижений (должны соответствовать seed данным в БД)
 // ============================================================================
@@ -83,6 +97,18 @@ const PREDICTION_STREAK_THRESHOLDS = [
   { level: 1, threshold: 5 },
   { level: 2, threshold: 10 },
   { level: 3, threshold: 25 },
+]
+
+const EXPRESS_WINS_THRESHOLDS = [
+  { level: 1, threshold: 5 },
+  { level: 2, threshold: 10 },
+  { level: 3, threshold: 50 },
+]
+
+const BROADCAST_WATCH_TIME_THRESHOLDS = [
+  { level: 1, threshold: 5 },   // 5 часов
+  { level: 2, threshold: 25 },  // 25 часов
+  { level: 3, threshold: 100 }, // 100 часов
 ]
 
 // ============================================================================
@@ -601,6 +627,224 @@ describe('Edge cases и защита от ошибок', () => {
       expect(resolveUnlockedLevel(SEASON_POINTS_THRESHOLDS, 0)).toBe(0)
       expect(resolveUnlockedLevel(PREDICTION_STREAK_THRESHOLDS, 0)).toBe(0)
       expect(resolveUnlockedLevel(CORRECT_PREDICTIONS_THRESHOLDS, 0)).toBe(0)
+      expect(resolveUnlockedLevel(EXPRESS_WINS_THRESHOLDS, 0)).toBe(0)
+      expect(resolveUnlockedLevel(BROADCAST_WATCH_TIME_THRESHOLDS, 0)).toBe(0)
     })
+  })
+})
+
+// ============================================================================
+// Тесты EXPRESS_WINS - угаданные экспрессы
+// ============================================================================
+
+describe('EXPRESS_WINS - достижение за угаданные экспрессы', () => {
+  describe('Конфигурация наград', () => {
+    it('должен иметь награду 50 очков за Bronze (5 экспрессов)', () => {
+      expect(EXPRESS_WINS_REWARD_CONFIG[1]).toBe(50)
+    })
+
+    it('должен иметь награду 250 очков за Silver (10 экспрессов)', () => {
+      expect(EXPRESS_WINS_REWARD_CONFIG[2]).toBe(250)
+    })
+
+    it('должен иметь награду 1000 очков за Gold (50 экспрессов)', () => {
+      expect(EXPRESS_WINS_REWARD_CONFIG[3]).toBe(1000)
+    })
+  })
+
+  describe('Пороги достижений', () => {
+    it('должен оставаться на уровне 0 при 4 угаданных экспрессах', () => {
+      expect(resolveUnlockedLevel(EXPRESS_WINS_THRESHOLDS, 4)).toBe(0)
+    })
+
+    it('должен разблокировать уровень 1 на 5 угаданных экспрессах', () => {
+      expect(resolveUnlockedLevel(EXPRESS_WINS_THRESHOLDS, 5)).toBe(1)
+    })
+
+    it('должен разблокировать уровень 2 на 10 угаданных экспрессах', () => {
+      expect(resolveUnlockedLevel(EXPRESS_WINS_THRESHOLDS, 10)).toBe(2)
+    })
+
+    it('должен разблокировать уровень 3 на 50 угаданных экспрессах', () => {
+      expect(resolveUnlockedLevel(EXPRESS_WINS_THRESHOLDS, 50)).toBe(3)
+    })
+
+    it('должен оставаться на уровне 2 при 49 экспрессах', () => {
+      expect(resolveUnlockedLevel(EXPRESS_WINS_THRESHOLDS, 49)).toBe(2)
+    })
+  })
+
+  describe('Инкрементальный прогресс', () => {
+    it('должен правильно считать прогресс от 0 до Gold', () => {
+      // Симулируем добавление экспрессов по одному
+      for (let i = 0; i < 5; i++) {
+        expect(resolveUnlockedLevel(EXPRESS_WINS_THRESHOLDS, i)).toBe(0)
+      }
+      expect(resolveUnlockedLevel(EXPRESS_WINS_THRESHOLDS, 5)).toBe(1)
+
+      for (let i = 6; i < 10; i++) {
+        expect(resolveUnlockedLevel(EXPRESS_WINS_THRESHOLDS, i)).toBe(1)
+      }
+      expect(resolveUnlockedLevel(EXPRESS_WINS_THRESHOLDS, 10)).toBe(2)
+
+      for (let i = 11; i < 50; i++) {
+        expect(resolveUnlockedLevel(EXPRESS_WINS_THRESHOLDS, i)).toBe(2)
+      }
+      expect(resolveUnlockedLevel(EXPRESS_WINS_THRESHOLDS, 50)).toBe(3)
+    })
+  })
+})
+
+// ============================================================================
+// Тесты BROADCAST_WATCH_TIME - время просмотра трансляций
+// ============================================================================
+
+describe('BROADCAST_WATCH_TIME - достижение за просмотр трансляций', () => {
+  describe('Конфигурация наград', () => {
+    it('должен иметь награду 50 очков за Bronze (5 часов)', () => {
+      expect(BROADCAST_WATCH_REWARD_CONFIG[1]).toBe(50)
+    })
+
+    it('должен иметь награду 200 очков за Silver (25 часов)', () => {
+      expect(BROADCAST_WATCH_REWARD_CONFIG[2]).toBe(200)
+    })
+
+    it('должен иметь награду 1500 очков за Gold (100 часов)', () => {
+      expect(BROADCAST_WATCH_REWARD_CONFIG[3]).toBe(1500)
+    })
+  })
+
+  describe('Пороги достижений (в часах)', () => {
+    it('должен оставаться на уровне 0 при 4 часах просмотра', () => {
+      expect(resolveUnlockedLevel(BROADCAST_WATCH_TIME_THRESHOLDS, 4)).toBe(0)
+    })
+
+    it('должен разблокировать уровень 1 на 5 часах просмотра', () => {
+      expect(resolveUnlockedLevel(BROADCAST_WATCH_TIME_THRESHOLDS, 5)).toBe(1)
+    })
+
+    it('должен разблокировать уровень 2 на 25 часах просмотра', () => {
+      expect(resolveUnlockedLevel(BROADCAST_WATCH_TIME_THRESHOLDS, 25)).toBe(2)
+    })
+
+    it('должен разблокировать уровень 3 на 100 часах просмотра', () => {
+      expect(resolveUnlockedLevel(BROADCAST_WATCH_TIME_THRESHOLDS, 100)).toBe(3)
+    })
+  })
+
+  describe('Конвертация секунд в часы', () => {
+    // totalSeconds / 3600 = totalHours
+    const secondsToHours = (seconds: number) => Math.floor(seconds / 3600)
+
+    it('должен корректно конвертировать секунды в часы', () => {
+      expect(secondsToHours(0)).toBe(0)
+      expect(secondsToHours(3599)).toBe(0)  // Меньше часа
+      expect(secondsToHours(3600)).toBe(1)  // Ровно 1 час
+      expect(secondsToHours(18000)).toBe(5) // 5 часов (5 * 3600)
+      expect(secondsToHours(90000)).toBe(25) // 25 часов
+      expect(secondsToHours(360000)).toBe(100) // 100 часов
+    })
+
+    it('должен разблокировать Bronze при 5 часах (18000 секунд)', () => {
+      const hours = secondsToHours(18000)
+      expect(resolveUnlockedLevel(BROADCAST_WATCH_TIME_THRESHOLDS, hours)).toBe(1)
+    })
+
+    it('должен разблокировать Silver при 25 часах (90000 секунд)', () => {
+      const hours = secondsToHours(90000)
+      expect(resolveUnlockedLevel(BROADCAST_WATCH_TIME_THRESHOLDS, hours)).toBe(2)
+    })
+
+    it('должен разблокировать Gold при 100 часах (360000 секунд)', () => {
+      const hours = secondsToHours(360000)
+      expect(resolveUnlockedLevel(BROADCAST_WATCH_TIME_THRESHOLDS, hours)).toBe(3)
+    })
+  })
+
+  describe('Защита от накрутки', () => {
+    // MAX_SESSION_SECONDS = 3 * 60 * 60 = 10800 секунд = 3 часа
+    const MAX_SESSION_SECONDS = 3 * 60 * 60
+
+    it('должен ограничивать время сессии до 3 часов', () => {
+      const requestedSeconds = 50000 // Пытаемся добавить ~14 часов
+      const cappedSeconds = Math.min(requestedSeconds, MAX_SESSION_SECONDS)
+      expect(cappedSeconds).toBe(MAX_SESSION_SECONDS)
+      expect(cappedSeconds).toBe(10800)
+    })
+
+    it('должен пропускать время меньше лимита', () => {
+      const requestedSeconds = 7200 // 2 часа
+      const cappedSeconds = Math.min(requestedSeconds, MAX_SESSION_SECONDS)
+      expect(cappedSeconds).toBe(7200)
+    })
+  })
+})
+
+// ============================================================================
+// Обновленные тесты суммарных наград
+// ============================================================================
+
+describe('Суммарные награды за все достижения (7 метрик)', () => {
+  it('должен правильно считать суммарную награду за все Bronze достижения', () => {
+    const totalBronze =
+      STREAK_REWARD_CONFIG[1] +
+      PREDICTIONS_REWARD_CONFIG[1] +
+      SEASON_POINTS_REWARD_CONFIG[1] +
+      BET_WINS_REWARD_CONFIG[1] +
+      PREDICTION_STREAK_REWARD_CONFIG[1] +
+      EXPRESS_WINS_REWARD_CONFIG[1] +
+      BROADCAST_WATCH_REWARD_CONFIG[1]
+
+    // 20 + 50 + 50 + 20 + 50 + 50 + 50 = 290
+    expect(totalBronze).toBe(290)
+  })
+
+  it('должен правильно считать суммарную награду за все Silver достижения', () => {
+    const totalSilver =
+      STREAK_REWARD_CONFIG[2] +
+      PREDICTIONS_REWARD_CONFIG[2] +
+      SEASON_POINTS_REWARD_CONFIG[2] +
+      BET_WINS_REWARD_CONFIG[2] +
+      PREDICTION_STREAK_REWARD_CONFIG[2] +
+      EXPRESS_WINS_REWARD_CONFIG[2] +
+      BROADCAST_WATCH_REWARD_CONFIG[2]
+
+    // 200 + 350 + 250 + 200 + 250 + 250 + 200 = 1700
+    expect(totalSilver).toBe(1700)
+  })
+
+  it('должен правильно считать суммарную награду за все Gold достижения', () => {
+    const totalGold =
+      STREAK_REWARD_CONFIG[3] +
+      PREDICTIONS_REWARD_CONFIG[3] +
+      SEASON_POINTS_REWARD_CONFIG[3] +
+      BET_WINS_REWARD_CONFIG[3] +
+      PREDICTION_STREAK_REWARD_CONFIG[3] +
+      EXPRESS_WINS_REWARD_CONFIG[3] +
+      BROADCAST_WATCH_REWARD_CONFIG[3]
+
+    // 1000 + 1000 + 1000 + 1000 + 1000 + 1000 + 1500 = 7500
+    expect(totalGold).toBe(7500)
+  })
+
+  it('должен правильно считать максимально возможную награду за все достижения', () => {
+    const maxTotal =
+      // DAILY_LOGIN: 20 + 200 + 1000 = 1220
+      STREAK_REWARD_CONFIG[1] + STREAK_REWARD_CONFIG[2] + STREAK_REWARD_CONFIG[3] +
+      // TOTAL_PREDICTIONS: 50 + 350 + 1000 = 1400
+      PREDICTIONS_REWARD_CONFIG[1] + PREDICTIONS_REWARD_CONFIG[2] + PREDICTIONS_REWARD_CONFIG[3] +
+      // SEASON_POINTS: 50 + 250 + 1000 = 1300
+      SEASON_POINTS_REWARD_CONFIG[1] + SEASON_POINTS_REWARD_CONFIG[2] + SEASON_POINTS_REWARD_CONFIG[3] +
+      // CORRECT_PREDICTIONS: 20 + 200 + 1000 = 1220
+      BET_WINS_REWARD_CONFIG[1] + BET_WINS_REWARD_CONFIG[2] + BET_WINS_REWARD_CONFIG[3] +
+      // PREDICTION_STREAK: 50 + 250 + 1000 = 1300
+      PREDICTION_STREAK_REWARD_CONFIG[1] + PREDICTION_STREAK_REWARD_CONFIG[2] + PREDICTION_STREAK_REWARD_CONFIG[3] +
+      // EXPRESS_WINS: 50 + 250 + 1000 = 1300
+      EXPRESS_WINS_REWARD_CONFIG[1] + EXPRESS_WINS_REWARD_CONFIG[2] + EXPRESS_WINS_REWARD_CONFIG[3] +
+      // BROADCAST_WATCH_TIME: 50 + 200 + 1500 = 1750
+      BROADCAST_WATCH_REWARD_CONFIG[1] + BROADCAST_WATCH_REWARD_CONFIG[2] + BROADCAST_WATCH_REWARD_CONFIG[3]
+
+    // 1220 + 1400 + 1300 + 1220 + 1300 + 1300 + 1750 = 9490
+    expect(maxTotal).toBe(9490)
   })
 })

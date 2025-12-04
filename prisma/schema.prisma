@@ -154,6 +154,7 @@ model AppUser {
   notificationSettings    NotificationSettings?
   notificationQueue       NotificationQueue[]
   expressBets             ExpressBet[]
+  broadcastWatchTime      UserBroadcastWatchTime?
 
   @@map("app_user")
 }
@@ -840,6 +841,8 @@ enum AchievementMetric {
   CORRECT_PREDICTIONS
   SEASON_POINTS
   PREDICTION_STREAK
+  EXPRESS_WINS
+  BROADCAST_WATCH_TIME
 }
 
 enum CompetitionType {
@@ -1083,4 +1086,14 @@ model ExpressBetItem {
   @@index([expressId], map: "express_item_express_idx")
   @@index([templateId, status], map: "express_item_template_status_idx")
   @@map("express_bet_item")
+}
+
+// Агрегированное время просмотра трансляций для достижений
+model UserBroadcastWatchTime {
+  userId        Int      @id @map("user_id")
+  totalSeconds  Int      @default(0) @map("total_seconds")
+  lastUpdatedAt DateTime @updatedAt @map("last_updated_at")
+  appUser       AppUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_broadcast_watch_time")
 }

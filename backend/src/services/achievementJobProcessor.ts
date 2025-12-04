@@ -58,6 +58,20 @@ export const PREDICTION_STREAK_REWARD_CONFIG: Record<number, number> = {
   3: 1000,  // Gold (Магическая серия) — 25 побед подряд
 }
 
+// Конфигурация очков для уровней express_wins (угаданные экспрессы)
+export const EXPRESS_WINS_REWARD_CONFIG: Record<number, number> = {
+  1: 50,    // Bronze (Экспресс-новичок) — 5 угаданных экспрессов
+  2: 250,   // Silver (Экспресс-профи) — 10 угаданных экспрессов
+  3: 1000,  // Gold (Экспресс-легенда) — 50 угаданных экспрессов
+}
+
+// Конфигурация очков для уровней broadcast_watch_time (часы просмотра трансляций)
+export const BROADCAST_WATCH_REWARD_CONFIG: Record<number, number> = {
+  1: 50,    // Bronze (Зритель) — 5 часов просмотра
+  2: 200,   // Silver (Фанат трансляций) — 25 часов просмотра
+  3: 1500,  // Gold (Постоянный зритель) — 100 часов просмотра
+}
+
 /**
  * Создаёт задачу на выдачу награды за достижение
  * Gracefully handles case when table doesn't exist yet

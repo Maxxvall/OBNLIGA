@@ -132,7 +132,11 @@ export default function ShopPage() {
       )
     }
     if (!shopItems.length) {
-      return <div className="shop-placeholder">Каталог пока пуст — загляните позже.</div>
+      return (
+        <div className="shop-placeholder shop-placeholder-centered">
+          <p className="shop-empty-text">Каталог пока пуст — загляните позже.</p>
+        </div>
+      )
     }
     return (
       <div className="shop-grid">

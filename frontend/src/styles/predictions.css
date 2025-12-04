@@ -118,6 +118,25 @@
   color: var(--prediction-error);
 }
 
+/* Centered placeholder matching shop empty-state visuals */
+.prediction-placeholder-centered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  padding: 36px 18px;
+  background: rgba(6, 10, 18, 0.6);
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.04);
+}
+
+.prediction-empty-text {
+  margin: 0;
+  font-size: 15px;
+  color: rgba(190,215,255,0.9);
+}
+
 .prediction-match-list,
 .prediction-entry-list {
   list-style: none;
@@ -125,7 +144,7 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 6px;
 }
 
 .prediction-match {

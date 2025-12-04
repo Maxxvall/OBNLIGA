@@ -1,22 +1,6 @@
-# Анализ монетизации через подписки Telegram Stars ⭐
-
-## Текущее состояние проекта
-
-### Существующая инфраструктура
-- **Shop модуль** — магазин физических товаров с заказами в рублях
-- **Баланс пользователя** — `balance` в `AppUser` (не используется активно)
-- **Достижения** — система уровней и прогресса
-- **Подписки на команды** — уведомления о матчах через Telegram Bot
-- **Daily Rewards** — ежедневные награды (очки)
-
-### Текущие ограничения
-- Нет системы премиум-функционала
-- Нет интеграции с Telegram Payments
-- Весь функционал открыт бесплатно
-
----
-
-## Предложенные уровни подписки
+# DeepWiki Q&A with Code Context for Repository: Maxxvall/OBNLIGA
+## Q1
+хочу добавить систему монетизации через подписки Telegram Stars, ## Предложенные уровни подписки
 
 ### 🌱 **ROOKIE** (Бесплатный)
 Базовый доступ для всех пользователей.
@@ -27,447 +11,322 @@
 ### 🏆 **LEGEND** (Премиум) — ~199-299⭐/месяц
 Полный доступ ко всем функциям.
 
----
 
-## Распределение функционала по уровням
+что мне лучше всего в них включить и как это реализовать? составь четкий план внедрения
+### Answer
+# План внедрения системы монетизации через Telegram Stars
 
-### Базовые функции (ROOKIE — бесплатно)
-| Функция | Ограничение |
-|---------|-------------|
-| Просмотр матчей и результатов | ✅ Полный доступ |
-| Турнирная таблица | ✅ Полный доступ |
-| Профиль и базовая статистика | ✅ Полный доступ |
-| Подписка на **1 команду** | ✅ Только одна |
-| Прогнозы на матчи | ⚠️ **3 прогноза в неделю** |
-| Ежедневные награды | ⚠️ **Базовые** (1-5 очков) |
-| Достижения | ⚠️ **Только общие** (5-10 типов) |
-| История матчей команд | ⚠️ **Последние 10 матчей** |
-| Комментарии к матчам | ⚠️ **3 комментария в день** |
+Изучив вашу кодовую базу, вот детальный план распределения функций и внедрения системы подписок:
 
-### Расширенные функции (FAN — средний уровень)
-| Функция | Ограничение |
-|---------|-------------|
-| Всё из ROOKIE | ✅ |
-| Подписка на **5 команд** | ✅ |
-| Прогнозы на матчи | ⚠️ **15 прогнозов в неделю** |
-| Ежедневные награды | ✅ **Улучшенные** (×1.5 множитель) |
-| Достижения | ✅ **Все общие + FAN-only** |
-| История матчей | ✅ **Последние 50 матчей** |
-| Комментарии | ✅ **Безлимитно** |
-| Уведомления о голах | ✅ |
-| Детальная статистика игроков | ✅ |
-| **Без рекламы** | ✅ |
+## 📊 Распределение функций по уровням
 
-### Полный доступ (LEGEND — премиум)
-| Функция | Доступ |
-|---------|--------|
-| Всё из FAN | ✅ |
-| Подписка на **все команды** | ✅ Безлимитно |
-| Прогнозы | ✅ **Безлимитно** |
-| Ежедневные награды | ✅ **Максимальные** (×2 множитель) |
-| Все достижения | ✅ Включая эксклюзивные |
-| История матчей | ✅ **Полная история** |
-| Экспорт статистики | ✅ CSV/PDF |
-| API доступ | ✅ Персональный ключ |
-| Приоритетная поддержка | ✅ |
-| **Эксклюзивный badge** в профиле | 🏆 |
-| Ранний доступ к новым функциям | ✅ |
+### 🌱 **ROOKIE** (Бесплатный)
+**Базовые функции:**
+- ✅ Просмотр расписания и результатов матчей
+- ✅ Прогнозы: **5 прогнозов/неделя** (текущий лимит 10) OBNLIGA:9-9 
+- ✅ Экспресс-ставки: **1 экспресс/6 дней, макс. 2 события** (текущий лимит 2 экспресса по 4 события) OBNLIGA:40-45 
+- ✅ Ежедневные награды: **стандартные очки** (1-30) OBNLIGA:24-32 
+- ✅ Рейтинги: только просмотр текущего сезона
+- ✅ Подписки: **2 команды максимум**
+- ✅ Достижения: базовые уровни
+- ❌ Нет доступа к магазину
 
----
+### 🔥 **FAN** (49-99⭐/месяц)
+**Расширенные возможности:**
+- ✅ Прогнозы: **15 прогнозов/неделя** (+150% к базовому)
+- ✅ Экспресс-ставки: **3 экспресса/6 дней, макс. 4 события** (+200% экспрессов)
+- ✅ Ежедневные награды: **бонус +50%** (например, день 7 даёт 45 очков вместо 30)
+- ✅ Рейтинги: доступ к годовому рейтингу OBNLIGA:884-887 
+- ✅ Подписки: **10 команд** + приоритетные уведомления за 60 минут OBNLIGA:83-84 
+- ✅ Магазин: **скидка 10%** на все товары
+- ✅ Значок 🔥 в рейтинге
+- ✅ Расширенная статистика прогнозов
+- ✅ История всех прогнозов (не только последние 100) OBNLIGA:414-420 
 
-## Техническая реализация
+### 🏆 **LEGEND** (199-299⭐/месяц)
+**Полный доступ:**
+- ✅ Прогнозы: **неограниченно** (без недельного лимита)
+- ✅ Экспресс-ставки: **5 экспрессов/6 дней, макс. 6 событий**
+- ✅ Ежедневные награды: **бонус +100%** (день 7 = 60 очков)
+- ✅ Рейтинги: эксклюзивный доступ к историческим снимкам OBNLIGA:565-577 
+- ✅ Подписки: **неограниченное количество команд** + уведомления за 1440 минут (24 часа)
+- ✅ Магазин: **скидка 20%** + ранний доступ к новым товарам
+- ✅ Значок 🏆 в рейтинге
+- ✅ Приоритетная поддержка
+- ✅ Эксклюзивные достижения
+- ✅ Доступ к детальной аналитике матчей
+- ✅ Возможность создавать кастомные прогнозы OBNLIGA:500-517 
 
-### 1. Модель базы данных
+## 🛠️ Технический план внедрения
+
+### **Этап 1: Расширение базы данных (1-2 дня)**
+
+Добавить в `prisma/schema.prisma`: OBNLIGA:123-159 
 
 ```prisma
-// Добавить в schema.prisma
-
 enum SubscriptionTier {
-  ROOKIE   // Бесплатный
-  FAN      // Средний
-  LEGEND   // Премиум
-}
-
-enum SubscriptionStatus {
-  ACTIVE
-  EXPIRED
-  CANCELLED
+  ROOKIE
+  FAN
+  LEGEND
 }
 
 model UserSubscription {
-  id              Int                @id @default(autoincrement()) @map("subscription_id")
-  userId          Int                @unique @map("user_id")
-  tier            SubscriptionTier   @default(ROOKIE)
-  status          SubscriptionStatus @default(ACTIVE)
-  starsPaid       Int?               @map("stars_paid")     // Сколько Stars заплачено
-  expiresAt       DateTime?          @map("expires_at")     // null = бессрочный (ROOKIE)
-  autoRenew       Boolean            @default(true) @map("auto_renew")
-  telegramPayId   String?            @map("telegram_pay_id") // ID транзакции Telegram
-  createdAt       DateTime           @default(now()) @map("created_at")
-  updatedAt       DateTime           @updatedAt @map("updated_at")
+  id                BigInt           @id @default(autoincrement())
+  userId            Int              @map("user_id")
+  tier              SubscriptionTier @default(ROOKIE)
+  starsPaid         Int              @default(0) @map("stars_paid")
+  telegramPaymentId String?          @unique @map("telegram_payment_id")
+  startDate         DateTime         @default(now()) @map("start_date")
+  endDate           DateTime         @map("end_date")
+  isActive          Boolean          @default(true) @map("is_active")
+  autoRenew         Boolean          @default(false) @map("auto_renew")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
   
-  user            AppUser            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  history         SubscriptionHistory[]
-
-  @@index([expiresAt, status])
+  appUser AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, isActive], map: "user_subscription_user_active_idx")
+  @@index([endDate], map: "user_subscription_end_date_idx")
   @@map("user_subscription")
 }
 
 model SubscriptionHistory {
-  id              Int                @id @default(autoincrement()) @map("history_id")
-  subscriptionId  Int                @map("subscription_id")
-  previousTier    SubscriptionTier   @map("previous_tier")
-  newTier         SubscriptionTier   @map("new_tier")
-  starsPaid       Int?               @map("stars_paid")
-  telegramPayId   String?            @map("telegram_pay_id")
-  reason          String?            // upgrade, downgrade, expired, refund
-  createdAt       DateTime           @default(now()) @map("created_at")
+  id          BigInt           @id @default(autoincrement())
+  userId      Int              @map("user_id")
+  tier        SubscriptionTier
+  action      String           // 'purchased', 'renewed', 'cancelled', 'expired'
+  starsPaid   Int?             @map("stars_paid")
+  metadata    Json?
+  createdAt   DateTime         @default(now()) @map("created_at")
   
-  subscription    UserSubscription   @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-  
-  @@index([subscriptionId, createdAt])
+  @@index([userId, createdAt], map: "subscription_history_user_date_idx")
   @@map("subscription_history")
 }
+```
 
-model SubscriptionPlan {
-  id              Int                @id @default(autoincrement()) @map("plan_id")
-  tier            SubscriptionTier   @unique
-  starsPrice      Int                @map("stars_price")    // Цена в Stars
-  durationDays    Int                @map("duration_days")  // 30 для месячной
-  name            String             // "FAN", "LEGEND"
-  description     String?
-  features        Json               // Список фич в JSON
-  isActive        Boolean            @default(true) @map("is_active")
-  sortOrder       Int                @default(0) @map("sort_order")
-  
-  @@map("subscription_plan")
+Обновить модель `AppUser`: OBNLIGA:123-159 
+
+```prisma
+model AppUser {
+  // ... существующие поля ...
+  currentTier         SubscriptionTier  @default(ROOKIE) @map("current_tier")
+  subscriptions       UserSubscription[]
 }
 ```
 
-### 2. Интеграция с Telegram Stars
+### **Этап 2: Сервисный слой подписок (2-3 дня)**
+
+Создать `backend/src/services/subscriptionService.ts`:
 
 ```typescript
-// backend/src/services/telegramPayments.ts
-
-import { Bot, InlineKeyboard } from 'grammy'
-
-const bot = new Bot(process.env.TELEGRAM_BOT_TOKEN!)
-
-interface CreateInvoiceParams {
-  userId: number
-  tier: 'FAN' | 'LEGEND'
-  starsAmount: number
-}
-
-export async function createStarsInvoice(params: CreateInvoiceParams): Promise<string> {
-  const { userId, tier, starsAmount } = params
-  
-  // Создаём invoice link для Telegram Stars
-  const invoiceLink = await bot.api.createInvoiceLink({
-    title: `Подписка ${tier}`,
-    description: `Подписка уровня ${tier} на 30 дней`,
-    payload: JSON.stringify({ userId, tier, timestamp: Date.now() }),
-    provider_token: '', // Пустой для Stars
-    currency: 'XTR', // Telegram Stars
-    prices: [{ label: `Подписка ${tier}`, amount: starsAmount }],
-  })
-  
-  return invoiceLink
-}
-
-// Webhook handler для успешной оплаты
-export async function handleSuccessfulPayment(
-  telegramId: bigint,
-  payload: string,
-  telegramPaymentChargeId: string
-): Promise<void> {
-  const { userId, tier } = JSON.parse(payload)
-  
-  await prisma.$transaction(async (tx) => {
-    // Обновляем подписку
-    const expiresAt = new Date()
-    expiresAt.setDate(expiresAt.getDate() + 30)
-    
-    const subscription = await tx.userSubscription.upsert({
-      where: { userId },
-      create: {
-        userId,
-        tier,
-        status: 'ACTIVE',
-        expiresAt,
-        telegramPayId: telegramPaymentChargeId,
-      },
-      update: {
-        tier,
-        status: 'ACTIVE',
-        expiresAt,
-        telegramPayId: telegramPaymentChargeId,
-      },
-    })
-    
-    // Записываем в историю
-    await tx.subscriptionHistory.create({
-      data: {
-        subscriptionId: subscription.id,
-        previousTier: subscription.tier,
-        newTier: tier,
-        telegramPayId: telegramPaymentChargeId,
-        reason: 'purchase',
-      },
-    })
-  })
-}
+// Функции для проверки лимитов на основе tier
+export const getPredictionLimit = (tier: SubscriptionTier): number | null
+export const getExpressLimit = (tier: SubscriptionTier): number
+export const getExpressMaxItems = (tier: SubscriptionTier): number
+export const getDailyRewardMultiplier = (tier: SubscriptionTier): number
+export const getClubSubscriptionLimit = (tier: SubscriptionTier): number | null
+export const getShopDiscount = (tier: SubscriptionTier): number
+export const canAccessHistoricalRatings = (tier: SubscriptionTier): boolean
 ```
 
-### 3. Middleware для проверки доступа
+Модифицировать константы: OBNLIGA:9-9 
 
 ```typescript
-// backend/src/middleware/tierGuard.ts
+// Вместо константы сделать функцию
+export const getPredictionWeeklyLimit = (tier: SubscriptionTier): number | null
+```
 
-import { FastifyRequest, FastifyReply } from 'fastify'
+### **Этап 3: Интеграция Telegram Stars API (3-4 дня)**
 
-type TierLevel = 'ROOKIE' | 'FAN' | 'LEGEND'
+Создать `backend/src/services/telegramPaymentService.ts`:
 
-const TIER_HIERARCHY: Record<TierLevel, number> = {
-  ROOKIE: 0,
-  FAN: 1,
-  LEGEND: 2,
-}
+```typescript
+// Интеграция с Telegram Payments API
+export const createInvoice = async (userId: number, tier: SubscriptionTier)
+export const handleSuccessfulPayment = async (paymentData: TelegramPaymentInfo)
+export const verifyPayment = async (telegramPaymentId: string)
+export const cancelSubscription = async (userId: number)
+export const checkSubscriptionStatus = async (userId: number)
+```
 
-export function requireTier(minTier: TierLevel) {
-  return async (request: FastifyRequest, reply: FastifyReply) => {
-    const userId = request.userId // из auth middleware
-    
-    const subscription = await prisma.userSubscription.findUnique({
-      where: { userId },
-      select: { tier: true, status: true, expiresAt: true },
-    })
-    
-    // Проверяем статус и срок
-    const isActive = subscription?.status === 'ACTIVE' &&
-      (!subscription.expiresAt || subscription.expiresAt > new Date())
-    
-    const currentTier: TierLevel = isActive ? subscription!.tier : 'ROOKIE'
-    
-    if (TIER_HIERARCHY[currentTier] < TIER_HIERARCHY[minTier]) {
-      return reply.status(403).send({
-        ok: false,
+Использовать Grammy для обработки платежей: OBNLIGA:38-38 
+
+```typescript
+bot.on('pre_checkout_query', handlePreCheckout)
+bot.on('message:successful_payment', handleSuccessfulPayment)
+```
+
+### **Этап 4: Middleware для проверки подписки (1-2 дня)**
+
+Создать `backend/src/utils/subscriptionMiddleware.ts`:
+
+```typescript
+export const requireTier = (minTier: SubscriptionTier) => {
+  return async (request, reply) => {
+    const user = await getUserWithSubscription(request)
+    if (user.currentTier < minTier) {
+      return reply.status(403).send({ 
+        ok: false, 
         error: 'subscription_required',
         requiredTier: minTier,
-        currentTier,
+        currentTier: user.currentTier
       })
     }
-    
-    // Добавляем tier в request для использования в handlers
-    request.userTier = currentTier
   }
 }
-
-// Использование:
-fastify.get('/api/stats/export', 
-  { preHandler: requireTier('LEGEND') },
-  exportStatsHandler
-)
 ```
 
-### 4. Лимиты на фронтенде
+### **Этап 5: Модификация существующих эндпоинтов (3-5 дней)**
+
+**Прогнозы:** OBNLIGA:530-543 
 
 ```typescript
-// frontend/src/utils/tierLimits.ts
-
-export const TIER_LIMITS = {
-  ROOKIE: {
-    clubSubscriptions: 1,
-    predictionsPerWeek: 3,
-    commentsPerDay: 3,
-    matchHistoryDays: 30,
-    dailyRewardMultiplier: 1,
-  },
-  FAN: {
-    clubSubscriptions: 5,
-    predictionsPerWeek: 15,
-    commentsPerDay: Infinity,
-    matchHistoryDays: 180,
-    dailyRewardMultiplier: 1.5,
-  },
-  LEGEND: {
-    clubSubscriptions: Infinity,
-    predictionsPerWeek: Infinity,
-    commentsPerDay: Infinity,
-    matchHistoryDays: Infinity,
-    dailyRewardMultiplier: 2,
-  },
-} as const
-
-export function canSubscribeToClub(
-  tier: keyof typeof TIER_LIMITS,
-  currentSubscriptions: number
-): boolean {
-  return currentSubscriptions < TIER_LIMITS[tier].clubSubscriptions
-}
-```
-
----
-
-## Нагрузка на инфраструктуру
-
-### База данных (PostgreSQL)
-
-| Операция | Частота | Индекс | Нагрузка |
-|----------|---------|--------|----------|
-| Проверка tier | Каждый API-запрос | `user_subscription.userId` | ⚠️ **Высокая** |
-| Проверка expiresAt | Cron каждый час | `expiresAt, status` | 🟢 Низкая |
-| Запись истории | При оплате | `subscription_id` | 🟢 Низкая |
-
-**Оптимизация:**
-```sql
--- Покрывающий индекс для быстрой проверки
-CREATE INDEX user_sub_tier_check_idx 
-ON user_subscription (user_id) 
-INCLUDE (tier, status, expires_at);
-```
-
-**Оценка роста:**
-- +2 таблицы (~1-2 KB на пользователя)
-- +1-2 запроса на каждый API-вызов
-
-### Redis (кэширование)
-
-```typescript
-// Кэшируем tier пользователя
-const TIER_CACHE_TTL = 300 // 5 минут
-
-async function getUserTier(userId: number): Promise<TierLevel> {
-  const cacheKey = `user:${userId}:tier`
-  
-  const cached = await redis.get(cacheKey)
-  if (cached) return cached as TierLevel
-  
-  const subscription = await prisma.userSubscription.findUnique({
-    where: { userId },
-    select: { tier: true, status: true, expiresAt: true },
+// Изменить проверку лимита
+const userTier = await getUserTier(user.id)
+const weeklyLimit = getPredictionWeeklyLimit(userTier)
+if (weeklyLimit !== null && weeklyCount >= weeklyLimit) {
+  return reply.status(429).send({ 
+    ok: false, 
+    error: 'weekly_limit_reached',
+    upgradeRequired: true
   })
-  
-  const tier = (subscription?.status === 'ACTIVE' && 
-    (!subscription.expiresAt || subscription.expiresAt > new Date()))
-    ? subscription.tier
-    : 'ROOKIE'
-  
-  await redis.setex(cacheKey, TIER_CACHE_TTL, tier)
-  return tier
 }
 ```
 
-**Дополнительная память Redis:**
-- ~50 байт на пользователя
-- При 10K пользователей: ~500 KB
+**Экспресс-ставки:** OBNLIGA:120-132 
 
-### Сервер (CPU/Memory)
+```typescript
+// Проверять лимиты на основе tier
+const userTier = await getUserTier(user.id)
+const expressLimit = getExpressLimit(userTier)
+const maxItems = getExpressMaxItems(userTier)
+```
 
-| Компонент | Изменение | Влияние |
-|-----------|-----------|---------|
-| Middleware проверки | +1 Redis GET | 🟢 Минимальное |
-| Webhook обработка | ~100ms на оплату | 🟢 Редко |
-| Cron expired check | 1 раз/час | 🟢 Минимальное |
+**Ежедневные награды:** OBNLIGA:331-331 
 
-**Общая оценка:** Нагрузка увеличится на **5-10%** при правильном кэшировании.
+```typescript
+// Применять множитель
+const multiplier = await getDailyRewardMultiplier(userId)
+const finalPoints = reward.points * multiplier
+await createPointAdjustments(tx, userId, finalPoints, nextDay)
+```
 
----
+**Магазин:** OBNLIGA:1-10 
 
-## Сложности реализации
+```typescript
+// Применять скидку при создании заказа
+const discount = await getShopDiscount(user.id)
+const discountedTotal = Math.round(totalCents * (1 - discount))
+```
 
-### 1. Интеграция Telegram Payments ⚠️ **Средняя**
-- Нужен `pre_checkout_query` handler
-- Webhook для `successful_payment`
-- Обработка refunds
-- Тестирование в sandbox
+**Подписки:** OBNLIGA:192-211 
 
-### 2. Миграция существующих пользователей 🟢 **Низкая**
-- Все получают ROOKIE по умолчанию
-- Не ломает существующий функционал
+```typescript
+// Проверять лимит команд
+const currentCount = await prisma.clubSubscription.count({ where: { userId } })
+const limit = getClubSubscriptionLimit(userTier)
+if (limit !== null && currentCount >= limit) {
+  return reply.status(403).send({ 
+    ok: false, 
+    error: 'subscription_limit_reached' 
+  })
+}
+```
 
-### 3. Frontend ограничения ⚠️ **Средняя**
-- Нужны UX для "апгрейд" промптов
-- Graceful degradation при лимитах
-- Страница управления подпиской
+### **Этап 6: Frontend интеграция (3-4 дня)**
 
-### 4. Синхронизация состояния ⚠️ **Средняя**
-- Webhook может прийти с задержкой
-- Нужна polling стратегия для проверки
+Создать компоненты:
+- `SubscriptionCard.tsx` - карточка подписки
+- `SubscriptionModal.tsx` - модальное окно выбора
+- `SubscriptionBadge.tsx` - значок tier в UI
+- `UpgradePrompt.tsx` - призыв к апгрейду при достижении лимита
 
-### 5. Обработка истекших подписок 🟢 **Низкая**
-- Cron job раз в час
-- Downgrade до ROOKIE
+Добавить в store: OBNLIGA:1-10 
 
----
+```typescript
+interface AppState {
+  // ... существующие поля ...
+  userTier: SubscriptionTier
+  subscriptionLimits: SubscriptionLimits
+}
+```
 
-## Дополнительные идеи для монетизации
+### **Этап 7: Роуты подписок (2 дня)**
 
-### Разовые покупки (не подписка)
-| Товар | Цена | Описание |
-|-------|------|----------|
-| Кастомный badge | 50⭐ | Уникальная иконка в профиле |
-| Смена никнейма | 30⭐ | Один раз |
-| Boost прогноза | 10⭐ | ×2 очки за один прогноз |
-| Эксклюзивная тема | 100⭐ | Кастомизация интерфейса |
+Создать `backend/src/routes/subscriptionPaymentRoutes.ts`:
 
-### Функции для добавления в LEGEND
-- **Fantasy League** — собери свою команду
-- **Аналитика прогнозов** — графики успешности
-- **Турнирные таблицы прогнозистов** — отдельный рейтинг
-- **Push-уведомления** — напоминания о матчах
-- **Интеграция с календарём** — экспорт расписания
+```typescript
+POST   /api/subscriptions/create-invoice  // Создать инвойс
+GET    /api/subscriptions/my              // Текущая подписка
+POST   /api/subscriptions/cancel          // Отменить автопродление
+GET    /api/subscriptions/history         // История платежей
+GET    /api/subscriptions/limits          // Текущие лимиты пользователя
+```
 
----
+### **Этап 8: Cron задачи (1-2 дня)**
 
-## Рекомендуемый план внедрения
+Добавить в `backend/src/routes/cronRoutes.ts`: OBNLIGA:97-97 
 
-### Фаза 1: Инфраструктура (1-2 недели)
-1. ✅ Модели БД + миграция
-2. ✅ Telegram Payments webhook
-3. ✅ Middleware проверки tier
-4. ✅ Redis кэширование tier
+```typescript
+// Проверка истекших подписок каждый час
+POST /api/cron/check-expired-subscriptions
+// Уведомления о скором истечении (за 3 дня)
+POST /api/cron/send-renewal-reminders
+```
 
-### Фаза 2: Ограничения (1 неделя)
-1. ⬜ Лимит прогнозов
-2. ⬜ Лимит подписок на команды
-3. ⬜ Лимит комментариев
+### **Этап 9: Тестирование и развертывание (3-5 дней)**
 
-### Фаза 3: UI (1-2 недели)
-1. ⬜ Страница подписок
-2. ⬜ Кнопки "Upgrade" в интерфейсе
-3. ⬜ Badge в профиле
-4. ⬜ Страница управления подпиской
+1. **Unit тесты** для сервисных функций
+2. **Integration тесты** для payment flow
+3. **E2E тесты** с Telegram Test Environment
+4. **Load тесты** для проверки производительности
+5. **Безопасность**: валидация платежей, защита от накрутки
 
-### Фаза 4: Аналитика (постоянно)
-1. ⬜ Метрики конверсии
-2. ⬜ A/B тесты цен
-3. ⬜ Отслеживание churn
+## 📈 Рекомендации по ценообразованию
 
----
+### Оптимальные цены на основе анализа:
+- **FAN**: **69⭐/месяц** (~$0.99 USD)
+- **LEGEND**: **249⭐/месяц** (~$3.49 USD)
 
-## Ценообразование (рекомендация)
+### Специальные предложения:
+- **Первый месяц -30%** для новых подписчиков
+- **Годовая подписка -20%** (FAN: 690⭐/год, LEGEND: 2490⭐/год)
+- **Реферальная программа**: пригласи друга → +7 дней подписки
 
-| Уровень | Stars/месяц | ~USD | ~RUB |
-|---------|-------------|------|------|
-| ROOKIE | 0 | $0 | 0₽ |
-| FAN | 75⭐ | ~$1.50 | ~150₽ |
-| LEGEND | 200⭐ | ~$4.00 | ~400₽ |
+## 🎯 Метрики успеха
 
-> 💡 **Совет:** Начните с низких цен для набора базы подписчиков, затем постепенно повышайте.
+Добавить аналитику:
+1. **Conversion rate**: ROOKIE → FAN → LEGEND
+2. **Churn rate**: отток подписчиков
+3. **ARPU** (Average Revenue Per User)
+4. **Feature usage**: какие функции используют платные пользователи
+5. **Upgrade triggers**: что мотивирует апгрейд (лимиты, функции)
 
----
+## ⚠️ Важные замечания
 
-## Заключение
+1. **Постепенное внедрение лимитов**: Текущие пользователи не должны резко потерять функции. Используйте grace period 30 дней.
 
-Внедрение системы подписок через Telegram Stars — **выполнимая задача** с умеренной сложностью. Основные преимущества:
+2. **Прозрачность**: Четко показывайте лимиты и преимущества каждого tier.
 
-✅ Нативная интеграция с Telegram  
-✅ Низкий порог входа для пользователей  
-✅ Минимальная дополнительная нагрузка на сервер  
-✅ Понятная модель монетизации  
+3. **Telegram Guidelines**: Следуйте правилам Telegram Stars API и политике платежей.
 
-Главные риски:
-- Пользователи могут уйти при жёстких ограничениях
-- Необходим баланс между free и paid функционалом
-- Требуется постоянный мониторинг метрик
+4. **Реверсивная совместимость**: Все существующие пользователи становятся ROOKIE с сохранением текущих данных.
+
+5. **Мониторинг платежей**: Логируйте все транзакции для разрешения споров.
+
+## 📅 Общая timeline: 20-30 дней
+
+- **Неделя 1**: Этапы 1-2 (БД + сервисы)
+- **Неделя 2**: Этапы 3-5 (Telegram API + middleware + модификация эндпоинтов)
+- **Неделя 3**: Этапы 6-7 (Frontend + роуты)
+- **Неделя 4**: Этапы 8-9 (Cron + тестирование)
+
+## Notes
+
+Ваш проект уже имеет отличную архитектуру с системой кэширования, очередями задач и WebSocket для real-time обновлений. Система подписок органично впишется в существующую структуру. Особое внимание уделите:
+
+- **Кэширование tier пользователя** для минимизации обращений к БД
+- **Использование существующей системы достижений** для геймификации подписок
+- **Интеграция с системой уведомлений** для информирования об истечении подписки
+
+Telegram Stars API хорошо документирован и интегрируется с Grammy, который вы уже используете в проекте.

@@ -215,9 +215,10 @@
 
 .team-stats-gauge {
   position: relative;
-  width: 120px;
+  /* Увеличен размер полукруга и толщина штриха */
+  width: 150px;
   margin: 0 auto;
-  --team-gauge-stroke: 12px;
+  --team-gauge-stroke: 16px;
   --team-gauge-track: rgba(230, 247, 255, 0.12);
   --team-gauge-win: #4a9d5f;
   --team-gauge-draw: rgba(255, 255, 255, 0.52);
@@ -273,6 +274,8 @@
   font-weight: 700;
   color: rgba(230, 247, 255, 0.95);
   line-height: 1;
+  /* Немного опустим число под полукругом, чтобы не прижималось */
+  margin-top: 16px;
 }
 
 .team-stats-matches-label {
@@ -293,7 +296,7 @@
 .team-stats-wdl-item {
   display: grid;
   grid-template-columns: 8px 80px 32px;
-  gap: 10px;
+  gap: 14px;
   align-items: center;
 }
 
@@ -586,7 +589,6 @@
 /* === Таблица состава === */
 .team-squad-table-wrapper {
   overflow-x: auto;
-  margin: -8px;
   padding: 8px;
 }
 
@@ -805,8 +807,9 @@
   }
 
   .team-stats-gauge {
-    width: 100px;
-    --team-gauge-stroke: 10px;
+    /* Slightly larger gauge for tablet / narrow desktop */
+    width: 120px;
+    --team-gauge-stroke: 12px;
   }
 
   .team-stats-matches-value {
@@ -856,8 +859,9 @@
   }
 
   .team-stats-gauge {
-    width: 90px;
-    --team-gauge-stroke: 8px;
+    /* Larger gauge even on small phones to improve readability */
+    width: 110px;
+    --team-gauge-stroke: 10px;
   }
 
   .team-stats-matches-value {
@@ -867,19 +871,20 @@
   .team-stats-wdl {
     flex-direction: column;
     justify-content: center;
-    align-items: flex-start;
+    /* Прижать блок W/D/L к правой стороне на узких экранах */
+    align-items: flex-end;
+    justify-self: end;
     gap: 6px;
-    width: 100%;
+    width: auto;
   }
 
   .team-stats-wdl-item {
     display: grid;
     grid-template-columns: 8px 70px auto;
-    gap: 8px;
   }
 
   .team-stats-wdl-label {
-    font-size: 11px;
+    font-size: 12px;
     order: unset;
   }
 

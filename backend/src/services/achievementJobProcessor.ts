@@ -51,6 +51,13 @@ export const BET_WINS_REWARD_CONFIG: Record<number, number> = {
   3: 1000,  // Gold (Чемпион) — 200 угаданных прогнозов
 }
 
+// Конфигурация очков для уровней prediction_streak (серия побед)
+export const PREDICTION_STREAK_REWARD_CONFIG: Record<number, number> = {
+  1: 50,    // Bronze (Счастливая пятерка) — 5 побед подряд
+  2: 250,   // Silver (Десятка удачи) — 10 побед подряд
+  3: 1000,  // Gold (Магическая серия) — 25 побед подряд
+}
+
 /**
  * Создаёт задачу на выдачу награды за достижение
  * Gracefully handles case when table doesn't exist yet

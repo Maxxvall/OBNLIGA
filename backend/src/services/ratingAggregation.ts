@@ -18,6 +18,7 @@ import {
   resolveRatingLevel,
 } from './ratingConstants'
 import { computeRatingWindows, getRatingSettings } from './ratingSettings'
+import { syncPredictionStreakProgress } from './achievementProgress'
 
 type AggregatedUserRating = {
   userId: number
@@ -490,6 +491,18 @@ export const recalculateUserRatings = async (
       if (snapshotPayload.length > 0) {
         await tx.ratingSnapshot.createMany({ data: snapshotPayload })
       }
+    }
+
+    // Синхронизируем достижения серии побед batch'ом
+    // Используем Promise.all для параллельной обработки, ограничивая нагрузку
+    const ACHIEVEMENT_BATCH_SIZE = 20
+    for (let i = 0; i < entries.length; i += ACHIEVEMENT_BATCH_SIZE) {
+      const batch = entries.slice(i, i + ACHIEVEMENT_BATCH_SIZE)
+      await Promise.all(
+        batch
+          .filter(entry => entry.maxStreak > 0)
+          .map(entry => syncPredictionStreakProgress(entry.userId, entry.maxStreak, tx))
+      )
     }
   }, { timeout: 20_000 })
 

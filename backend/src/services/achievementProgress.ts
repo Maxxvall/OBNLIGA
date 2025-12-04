@@ -7,6 +7,7 @@ import {
   PREDICTIONS_REWARD_CONFIG,
   SEASON_POINTS_REWARD_CONFIG,
   BET_WINS_REWARD_CONFIG,
+  PREDICTION_STREAK_REWARD_CONFIG,
 } from './achievementJobProcessor'
 
 const DEFAULT_CLIENT = prisma
@@ -125,6 +126,11 @@ export const incrementAchievementProgress = async (
         const points = BET_WINS_REWARD_CONFIG[unlockedLevel]
         if (points) {
           await createAchievementRewardJob(userId, 'bet_wins', unlockedLevel, points, seasonId, client)
+        }
+      } else if (metric === AchievementMetric.PREDICTION_STREAK) {
+        const points = PREDICTION_STREAK_REWARD_CONFIG[unlockedLevel]
+        if (points) {
+          await createAchievementRewardJob(userId, 'prediction_streak', unlockedLevel, points, seasonId, client)
         }
       }
     }
@@ -309,5 +315,84 @@ export const syncAllSeasonPointsProgress = async (
   }
 
   return syncedCount
+}
+
+/**
+ * Синхронизирует прогресс достижения PREDICTION_STREAK с текущей максимальной серией побед.
+ * Используется при пересчёте рейтингов для обновления прогресса.
+ * Устанавливает progressCount равным maxStreak (не инкрементирует).
+ * Использует maxStreak, чтобы пользователи не теряли прогресс при сбросе серии.
+ */
+export const syncPredictionStreakProgress = async (
+  userId: number,
+  maxStreak: number,
+  client: Prisma.TransactionClient | PrismaClient = DEFAULT_CLIENT
+) => {
+  if (maxStreak <= 0) {
+    return
+  }
+
+  const types = await selectTypeByMetric(AchievementMetric.PREDICTION_STREAK, client)
+  if (!types.length) {
+    return
+  }
+
+  const now = new Date()
+
+  for (const type of types) {
+    const progress = await client.achievementProgress.upsert({
+      where: {
+        achievement_progress_unique: {
+          userId,
+          achievementId: type.id,
+        },
+      },
+      create: {
+        userId,
+        achievementId: type.id,
+        progressCount: maxStreak,
+        currentLevel: 0,
+      },
+      update: {
+        progressCount: maxStreak,
+      },
+    })
+
+    const unlockedLevel = resolveUnlockedLevel(type.levels, progress.progressCount)
+
+    if (unlockedLevel > progress.currentLevel) {
+      await client.achievementProgress.update({
+        where: { id: progress.id },
+        data: {
+          currentLevel: unlockedLevel,
+          lastUnlockedAt: now,
+        },
+      })
+
+      await client.userAchievement.upsert({
+        where: {
+          userId_achievementTypeId: {
+            userId,
+            achievementTypeId: type.id,
+          },
+        },
+        update: {
+          achievedDate: now,
+        },
+        create: {
+          userId,
+          achievementTypeId: type.id,
+          achievedDate: now,
+        },
+      })
+
+      // Создаём job для асинхронного начисления наград
+      const seasonId = getCurrentYearSeasonId()
+      const points = PREDICTION_STREAK_REWARD_CONFIG[unlockedLevel]
+      if (points) {
+        await createAchievementRewardJob(userId, 'prediction_streak', unlockedLevel, points, seasonId, client)
+      }
+    }
+  }
 }
 

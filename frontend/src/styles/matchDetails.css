@@ -752,11 +752,13 @@ body.allow-landscape .match-details-page {
 }
 
 .stat-header .stat-value.home {
-  color: var(--match-accent);
+  /* Цвет подписи для домашней команды - тёплый */
+  color: rgba(255, 160, 90, 0.95);
 }
 
 .stat-header .stat-value.away {
-  color: rgba(138, 180, 255, 0.9);
+  /* Цвет подписи для гостевой команды - холодный синий */
+  color: rgba(96, 170, 255, 0.95);
 }
 
 .stat-header .stat-label {
@@ -783,13 +785,15 @@ body.allow-landscape .match-details-page {
 }
 
 .stat-bar-home {
-  background: linear-gradient(90deg, var(--match-accent), rgba(0, 200, 255, 0.6));
+  /* Более контрастный, тёплый градиент для домашней команды */
+  background: linear-gradient(90deg, rgba(255, 170, 102, 0.95), rgba(255, 130, 80, 0.85));
   border-radius: 3px 0 0 3px;
   transition: width 0.5s ease;
 }
 
 .stat-bar-away {
-  background: linear-gradient(90deg, rgba(100, 160, 255, 0.6), rgba(138, 180, 255, 0.7));
+  /* Более чистый холодный градиент для гостевой команды */
+  background: linear-gradient(90deg, rgba(96, 170, 255, 0.95), rgba(0, 135, 255, 0.85));
   border-radius: 0 3px 3px 0;
   transition: width 0.5s ease;
 }

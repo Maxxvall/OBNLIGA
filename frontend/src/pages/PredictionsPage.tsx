@@ -711,7 +711,11 @@ const PredictionsPageInner: React.FC = () => {
     }
 
     if (!upcoming.length) {
-      return <p className="prediction-note">В ближайшие шесть дней нет доступных прогнозов.</p>
+      return (
+        <div className="prediction-placeholder prediction-placeholder-centered">
+          <p className="prediction-empty-text">В ближайшие шесть дней нет доступных прогнозов.</p>
+        </div>
+      )
     }
 
     const matchGroups = groupMatchesByDate(upcoming)

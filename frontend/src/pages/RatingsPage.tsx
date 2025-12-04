@@ -24,7 +24,7 @@ type ScopeState = {
   fetchedAt?: number
 }
 
-const PAGE_SIZE = 25
+const PAGE_SIZE = 10
 const CACHE_TTL_MS = 300_000
 
 const scopeLabels: Record<RatingScopeKey, string> = {

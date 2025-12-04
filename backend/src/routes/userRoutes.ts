@@ -11,7 +11,15 @@ import {
   claimDailyReward,
   DailyRewardError,
 } from '../services/dailyRewards'
-import { STREAK_REWARD_CONFIG, PREDICTIONS_REWARD_CONFIG, SEASON_POINTS_REWARD_CONFIG, BET_WINS_REWARD_CONFIG } from '../services/achievementJobProcessor'
+import {
+  STREAK_REWARD_CONFIG,
+  PREDICTIONS_REWARD_CONFIG,
+  SEASON_POINTS_REWARD_CONFIG,
+  BET_WINS_REWARD_CONFIG,
+  PREDICTION_STREAK_REWARD_CONFIG,
+  EXPRESS_WINS_REWARD_CONFIG,
+  BROADCAST_WATCH_REWARD_CONFIG,
+} from '../services/achievementJobProcessor'
 
 type UserUpsertBody = {
   userId?: string | number | bigint
@@ -509,6 +517,12 @@ function getAchievementGroup(metric: string): string {
       return 'bet_wins'
     case 'SEASON_POINTS':
       return 'credits'
+    case 'PREDICTION_STREAK':
+      return 'prediction_streak'
+    case 'EXPRESS_WINS':
+      return 'express_wins'
+    case 'BROADCAST_WATCH_TIME':
+      return 'broadcast_watch'
     default:
       return metric.toLowerCase()
   }
@@ -524,6 +538,12 @@ function getAchievementIconUrl(metric: string, level: number): string {
       return getSeasonPointsIconUrl(level)
     case 'CORRECT_PREDICTIONS':
       return getBetWinsIconUrl(level)
+    case 'PREDICTION_STREAK':
+      return getPredictionStreakIconUrl(level)
+    case 'EXPRESS_WINS':
+      return getExpressWinsIconUrl(level)
+    case 'BROADCAST_WATCH_TIME':
+      return getBroadcastWatchIconUrl(level)
     default:
       return '/achievements/default-locked.png'
   }
@@ -539,6 +559,12 @@ function getAchievementLevelTitle(metric: string, level: number): string {
       return getSeasonPointsLevelTitle(level)
     case 'CORRECT_PREDICTIONS':
       return getBetWinsLevelTitle(level)
+    case 'PREDICTION_STREAK':
+      return getPredictionStreakLevelTitle(level)
+    case 'EXPRESS_WINS':
+      return getExpressWinsLevelTitle(level)
+    case 'BROADCAST_WATCH_TIME':
+      return getBroadcastWatchLevelTitle(level)
     default:
       return `Уровень ${level}`
   }
@@ -554,6 +580,12 @@ function getAchievementRewardPoints(metric: string, level: number): number {
       return SEASON_POINTS_REWARD_CONFIG[level] ?? 0
     case 'CORRECT_PREDICTIONS':
       return BET_WINS_REWARD_CONFIG[level] ?? 0
+    case 'PREDICTION_STREAK':
+      return PREDICTION_STREAK_REWARD_CONFIG[level] ?? 0
+    case 'EXPRESS_WINS':
+      return EXPRESS_WINS_REWARD_CONFIG[level] ?? 0
+    case 'BROADCAST_WATCH_TIME':
+      return BROADCAST_WATCH_REWARD_CONFIG[level] ?? 0
     default:
       return 0
   }
@@ -679,3 +711,95 @@ function getBetWinsLevelTitle(level: number): string {
   }
 }
 
+// PREDICTION_STREAK - серия побед подряд
+function getPredictionStreakIconUrl(level: number): string {
+  switch (level) {
+    case 0:
+      return '/achievements/prediction-streak-placeholder.svg'
+    case 1:
+      return '/achievements/prediction-streak-placeholder.svg'
+    case 2:
+      return '/achievements/prediction-streak-placeholder.svg'
+    case 3:
+      return '/achievements/prediction-streak-placeholder.svg'
+    default:
+      return '/achievements/prediction-streak-placeholder.svg'
+  }
+}
+
+function getPredictionStreakLevelTitle(level: number): string {
+  switch (level) {
+    case 0:
+      return 'Новичок'
+    case 1:
+      return 'Счастливая тройка'
+    case 2:
+      return 'Семёрка удачи'
+    case 3:
+      return 'Магическая серия'
+    default:
+      return 'Новичок'
+  }
+}
+
+// EXPRESS_WINS - угаданные экспрессы
+function getExpressWinsIconUrl(level: number): string {
+  switch (level) {
+    case 0:
+      return '/achievements/express-wins-placeholder.svg'
+    case 1:
+      return '/achievements/express-wins-placeholder.svg'
+    case 2:
+      return '/achievements/express-wins-placeholder.svg'
+    case 3:
+      return '/achievements/express-wins-placeholder.svg'
+    default:
+      return '/achievements/express-wins-placeholder.svg'
+  }
+}
+
+function getExpressWinsLevelTitle(level: number): string {
+  switch (level) {
+    case 0:
+      return 'Новичок'
+    case 1:
+      return 'Экспресс-профи'
+    case 2:
+      return 'Экспресс-мастер'
+    case 3:
+      return 'Экспресс-легенда'
+    default:
+      return 'Новичок'
+  }
+}
+
+// BROADCAST_WATCH_TIME - просмотр трансляций
+function getBroadcastWatchIconUrl(level: number): string {
+  switch (level) {
+    case 0:
+      return '/achievements/broadcast-watch-placeholder.svg'
+    case 1:
+      return '/achievements/broadcast-watch-placeholder.svg'
+    case 2:
+      return '/achievements/broadcast-watch-placeholder.svg'
+    case 3:
+      return '/achievements/broadcast-watch-placeholder.svg'
+    default:
+      return '/achievements/broadcast-watch-placeholder.svg'
+  }
+}
+
+function getBroadcastWatchLevelTitle(level: number): string {
+  switch (level) {
+    case 0:
+      return 'Новичок'
+    case 1:
+      return 'Зритель'
+    case 2:
+      return 'Фанат трансляций'
+    case 3:
+      return 'Постоянный зритель'
+    default:
+      return 'Новичок'
+  }
+}

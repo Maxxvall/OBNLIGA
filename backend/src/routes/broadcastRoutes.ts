@@ -12,8 +12,8 @@ import prisma from '../db'
 import { extractSessionToken, resolveSessionSubject } from '../utils/session'
 import { syncBroadcastWatchProgress } from '../services/achievementProgress'
 
-// Максимум 3 часа за одну сессию (защита от накрутки)
-const MAX_SESSION_SECONDS = 3 * 60 * 60
+// Максимум 1 час за одну сессию (защита от накрутки, матч ~50 мин)
+const MAX_SESSION_SECONDS = 1 * 60 * 60
 // Минимальное время для синхронизации (1 минута)
 const MIN_SYNC_SECONDS = 60
 

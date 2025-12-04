@@ -35,6 +35,24 @@ const ACHIEVEMENT_LEVEL_NAMES: Record<string, Record<number, string>> = {
     2: 'Снайпер',
     3: 'Чемпион',
   },
+  prediction_streak: {
+    0: 'Новичок',
+    1: 'Счастливая тройка',
+    2: 'Семёрка удачи',
+    3: 'Магическая серия',
+  },
+  express_wins: {
+    0: 'Новичок',
+    1: 'Экспресс-профи',
+    2: 'Экспресс-мастер',
+    3: 'Экспресс-легенда',
+  },
+  broadcast_watch: {
+    0: 'Новичок',
+    1: 'Зритель',
+    2: 'Фанат трансляций',
+    3: 'Постоянный зритель',
+  },
 }
 
 // Группа для отображения
@@ -43,6 +61,9 @@ const ACHIEVEMENT_GROUP_LABELS: Record<string, string> = {
   predictions: 'Прогнозы',
   credits: 'Очки сезона',
   bet_wins: 'Угаданные прогнозы',
+  prediction_streak: 'Серия побед',
+  express_wins: 'Мастер экспрессов',
+  broadcast_watch: 'Просмотр трансляций',
 }
 
 // Конфигурация порогов и очков для каждой группы
@@ -66,6 +87,21 @@ const ACHIEVEMENT_THRESHOLDS: Record<string, { level: number; threshold: number;
     { level: 1, threshold: 10, points: 20 },
     { level: 2, threshold: 50, points: 200 },
     { level: 3, threshold: 200, points: 1000 },
+  ],
+  prediction_streak: [
+    { level: 1, threshold: 3, points: 50 },
+    { level: 2, threshold: 7, points: 250 },
+    { level: 3, threshold: 15, points: 1000 },
+  ],
+  express_wins: [
+    { level: 1, threshold: 5, points: 50 },
+    { level: 2, threshold: 10, points: 250 },
+    { level: 3, threshold: 50, points: 1000 },
+  ],
+  broadcast_watch: [
+    { level: 1, threshold: 5, points: 50 },
+    { level: 2, threshold: 25, points: 200 },
+    { level: 3, threshold: 100, points: 1500 },
   ],
 }
 
@@ -98,6 +134,12 @@ function getProgressUnit(group: string, count: number): string {
     return pluralize(count, 'очко', 'очка', 'очков')
   case 'bet_wins':
     return pluralize(count, 'угаданный прогноз', 'угаданных прогноза', 'угаданных прогнозов')
+  case 'prediction_streak':
+    return pluralize(count, 'победа подряд', 'победы подряд', 'побед подряд')
+  case 'express_wins':
+    return pluralize(count, 'угаданный экспресс', 'угаданных экспресса', 'угаданных экспрессов')
+  case 'broadcast_watch':
+    return pluralize(count, 'час просмотра', 'часа просмотра', 'часов просмотра')
   default:
     return ''
   }
@@ -147,6 +189,42 @@ const DEFAULT_ACHIEVEMENTS: UserAchievementSummaryItem[] = [
     currentProgress: 0,
     nextThreshold: 10,
     iconSrc: '/achievements/betwins-locked.png',
+    shortTitle: 'Новичок',
+    shouldPlayAnimation: false,
+    animationRewardId: null,
+    animationPoints: null,
+  },
+  {
+    achievementId: -5,
+    group: 'prediction_streak',
+    currentLevel: 0,
+    currentProgress: 0,
+    nextThreshold: 3,
+    iconSrc: '/achievements/prediction-streak-placeholder.svg',
+    shortTitle: 'Новичок',
+    shouldPlayAnimation: false,
+    animationRewardId: null,
+    animationPoints: null,
+  },
+  {
+    achievementId: -6,
+    group: 'express_wins',
+    currentLevel: 0,
+    currentProgress: 0,
+    nextThreshold: 5,
+    iconSrc: '/achievements/express-wins-placeholder.svg',
+    shortTitle: 'Новичок',
+    shouldPlayAnimation: false,
+    animationRewardId: null,
+    animationPoints: null,
+  },
+  {
+    achievementId: -7,
+    group: 'broadcast_watch',
+    currentLevel: 0,
+    currentProgress: 0,
+    nextThreshold: 5,
+    iconSrc: '/achievements/broadcast-watch-placeholder.svg',
     shortTitle: 'Новичок',
     shouldPlayAnimation: false,
     animationRewardId: null,

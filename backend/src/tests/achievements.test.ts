@@ -762,20 +762,20 @@ describe('BROADCAST_WATCH_TIME - достижение за просмотр тр
   })
 
   describe('Защита от накрутки', () => {
-    // MAX_SESSION_SECONDS = 3 * 60 * 60 = 10800 секунд = 3 часа
-    const MAX_SESSION_SECONDS = 3 * 60 * 60
+    // MAX_SESSION_SECONDS = 1 * 60 * 60 = 3600 секунд = 1 час (матч ~50 мин)
+    const MAX_SESSION_SECONDS = 1 * 60 * 60
 
-    it('должен ограничивать время сессии до 3 часов', () => {
+    it('должен ограничивать время сессии до 1 часа', () => {
       const requestedSeconds = 50000 // Пытаемся добавить ~14 часов
       const cappedSeconds = Math.min(requestedSeconds, MAX_SESSION_SECONDS)
       expect(cappedSeconds).toBe(MAX_SESSION_SECONDS)
-      expect(cappedSeconds).toBe(10800)
+      expect(cappedSeconds).toBe(3600)
     })
 
     it('должен пропускать время меньше лимита', () => {
-      const requestedSeconds = 7200 // 2 часа
+      const requestedSeconds = 2400 // 40 минут (меньше матча)
       const cappedSeconds = Math.min(requestedSeconds, MAX_SESSION_SECONDS)
-      expect(cappedSeconds).toBe(7200)
+      expect(cappedSeconds).toBe(2400)
     })
   })
 })

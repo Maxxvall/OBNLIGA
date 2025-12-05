@@ -185,6 +185,44 @@ const selectionFromOptions = (options: unknown): string[] => {
 }
 
 /**
+ * Получает очки для конкретного выбора из options.choices
+ * Шаблоны хранят очки для каждого варианта отдельно в options.choices[].points
+ */
+const getPointsForSelection = (
+  options: unknown,
+  selection: string,
+  fallbackPoints: number
+): number => {
+  if (!options || typeof options !== 'object') {
+    return fallbackPoints
+  }
+
+  const record = options as Record<string, unknown>
+  const choices = record.choices
+  if (!Array.isArray(choices)) {
+    return fallbackPoints
+  }
+
+  const normalizedSelection = selection.trim().toUpperCase()
+
+  for (const choice of choices) {
+    if (!choice || typeof choice !== 'object') {
+      continue
+    }
+    const choiceRecord = choice as Record<string, unknown>
+    const value = choiceRecord.value
+    if (typeof value === 'string' && value.trim().toUpperCase() === normalizedSelection) {
+      const points = choiceRecord.points
+      if (typeof points === 'number' && Number.isFinite(points)) {
+        return points
+      }
+    }
+  }
+
+  return fallbackPoints
+}
+
+/**
  * Сериализация экспресса для API ответа
  */
 export const serializeExpressBet = (express: ExpressBetWithItems): ExpressBetView => ({
@@ -351,12 +389,22 @@ export const createExpressBet = async (
 
   const templateMap = new Map(templates.map(t => [t.id.toString(), t]))
 
-  // Расчёт базовых очков и множителя
+  // Расчёт очков для каждого элемента на основе выбора пользователя
+  // Используем очки из options.choices для конкретного selection, а не базовые очки шаблона
   let totalBasePoints = 0
+  const itemPointsMap = new Map<string, number>()
+
   for (const item of items) {
     const template = templateMap.get(item.templateId.toString())
     if (template) {
-      totalBasePoints += template.basePoints
+      // Получаем очки для конкретного выбора из options.choices
+      const selectionPoints = getPointsForSelection(
+        template.options,
+        item.selection,
+        template.basePoints
+      )
+      itemPointsMap.set(item.templateId.toString(), selectionPoints)
+      totalBasePoints += selectionPoints
     }
   }
 
@@ -371,12 +419,14 @@ export const createExpressBet = async (
       basePoints: totalBasePoints,
       items: {
         create: items.map(item => {
-          const template = templateMap.get(item.templateId.toString())!
+          const templateIdStr = item.templateId.toString()
+          // Используем очки для конкретного выбора
+          const selectionPoints = itemPointsMap.get(templateIdStr) ?? 0
           return {
             templateId: item.templateId,
             selection: item.selection.trim(),
             status: PredictionEntryStatus.PENDING,
-            basePoints: template.basePoints,
+            basePoints: selectionPoints,
           }
         }),
       },

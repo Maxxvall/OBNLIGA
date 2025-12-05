@@ -31,7 +31,7 @@ type CityGroup = {
 const SEASON_RANGE_FORMATTER = new Intl.DateTimeFormat('ru-RU', {
   day: '2-digit',
   month: '2-digit',
-  year: 'numeric',
+  year: '2-digit',
 })
 
 const formatSeasonRange = (season: LeagueSeasonSummary): string => {

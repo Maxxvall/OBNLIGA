@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify'
-import type { LeaguePlayerCardInfo, UserCardExtraView } from '@shared/types'
+import type { LeaguePlayerCardInfo, LeaguePlayerClubInfo, UserCardExtraView } from '@shared/types'
 import prisma from '../db'
 import { defaultCache, type CacheFetchOptions } from '../cache'
 import { userCardExtraCacheKey } from '../cache'
@@ -21,33 +21,35 @@ const mapAchievementStats = (aggregate: {
 
 const mapLeaguePlayerCardInfo = (input: {
   person: { id: number; firstName: string; lastName: string }
-  stats?: {
+  totalStats?: {
     totalMatches?: number | null
     totalGoals?: number | null
     totalAssists?: number | null
     yellowCards?: number | null
     redCards?: number | null
   } | null
-  club?: {
+  currentClub?: {
     id: number
     name: string
     shortName: string
     logoUrl: string | null
   } | null
+  clubs: LeaguePlayerClubInfo[]
 }): LeaguePlayerCardInfo => {
-  const { person, stats, club } = input
+  const { person, totalStats, currentClub, clubs } = input
   return {
     id: person.id,
     firstName: person.firstName,
     lastName: person.lastName,
     stats: {
-      totalMatches: stats?.totalMatches ?? 0,
-      totalGoals: stats?.totalGoals ?? 0,
-      totalAssists: stats?.totalAssists ?? 0,
-      yellowCards: stats?.yellowCards ?? 0,
-      redCards: stats?.redCards ?? 0,
+      totalMatches: totalStats?.totalMatches ?? 0,
+      totalGoals: totalStats?.totalGoals ?? 0,
+      totalAssists: totalStats?.totalAssists ?? 0,
+      yellowCards: totalStats?.yellowCards ?? 0,
+      redCards: totalStats?.redCards ?? 0,
     },
-    currentClub: club ? { ...club } : null,
+    currentClub: currentClub ? { ...currentClub } : null,
+    clubs,
   }
 }
 
@@ -59,7 +61,7 @@ const loadLeaguePlayerCardInfo = async (
     return null
   }
 
-  const [person, statsAggregate, currentClub] = await Promise.all([
+  const [person, statsAggregate, currentClub, clubCareerStats] = await Promise.all([
     prisma.person.findUnique({
       where: { id: leaguePlayerId },
       select: { id: true, firstName: true, lastName: true },
@@ -88,19 +90,47 @@ const loadLeaguePlayerCardInfo = async (
         },
       },
     }),
+    // Загружаем статистику по всем клубам игрока
+    prisma.playerClubCareerStats.findMany({
+      where: { personId: leaguePlayerId },
+      include: {
+        club: {
+          select: {
+            id: true,
+            name: true,
+            logoUrl: true,
+          },
+        },
+      },
+      orderBy: { totalMatches: 'desc' },
+    }),
   ])
 
   if (!person) {
     return null
   }
 
-  const stats = statsAggregate?._sum ?? {}
+  const totalStats = statsAggregate?._sum ?? {}
   const club = currentClub?.club
+
+  // Формируем массив всех клубов с их статистикой
+  const clubs: LeaguePlayerClubInfo[] = clubCareerStats.map(careerStats => ({
+    id: careerStats.club.id,
+    name: careerStats.club.name,
+    logoUrl: careerStats.club.logoUrl,
+    stats: {
+      totalMatches: careerStats.totalMatches,
+      totalGoals: careerStats.totalGoals,
+      totalAssists: careerStats.totalAssists,
+      yellowCards: careerStats.yellowCards,
+      redCards: careerStats.redCards,
+    },
+  }))
 
   return mapLeaguePlayerCardInfo({
     person,
-    stats,
-    club: club
+    totalStats,
+    currentClub: club
       ? {
           id: club.id,
           name: club.name,
@@ -108,6 +138,7 @@ const loadLeaguePlayerCardInfo = async (
           logoUrl: club.logoUrl,
         }
       : null,
+    clubs,
   })
 }
 

@@ -57,6 +57,19 @@ export interface RatingLeaderboardEntryView {
   predictionAccuracy: number
 }
 
+export interface LeaguePlayerClubInfo {
+  id: number
+  name: string
+  logoUrl: string | null
+  stats: {
+    totalMatches: number
+    totalGoals: number
+    totalAssists: number
+    yellowCards: number
+    redCards: number
+  }
+}
+
 export interface LeaguePlayerCardInfo {
   id: number
   firstName: string
@@ -74,6 +87,8 @@ export interface LeaguePlayerCardInfo {
     shortName: string
     logoUrl: string | null
   } | null
+  /** Все клубы игрока с их статистикой */
+  clubs: LeaguePlayerClubInfo[]
 }
 
 export interface UserCardExtraView {

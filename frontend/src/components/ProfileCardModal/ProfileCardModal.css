@@ -244,17 +244,31 @@
 .profile-card-achievements,
 .profile-card-player {
   margin-top: 12px;
-  padding: 12px;
+  padding: 14px;
   border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
 }
 
 .profile-card-achievement-count {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-weight: 600;
+  gap: 10px;
+}
+
+.profile-card-achievement-count .achievement-icon {
+  font-size: 20px;
+}
+
+.profile-card-achievement-count .achievement-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #ffd700;
+}
+
+.profile-card-achievement-count .achievement-label {
+  font-size: 14px;
+  color: var(--card-muted);
 }
 
 .profile-card-placeholder {
@@ -263,51 +277,83 @@
 }
 
 .profile-card-player-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
-  gap: 8px;
-  margin-bottom: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
 }
 
-.profile-card-player-stats span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 600;
-}
-
-.profile-card-club {
+.player-stat-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px;
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.18);
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.profile-card-club img,
-.profile-card-club-placeholder {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  object-fit: cover;
-  background: rgba(255, 255, 255, 0.06);
+.player-stat-icon {
+  font-size: 14px;
 }
 
-.profile-card-club-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+.player-stat-icon.yellow {
+  color: #ffd700;
 }
 
-.profile-card-club-meta .club-name {
+.player-stat-icon.red {
+  color: #ff4444;
+}
+
+.player-stat-value {
   font-weight: 700;
+  font-size: 14px;
 }
 
-.profile-card-club-meta .club-short {
+.player-stat-label {
+  font-size: 12px;
   color: var(--card-muted);
-  font-size: 13px;
+}
+
+.profile-card-clubs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.profile-card-club-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.profile-card-club-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.profile-card-club-item .club-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
+.profile-card-club-item .club-logo-placeholder {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.profile-card-club-item .club-name {
+  font-weight: 600;
+  font-size: 14px;
 }
 
 .profile-card-error {

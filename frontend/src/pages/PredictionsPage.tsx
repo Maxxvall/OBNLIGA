@@ -592,25 +592,8 @@ const PredictionsPageInner: React.FC = () => {
 
     const load = async () => {
       try {
-        console.log('[MyPredictions] Загрузка прогнозов...')
         const result = await fetchMyPredictions()
         if (cancelled) return
-        
-        // Подробное логирование для отладки расчёта очков
-        console.group('[MyPredictions] Загружено прогнозов:', result.data.length)
-        result.data.forEach((entry, idx) => {
-          console.log(`[${idx + 1}] Entry ID: ${entry.id}`, {
-            matchId: entry.matchId,
-            status: entry.status,
-            selection: entry.selection,
-            marketType: entry.marketType,
-            scoreAwarded: entry.scoreAwarded,
-            resolvedAt: entry.resolvedAt,
-            homeClub: entry.homeClub?.name,
-            awayClub: entry.awayClub?.name,
-          })
-        })
-        console.groupEnd()
         
         setMine(result.data)
         setIsAuthorized(!result.unauthorized)

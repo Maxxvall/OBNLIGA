@@ -92,29 +92,50 @@ export function ProfileCardModal({ isOpen, onClose, initialData, position }: Pro
     if (!extra?.leaguePlayer) return null
 
     const { leaguePlayer } = extra
+    const clubs = leaguePlayer.clubs || []
+
     return (
       <section className="profile-card-player">
         <div className="profile-card-section-title">Карьера игрока</div>
         <div className="profile-card-player-stats">
-          <span>⚽ {formatNumber(leaguePlayer.stats.totalGoals)}</span>
-          <span>🅰️ {formatNumber(leaguePlayer.stats.totalAssists)}</span>
-          <span>🎮 {formatNumber(leaguePlayer.stats.totalMatches)}</span>
-          <span>🟨 {formatNumber(leaguePlayer.stats.yellowCards)}</span>
-          <span>🟥 {formatNumber(leaguePlayer.stats.redCards)}</span>
-        </div>
-        {leaguePlayer.currentClub ? (
-          <div className="profile-card-club">
-            {leaguePlayer.currentClub.logoUrl ? (
-              <img src={leaguePlayer.currentClub.logoUrl} alt="" loading="lazy" />
-            ) : (
-              <div className="profile-card-club-placeholder" aria-hidden="true" />
-            )}
-            <div className="profile-card-club-meta">
-              <span className="club-name">{leaguePlayer.currentClub.name}</span>
-              <span className="club-short">{leaguePlayer.currentClub.shortName}</span>
-            </div>
+          <div className="player-stat-item">
+            <span className="player-stat-icon">⚽</span>
+            <span className="player-stat-value">{formatNumber(leaguePlayer.stats.totalGoals)}</span>
+            <span className="player-stat-label">голов</span>
           </div>
-        ) : null}
+          <div className="player-stat-item">
+            <span className="player-stat-icon">👟</span>
+            <span className="player-stat-value">{formatNumber(leaguePlayer.stats.totalAssists)}</span>
+            <span className="player-stat-label">передач</span>
+          </div>
+          <div className="player-stat-item">
+            <span className="player-stat-icon">🏟️</span>
+            <span className="player-stat-value">{formatNumber(leaguePlayer.stats.totalMatches)}</span>
+            <span className="player-stat-label">матчей</span>
+          </div>
+          <div className="player-stat-item">
+            <span className="player-stat-icon yellow">▬</span>
+            <span className="player-stat-value">{formatNumber(leaguePlayer.stats.yellowCards)}</span>
+          </div>
+          <div className="player-stat-item">
+            <span className="player-stat-icon red">▬</span>
+            <span className="player-stat-value">{formatNumber(leaguePlayer.stats.redCards)}</span>
+          </div>
+        </div>
+        {clubs.length > 0 && (
+          <div className="profile-card-clubs">
+            {clubs.map((club) => (
+              <div key={club.id} className="profile-card-club-item">
+                {club.logoUrl ? (
+                  <img src={club.logoUrl} alt="" className="club-logo" loading="lazy" />
+                ) : (
+                  <div className="club-logo-placeholder" aria-hidden="true" />
+                )}
+                <span className="club-name">{club.name}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
     )
   }
@@ -141,9 +162,6 @@ export function ProfileCardModal({ isOpen, onClose, initialData, position }: Pro
           <div className="profile-card-identity">
             <div className="profile-card-name-row">
               <span className="profile-card-name">{initialData.displayName}</span>
-              {initialData.username ? (
-                <span className="profile-card-username">@{initialData.username}</span>
-              ) : null}
             </div>
             <div className="profile-card-level">
               <span className="level-badge">{initialData.currentLevel}</span>
@@ -187,7 +205,9 @@ export function ProfileCardModal({ isOpen, onClose, initialData, position }: Pro
             <div className="profile-card-error">Не удалось загрузить данные профиля</div>
           ) : extra ? (
             <div className="profile-card-achievement-count">
-              🏆 {formatNumber(extra.achievementCount)} · Макс. уровень {formatNumber(extra.achievementMaxLevel)}
+              <span className="achievement-icon">🏆</span>
+              <span className="achievement-value">{formatNumber(extra.achievementCount)}</span>
+              <span className="achievement-label">достижений</span>
             </div>
           ) : (
             <div className="profile-card-placeholder">Нет данных</div>

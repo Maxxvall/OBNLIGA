@@ -135,11 +135,11 @@ const buildMatchStartedMessage = (match: MatchNotificationDetails): string => {
   }
 
   lines.push('')
-  lines.push('🎬 Заходи смотреть трансляцию прямо сейчас!')
-
+  // Если есть ссылка на трансляцию — приглашаем смотреть, иначе — следить за статистикой
   if (match.broadcastUrl) {
-    lines.push('')
-    lines.push(`📺 Трансляция: ${match.broadcastUrl}`)
+    lines.push('📺 Заходи смотреть трансляцию прямо сейчас, она уже идёт!')
+  } else {
+    lines.push('🔥 Болей за свою команду! Следи за ходом матча в реальном времени!')
   }
 
   return lines.join('\n')
@@ -222,7 +222,7 @@ export async function sendTelegramNotification(
 
   const keyboard = new InlineKeyboard().webApp(
     '📱 Открыть матч',
-    `${webAppUrl}?startapp=match_${matchId}`
+    `${webAppUrl}?startapp=match_${matchId}&mode=fullscreen`
   )
 
   try {

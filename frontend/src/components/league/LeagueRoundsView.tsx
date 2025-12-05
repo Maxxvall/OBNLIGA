@@ -30,8 +30,8 @@ const getEmptyMessage = (mode: 'schedule' | 'results'): string => {
 
 const ROUND_DATE_FORMAT = new Intl.DateTimeFormat('ru-RU', {
   day: '2-digit',
-  month: 'short',
-  year: 'numeric',
+  month: '2-digit',
+  year: '2-digit',
 })
 
 const LIVE_HIGHLIGHT_DURATION = 2200
@@ -466,18 +466,6 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
     hasFinishedMatches &&
     ((playoffState.hasSeries && playoffState.allSeriesFinished && playoffState.summary) ||
       (allowTableFallback && podium.length >= 3))
-
-  // DEBUG: удалить после отладки
-  console.log('[LeagueRoundsView] showCompletedState debug:', {
-    mode,
-    roundsLength: rounds.length,
-    hasFinishedMatches,
-    playoffState,
-    allowTableFallback,
-    podiumLength: podium.length,
-    showCompletedState,
-    dataPodium: data?.playoffPodium,
-  })
 
   const headerTitle = mode === 'schedule' ? 'Календарь матчей' : 'Результаты'
   const isRefreshing = loading && Boolean(data)

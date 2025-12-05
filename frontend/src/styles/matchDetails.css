@@ -101,6 +101,8 @@ body.allow-landscape .match-details-page {
   justify-content: center;
   cursor: pointer;
   transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+  /* Отступ слева для смещения от кнопки закрытия Telegram в fullscreen */
+  margin-left: 40px;
 }
 
 .back-btn:hover,

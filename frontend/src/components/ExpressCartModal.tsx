@@ -49,6 +49,8 @@ const ExpressCartModal: React.FC<ExpressCartModalProps> = ({ onExpressCreated })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  // Сохраняем потенциальные очки перед очисткой корзины для показа в success-экране
+  const [savedPotentialPoints, setSavedPotentialPoints] = useState(0)
 
   // Загрузить конфигурацию и счётчик при открытии модалки
   useEffect(() => {
@@ -134,7 +136,9 @@ const ExpressCartModal: React.FC<ExpressCartModalProps> = ({ onExpressCreated })
         return
       }
 
-      // Успех!
+      // Успех! Сохраняем потенциальные очки до очистки корзины
+      const totalBase = items.reduce((sum, item) => sum + item.basePoints, 0)
+      setSavedPotentialPoints(Math.round(totalBase * getMultiplier()))
       setSuccess(true)
       clearCart()
       invalidateExpressCache()
@@ -200,7 +204,7 @@ const ExpressCartModal: React.FC<ExpressCartModalProps> = ({ onExpressCreated })
             <div className="express-modal-success-icon">✓</div>
             <p>Экспресс успешно создан!</p>
             <p className="express-modal-success-points">
-              Потенциальный выигрыш: <strong>+{potentialPoints}</strong> очков
+              Потенциальный выигрыш: <strong>+{savedPotentialPoints}</strong> очков
             </p>
           </div>
         ) : (

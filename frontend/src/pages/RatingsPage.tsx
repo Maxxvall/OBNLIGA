@@ -355,9 +355,6 @@ export function RatingsPage() {
                         </button>
                         <div className="rating-user-info">
                           <span className="rating-name">{entry.displayName}</span>
-                          {entry.username ? (
-                            <span className="rating-username">@{entry.username}</span>
-                          ) : null}
                           <span className={levelClass}>
                             {levelLabels[entry.currentLevel]}
                             {entry.mythicRank ? ` · Mythic #${entry.mythicRank}` : ''}

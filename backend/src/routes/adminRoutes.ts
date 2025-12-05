@@ -5882,7 +5882,7 @@ export default async function (server: FastifyInstance) {
           },
           orderBy: { achievedDate: 'desc' },
         })
-        return reply.send({ ok: true, data: achievements })
+        return sendSerialized(reply, achievements)
       })
 
       admin.delete('/achievements/users/:userId/:achievementTypeId', async (request, reply) => {

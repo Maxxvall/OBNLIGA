@@ -701,6 +701,9 @@ export default function Profile() {
             ? getComputedStyle(document.body).backgroundColor || '#040914'
             : '#040914'
 
+        // Даём UI время обновиться перед захватом
+        await new Promise(resolve => setTimeout(resolve, 150))
+
         const blob = await toBlob(container, {
           cacheBust: true,
           pixelRatio,
@@ -715,16 +718,23 @@ export default function Profile() {
 
         const fileName = `obnliga-career-${Date.now()}.png`
         const shareText = `${displayName} — ${renderCareerRange(entry)} ${entry.clubShortName}. Матчи: ${entry.matches}, Голы: ${entry.goals}, Передачи: ${entry.assists}.`
-        const shareFile = new File([blob], fileName, { type: 'image/png' })
 
         let delivered = false
         const telegram = (window as TelegramWindow).Telegram?.WebApp
 
         if (telegram && typeof telegram.shareToTelegram === 'function') {
           try {
+            // Конвертируем blob в base64 для Telegram Web App API
+            const base64Data = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader()
+              reader.onloadend = () => resolve(reader.result as string)
+              reader.onerror = reject
+              reader.readAsDataURL(blob)
+            })
+
             await telegram.shareToTelegram({
               text: shareText,
-              media: [{ type: 'photo', media: shareFile }],
+              media: [{ type: 'photo', media: base64Data, caption: shareText }],
             })
             delivered = true
           } catch (error) {
@@ -738,6 +748,7 @@ export default function Profile() {
             canShare?: (data?: ShareData) => boolean
           }
           if (typeof navigatorShare.share === 'function') {
+            const shareFile = new File([blob], fileName, { type: 'image/png' })
             const canShareFiles =
               typeof navigatorShare.canShare === 'function'
                 ? navigatorShare.canShare({ files: [shareFile] })
@@ -757,6 +768,19 @@ export default function Profile() {
           }
         }
 
+        // Попытка сохранения в буфер обмена (важный fallback для мобильных)
+        if (!delivered && typeof navigator !== 'undefined' && 'clipboard' in navigator) {
+          try {
+            const clipboardItem = new ClipboardItem({ 'image/png': blob })
+            await navigator.clipboard.write([clipboardItem])
+            showShareAlert('Изображение скопировано в буфер обмена. Вставьте его в чат Telegram.')
+            delivered = true
+          } catch (error) {
+            console.error('[Profile] clipboard.write failed:', error)
+          }
+        }
+
+        // Последний fallback — скачивание файла
         if (!delivered) {
           const blobUrl = URL.createObjectURL(blob)
           try {
@@ -767,7 +791,7 @@ export default function Profile() {
             document.body.appendChild(link)
             link.click()
             document.body.removeChild(link)
-            showShareAlert('Снимок сохранён. Отправьте его в Telegram вручную.')
+            showShareAlert('Снимок сохранён. Найдите его в папке загрузок и отправьте в Telegram.')
           } finally {
             window.setTimeout(() => URL.revokeObjectURL(blobUrl), 5000)
           }

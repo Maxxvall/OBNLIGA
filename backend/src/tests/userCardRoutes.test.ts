@@ -21,8 +21,9 @@ describe('mapLeaguePlayerCardInfo', () => {
   it('maps basic fields and zeroes missing stats', () => {
     const result = mapLeaguePlayerCardInfo({
       person: { id: 10, firstName: 'Test', lastName: 'Player' },
-      stats: null,
-      club: null,
+      totalStats: null,
+      currentClub: null,
+      clubs: [],
     })
 
     expect(result).toEqual({
@@ -37,25 +38,40 @@ describe('mapLeaguePlayerCardInfo', () => {
         redCards: 0,
       },
       currentClub: null,
+      clubs: [],
     })
   })
 
   it('maps provided stats and club info', () => {
     const result = mapLeaguePlayerCardInfo({
       person: { id: 22, firstName: 'Jane', lastName: 'Doe' },
-      stats: {
+      totalStats: {
         totalMatches: 12,
         totalGoals: 5,
         totalAssists: 4,
         yellowCards: 1,
         redCards: 0,
       },
-      club: {
+      currentClub: {
         id: 7,
         name: 'Spartak',
         shortName: 'SPR',
         logoUrl: '/logos/spartak.png',
       },
+      clubs: [
+        {
+          id: 7,
+          name: 'Spartak',
+          logoUrl: '/logos/spartak.png',
+          stats: {
+            totalMatches: 12,
+            totalGoals: 5,
+            totalAssists: 4,
+            yellowCards: 1,
+            redCards: 0,
+          },
+        },
+      ],
     })
 
     expect(result).toEqual({
@@ -75,6 +91,20 @@ describe('mapLeaguePlayerCardInfo', () => {
         shortName: 'SPR',
         logoUrl: '/logos/spartak.png',
       },
+      clubs: [
+        {
+          id: 7,
+          name: 'Spartak',
+          logoUrl: '/logos/spartak.png',
+          stats: {
+            totalMatches: 12,
+            totalGoals: 5,
+            totalAssists: 4,
+            yellowCards: 1,
+            redCards: 0,
+          },
+        },
+      ],
     })
   })
 })

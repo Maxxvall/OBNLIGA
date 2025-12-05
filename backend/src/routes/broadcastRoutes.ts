@@ -94,9 +94,9 @@ export default async function (server: FastifyInstance) {
           },
         })
 
-        // Синхронизируем прогресс достижения (конвертируем секунды в часы)
-        const totalHours = watchTime.totalSeconds / 3600
-        await syncBroadcastWatchProgress(user.id, totalHours)
+        // Синхронизируем прогресс достижения (конвертируем секунды в минуты)
+        const totalMinutes = watchTime.totalSeconds / 60
+        await syncBroadcastWatchProgress(user.id, totalMinutes)
 
         server.log.info(
           {
@@ -104,7 +104,7 @@ export default async function (server: FastifyInstance) {
             matchId,
             syncedSeconds: cappedSeconds,
             totalSeconds: watchTime.totalSeconds,
-            totalHours: totalHours.toFixed(2),
+            totalMinutes: Math.floor(totalMinutes),
           },
           'broadcast watch time synced'
         )
@@ -113,7 +113,7 @@ export default async function (server: FastifyInstance) {
           success: true,
           synced: cappedSeconds,
           totalSeconds: watchTime.totalSeconds,
-          totalHours: Math.floor(totalHours),
+          totalMinutes: Math.floor(totalMinutes),
         })
       } catch (err) {
         server.log.error({ err, matchId, watchedSeconds }, 'failed to sync broadcast watch time')
@@ -152,12 +152,11 @@ export default async function (server: FastifyInstance) {
       })
 
       const totalSeconds = watchTime?.totalSeconds ?? 0
-      const totalHours = totalSeconds / 3600
+      const totalMinutes = totalSeconds / 60
 
       return reply.send({
         totalSeconds,
-        totalHours: Math.floor(totalHours),
-        totalMinutes: Math.floor(totalSeconds / 60),
+        totalMinutes: Math.floor(totalMinutes),
       })
     } catch (err) {
       server.log.error({ err }, 'failed to get broadcast watch time')

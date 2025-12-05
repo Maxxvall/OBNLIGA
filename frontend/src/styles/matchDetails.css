@@ -933,6 +933,8 @@ body.allow-landscape .match-details-page {
   width: 100%;
   height: 100%;
   border: none;
+  /* Разрешаем все жесты для VK плеера (двойной тап для перемотки) */
+  touch-action: auto;
 }
 .broadcast-view.landscape-active {
   flex: 1;

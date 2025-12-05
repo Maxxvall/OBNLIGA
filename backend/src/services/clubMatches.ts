@@ -142,3 +142,12 @@ export const getClubMatches = async (clubId: number) => {
   }
   return defaultCache.getWithMeta(cacheKey, loader, PUBLIC_CLUB_MATCHES_TTL_SECONDS)
 }
+
+/**
+ * Инвалидирует кэш матчей клуба.
+ * Вызывается при завершении матча для обновления данных.
+ */
+export const invalidateClubMatchesCache = async (clubId: number): Promise<void> => {
+  const cacheKey = publicClubMatchesKey(clubId)
+  await defaultCache.invalidate(cacheKey).catch(() => undefined)
+}

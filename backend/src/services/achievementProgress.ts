@@ -425,14 +425,14 @@ export const syncPredictionStreakProgress = async (
 /**
  * Синхронизирует прогресс достижения BROADCAST_WATCH_TIME с общим временем просмотра.
  * Используется при синхронизации времени просмотра трансляций.
- * Принимает totalHours — суммарное время просмотра в часах.
+ * Принимает totalMinutes — суммарное время просмотра в минутах.
  */
 export const syncBroadcastWatchProgress = async (
   userId: number,
-  totalHours: number,
+  totalMinutes: number,
   client: Prisma.TransactionClient | PrismaClient = DEFAULT_CLIENT
 ) => {
-  if (totalHours <= 0) {
+  if (totalMinutes <= 0) {
     return
   }
 
@@ -454,11 +454,11 @@ export const syncBroadcastWatchProgress = async (
       create: {
         userId,
         achievementId: type.id,
-        progressCount: Math.floor(totalHours),
+        progressCount: Math.floor(totalMinutes),
         currentLevel: 0,
       },
       update: {
-        progressCount: Math.floor(totalHours),
+        progressCount: Math.floor(totalMinutes),
       },
     })
 

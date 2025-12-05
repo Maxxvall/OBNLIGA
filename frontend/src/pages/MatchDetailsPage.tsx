@@ -1491,7 +1491,10 @@ const buildVkEmbedUrl = (value: string): string | null => {
   try {
     const parsed = new URL(value)
     const hostname = parsed.hostname.replace(/^www\./, '')
-    if (hostname !== 'vk.com' && hostname !== 'm.vk.com') {
+    
+    // Поддержка доменов: vk.com, m.vk.com, vkvideo.ru
+    const isVkDomain = hostname === 'vk.com' || hostname === 'm.vk.com' || hostname === 'vkvideo.ru'
+    if (!isVkDomain) {
       return null
     }
 

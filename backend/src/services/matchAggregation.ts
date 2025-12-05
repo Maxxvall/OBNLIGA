@@ -24,6 +24,7 @@ import { buildLeagueTable } from './leagueTable'
 import { refreshLeagueMatchAggregates } from './leagueSchedule'
 import { refreshLeagueStats } from './leagueStats'
 import { publicClubSummaryKey, refreshClubSummary } from './clubSummary'
+import { invalidateClubMatchesCache } from './clubMatches'
 import { USER_PREDICTION_CACHE_KEY, PREDICTION_UPCOMING_MAX_DAYS } from './predictionConstants'
 import { incrementAchievementProgress } from './achievementProgress'
 import {
@@ -330,12 +331,17 @@ export async function handleMatchFinalization(
       : undefined
 
     await Promise.all(
-      Array.from(impactedClubIds).map(clubId =>
-        refreshClubSummary(clubId, refreshOptions).catch(err => {
+      Array.from(impactedClubIds).map(async clubId => {
+        // Инвалидируем кэш матчей клуба
+        await invalidateClubMatchesCache(clubId).catch(err => {
+          logger.warn({ err, clubId }, 'failed to invalidate club matches cache')
+        })
+        // Обновляем summary клуба
+        return refreshClubSummary(clubId, refreshOptions).catch(err => {
           logger.warn({ err, clubId }, 'failed to refresh club summary')
           return null
         })
-      )
+      })
     )
   }
 }

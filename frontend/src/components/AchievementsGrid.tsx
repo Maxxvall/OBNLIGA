@@ -135,9 +135,9 @@ const ACHIEVEMENT_THRESHOLDS: Record<string, { level: number; threshold: number;
     { level: 3, threshold: 50, points: 1000 },
   ],
   broadcast_watch: [
-    { level: 1, threshold: 5, points: 50 },
-    { level: 2, threshold: 25, points: 200 },
-    { level: 3, threshold: 100, points: 1500 },
+    { level: 1, threshold: 300, points: 50 },
+    { level: 2, threshold: 1500, points: 200 },
+    { level: 3, threshold: 6000, points: 1500 },
   ],
 }
 
@@ -175,7 +175,7 @@ function getProgressUnit(group: string, count: number): string {
   case 'express_wins':
     return pluralize(count, 'угаданный экспресс', 'угаданных экспресса', 'угаданных экспрессов')
   case 'broadcast_watch':
-    return pluralize(count, 'час просмотра', 'часа просмотра', 'часов просмотра')
+    return pluralize(count, 'минута просмотра', 'минуты просмотра', 'минут просмотра')
   default:
     return ''
   }
@@ -259,7 +259,7 @@ const DEFAULT_ACHIEVEMENTS: UserAchievementSummaryItem[] = [
     group: 'broadcast_watch',
     currentLevel: 0,
     currentProgress: 0,
-    nextThreshold: 5,
+    nextThreshold: 300,
     iconSrc: '/achievements/broadcast-watch-placeholder.svg',
     shortTitle: 'Новичок',
     shouldPlayAnimation: false,

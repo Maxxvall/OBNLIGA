@@ -106,9 +106,9 @@ const EXPRESS_WINS_THRESHOLDS = [
 ]
 
 const BROADCAST_WATCH_TIME_THRESHOLDS = [
-  { level: 1, threshold: 5 },   // 5 часов
-  { level: 2, threshold: 25 },  // 25 часов
-  { level: 3, threshold: 100 }, // 100 часов
+  { level: 1, threshold: 300 },   // 300 минут = 5 часов
+  { level: 2, threshold: 1500 },  // 1500 минут = 25 часов
+  { level: 3, threshold: 6000 },  // 6000 минут = 100 часов
 ]
 
 // ============================================================================
@@ -714,50 +714,50 @@ describe('BROADCAST_WATCH_TIME - достижение за просмотр тр
     })
   })
 
-  describe('Пороги достижений (в часах)', () => {
-    it('должен оставаться на уровне 0 при 4 часах просмотра', () => {
-      expect(resolveUnlockedLevel(BROADCAST_WATCH_TIME_THRESHOLDS, 4)).toBe(0)
+  describe('Пороги достижений (в минутах)', () => {
+    it('должен оставаться на уровне 0 при 299 минутах просмотра', () => {
+      expect(resolveUnlockedLevel(BROADCAST_WATCH_TIME_THRESHOLDS, 299)).toBe(0)
     })
 
-    it('должен разблокировать уровень 1 на 5 часах просмотра', () => {
-      expect(resolveUnlockedLevel(BROADCAST_WATCH_TIME_THRESHOLDS, 5)).toBe(1)
+    it('должен разблокировать уровень 1 на 300 минутах просмотра (5 часов)', () => {
+      expect(resolveUnlockedLevel(BROADCAST_WATCH_TIME_THRESHOLDS, 300)).toBe(1)
     })
 
-    it('должен разблокировать уровень 2 на 25 часах просмотра', () => {
-      expect(resolveUnlockedLevel(BROADCAST_WATCH_TIME_THRESHOLDS, 25)).toBe(2)
+    it('должен разблокировать уровень 2 на 1500 минутах просмотра (25 часов)', () => {
+      expect(resolveUnlockedLevel(BROADCAST_WATCH_TIME_THRESHOLDS, 1500)).toBe(2)
     })
 
-    it('должен разблокировать уровень 3 на 100 часах просмотра', () => {
-      expect(resolveUnlockedLevel(BROADCAST_WATCH_TIME_THRESHOLDS, 100)).toBe(3)
+    it('должен разблокировать уровень 3 на 6000 минутах просмотра (100 часов)', () => {
+      expect(resolveUnlockedLevel(BROADCAST_WATCH_TIME_THRESHOLDS, 6000)).toBe(3)
     })
   })
 
-  describe('Конвертация секунд в часы', () => {
-    // totalSeconds / 3600 = totalHours
-    const secondsToHours = (seconds: number) => Math.floor(seconds / 3600)
+  describe('Конвертация секунд в минуты', () => {
+    // totalSeconds / 60 = totalMinutes
+    const secondsToMinutes = (seconds: number) => Math.floor(seconds / 60)
 
-    it('должен корректно конвертировать секунды в часы', () => {
-      expect(secondsToHours(0)).toBe(0)
-      expect(secondsToHours(3599)).toBe(0)  // Меньше часа
-      expect(secondsToHours(3600)).toBe(1)  // Ровно 1 час
-      expect(secondsToHours(18000)).toBe(5) // 5 часов (5 * 3600)
-      expect(secondsToHours(90000)).toBe(25) // 25 часов
-      expect(secondsToHours(360000)).toBe(100) // 100 часов
+    it('должен корректно конвертировать секунды в минуты', () => {
+      expect(secondsToMinutes(0)).toBe(0)
+      expect(secondsToMinutes(59)).toBe(0)  // Меньше минуты
+      expect(secondsToMinutes(60)).toBe(1)  // Ровно 1 минута
+      expect(secondsToMinutes(18000)).toBe(300) // 300 минут = 5 часов (5 * 3600)
+      expect(secondsToMinutes(90000)).toBe(1500) // 1500 минут = 25 часов
+      expect(secondsToMinutes(360000)).toBe(6000) // 6000 минут = 100 часов
     })
 
-    it('должен разблокировать Bronze при 5 часах (18000 секунд)', () => {
-      const hours = secondsToHours(18000)
-      expect(resolveUnlockedLevel(BROADCAST_WATCH_TIME_THRESHOLDS, hours)).toBe(1)
+    it('должен разблокировать Bronze при 300 минутах (18000 секунд)', () => {
+      const minutes = secondsToMinutes(18000)
+      expect(resolveUnlockedLevel(BROADCAST_WATCH_TIME_THRESHOLDS, minutes)).toBe(1)
     })
 
-    it('должен разблокировать Silver при 25 часах (90000 секунд)', () => {
-      const hours = secondsToHours(90000)
-      expect(resolveUnlockedLevel(BROADCAST_WATCH_TIME_THRESHOLDS, hours)).toBe(2)
+    it('должен разблокировать Silver при 1500 минутах (90000 секунд)', () => {
+      const minutes = secondsToMinutes(90000)
+      expect(resolveUnlockedLevel(BROADCAST_WATCH_TIME_THRESHOLDS, minutes)).toBe(2)
     })
 
-    it('должен разблокировать Gold при 100 часах (360000 секунд)', () => {
-      const hours = secondsToHours(360000)
-      expect(resolveUnlockedLevel(BROADCAST_WATCH_TIME_THRESHOLDS, hours)).toBe(3)
+    it('должен разблокировать Gold при 6000 минутах (360000 секунд)', () => {
+      const minutes = secondsToMinutes(360000)
+      expect(resolveUnlockedLevel(BROADCAST_WATCH_TIME_THRESHOLDS, minutes)).toBe(3)
     })
   })
 

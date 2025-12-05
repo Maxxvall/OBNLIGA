@@ -280,6 +280,9 @@ export async function markRewardNotified(rewardId: string): Promise<boolean> {
         ...authHeader(),
         'Content-Type': 'application/json',
       },
+      // Fastify returns 400 if Content-Type is JSON but body is empty.
+      // Send an explicit empty JSON object to avoid FST_ERR_CTP_EMPTY_JSON_BODY.
+      body: JSON.stringify({}),
     })
 
     return response.ok

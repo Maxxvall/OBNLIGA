@@ -110,7 +110,7 @@ export const matchApi = {
    */
   syncWatchTime(matchId: string, watchedSeconds: number) {
     return httpRequest<{ totalSeconds: number }>(
-      `/api/broadcast/sync-watch-time`,
+      '/api/broadcast/sync-watch-time',
       {
         method: 'POST',
         body: JSON.stringify({ matchId, watchedSeconds }),

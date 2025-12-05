@@ -162,6 +162,7 @@ const ExpressCartModal: React.FC<ExpressCartModalProps> = ({ onExpressCreated })
     clearCart,
     onExpressCreated,
     handleClose,
+    getMultiplier,
   ])
 
   // Не рендерим если модалка закрыта

@@ -11,7 +11,7 @@ import { FastifyInstance } from 'fastify'
 import prisma from '../db'
 import { extractSessionToken, resolveSessionSubject } from '../utils/session'
 import { syncBroadcastWatchProgress } from '../services/achievementProgress'
-import { defaultCache } from '../cache/defaultCache'
+import { defaultCache } from '../cache'
 
 // Максимум 1 час за одну сессию (защита от накрутки, матч ~50 мин)
 const MAX_SESSION_SECONDS = 1 * 60 * 60

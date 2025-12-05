@@ -4,6 +4,7 @@
  */
 
 import { FastifyPluginAsync } from 'fastify'
+import type Redis from 'ioredis'
 import prisma from '../db'
 import { defaultCache } from '../cache'
 import { buildWeakEtag, matchesIfNoneMatch } from '../utils/httpCaching'
@@ -12,6 +13,23 @@ import { scheduleNotificationsForClubSubscription } from './subscriptionHelpers'
 
 // Константы кэширования
 const SUBSCRIPTIONS_CACHE_TTL_SECONDS = 300 // 5 минут
+const TOGGLE_RATE_LIMIT_SECONDS = 10
+const toggleRedis = defaultCache.getRedisClient()
+
+const isToggleRateLimited = async (
+  redis: Redis | null,
+  userId: number,
+  target: string
+): Promise<boolean> => {
+  if (!redis) return false
+  const key = `sub:toggle:${userId}:${target}`
+  try {
+    const result = await redis.set(key, '1', 'EX', TOGGLE_RATE_LIMIT_SECONDS, 'NX')
+    return result === null
+  } catch {
+    return false
+  }
+}
 
 // =================== ТИПЫ ===================
 
@@ -189,6 +207,10 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
         return reply.status(400).send({ ok: false, error: 'invalid_club_id' })
       }
 
+      if (await isToggleRateLimited(toggleRedis, userId, `club:${clubId}`)) {
+        return reply.status(429).send({ ok: false, error: 'rate_limited', retryAfter: TOGGLE_RATE_LIMIT_SECONDS })
+      }
+
       try {
         // Проверяем, что клуб существует
         const club = await prisma.club.findUnique({ where: { id: clubId } })
@@ -250,23 +272,26 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
         return reply.status(400).send({ ok: false, error: 'invalid_club_id' })
       }
 
-      try {
-        // Удаляем подписку
-        await prisma.clubSubscription.deleteMany({
-          where: { userId, clubId },
-        })
+      if (await isToggleRateLimited(toggleRedis, userId, `club:${clubId}`)) {
+        return reply.status(429).send({ ok: false, error: 'rate_limited', retryAfter: TOGGLE_RATE_LIMIT_SECONDS })
+      }
 
-        // Отменяем запланированные уведомления для этой команды
-        await prisma.notificationQueue.updateMany({
-          where: {
-            userId,
-            status: 'PENDING',
-            match: {
-              OR: [{ homeTeamId: clubId }, { awayTeamId: clubId }],
+      try {
+        await prisma.$transaction([
+          prisma.clubSubscription.deleteMany({
+            where: { userId, clubId },
+          }),
+          prisma.notificationQueue.updateMany({
+            where: {
+              userId,
+              status: 'PENDING',
+              match: {
+                OR: [{ homeTeamId: clubId }, { awayTeamId: clubId }],
+              },
             },
-          },
-          data: { status: 'CANCELLED' },
-        })
+            data: { status: 'CANCELLED' },
+          }),
+        ])
 
         // Инвалидируем кэш
         const cacheKey = `${getUserCacheKey(telegramId)}:clubs`
@@ -417,6 +442,10 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
         return reply.status(400).send({ ok: false, error: 'invalid_match_id' })
       }
 
+      if (await isToggleRateLimited(toggleRedis, userId, `match:${matchId.toString()}`)) {
+        return reply.status(429).send({ ok: false, error: 'rate_limited', retryAfter: TOGGLE_RATE_LIMIT_SECONDS })
+      }
+
       try {
         const match = await prisma.match.findUnique({ where: { id: matchId } })
         if (!match) {
@@ -502,16 +531,20 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
         return reply.status(400).send({ ok: false, error: 'invalid_match_id' })
       }
 
-      try {
-        await prisma.matchSubscription.deleteMany({
-          where: { userId, matchId },
-        })
+      if (await isToggleRateLimited(toggleRedis, userId, `match:${matchId.toString()}`)) {
+        return reply.status(429).send({ ok: false, error: 'rate_limited', retryAfter: TOGGLE_RATE_LIMIT_SECONDS })
+      }
 
-        // Отменяем уведомления
-        await prisma.notificationQueue.updateMany({
-          where: { userId, matchId, status: 'PENDING' },
-          data: { status: 'CANCELLED' },
-        })
+      try {
+        await prisma.$transaction([
+          prisma.matchSubscription.deleteMany({
+            where: { userId, matchId },
+          }),
+          prisma.notificationQueue.updateMany({
+            where: { userId, matchId, status: 'PENDING' },
+            data: { status: 'CANCELLED' },
+          }),
+        ])
 
         // Инвалидируем кэш
         const cacheKey = `${getUserCacheKey(telegramId)}:matches`

@@ -29,6 +29,7 @@ export const ClubSubscribeButton: React.FC<ClubSubscribeButtonProps> = ({
   })
   const [isLoading, setIsLoading] = useState(false)
   const [isAnimating, setIsAnimating] = useState(false)
+  const [cooldownUntil, setCooldownUntil] = useState(0)
 
   // Загружаем актуальный статус при монтировании
   useEffect(() => {
@@ -54,7 +55,8 @@ export const ClubSubscribeButton: React.FC<ClubSubscribeButtonProps> = ({
   }, [clubId])
 
   const handleToggle = useCallback(async () => {
-    if (isLoading) return
+    const now = Date.now()
+    if (isLoading || now < cooldownUntil) return
 
     setIsLoading(true)
     setIsAnimating(true)
@@ -82,10 +84,11 @@ export const ClubSubscribeButton: React.FC<ClubSubscribeButtonProps> = ({
       console.error('Subscription toggle error:', err)
     } finally {
       setIsLoading(false)
+      setCooldownUntil(Date.now() + 800)
       // Задержка для завершения анимации
       setTimeout(() => setIsAnimating(false), 300)
     }
-  }, [clubId, isSubscribed, isLoading])
+  }, [clubId, isSubscribed, isLoading, cooldownUntil])
 
   // Не рендерим, пока не знаем статус
   if (isSubscribed === null) {
@@ -114,7 +117,7 @@ export const ClubSubscribeButton: React.FC<ClubSubscribeButtonProps> = ({
         ${className}
       `.trim()}
       onClick={handleToggle}
-      disabled={isLoading}
+      disabled={isLoading || Date.now() < cooldownUntil}
       aria-pressed={isSubscribed}
       aria-label={isSubscribed ? 'Отписаться от команды' : 'Подписаться на команду'}
       title={isSubscribed ? 'Отписаться от уведомлений' : 'Подписаться на уведомления'}

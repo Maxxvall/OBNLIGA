@@ -217,6 +217,10 @@ export class MultiLevelCache {
     this.lru.set(key, envelope as CacheEnvelope<unknown>)
   }
 
+  getRedisClient(): Redis | null {
+    return this.redis
+  }
+
   private isExpired(envelope: CacheEnvelope<unknown>, reference: number): boolean {
     return Number.isFinite(envelope.expiresAt) && envelope.expiresAt <= reference
   }

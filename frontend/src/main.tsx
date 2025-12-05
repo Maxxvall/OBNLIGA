@@ -32,6 +32,7 @@ function handleTelegramStartParam(): void {
   try {
     const telegramWindow = window as unknown as TelegramWindow
     const startParam = telegramWindow.Telegram?.WebApp?.initDataUnsafe?.start_param
+      ?? new URLSearchParams(window.location.search).get('startapp')
 
     if (!startParam) return
 

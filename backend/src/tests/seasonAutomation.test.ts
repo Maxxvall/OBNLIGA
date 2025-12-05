@@ -2,16 +2,6 @@ import { describe, it, expect } from 'vitest'
 import * as fs from 'fs'
 import * as path from 'path'
 
-const extractExportNames = (source: string): string[] => {
-  const rx = /export\s+(?:interface|type|const|function|class|enum)\s+([A-Za-z0-9_]+)/gm
-  const results: string[] = []
-  let m: RegExpExecArray | null
-  while ((m = rx.exec(source)) !== null) {
-    results.push(m[1])
-  }
-  return results.sort()
-}
-
 describe('seasonAutomation - export contract (static)', () => {
   it('exported symbols remain stable', () => {
     const file = path.join(__dirname, '..', 'services', 'seasonAutomation.ts')

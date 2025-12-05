@@ -5,6 +5,42 @@ import { fetchMyAchievementsPaginated, markRewardNotified, invalidateAchievement
 import AchievementCelebration from './AchievementCelebration'
 import './AchievementsGrid.css'
 
+const LOCAL_NOTIFIED_STORAGE_KEY = 'achievements:notifiedRewards'
+
+function getLocallyNotifiedRewards(): Set<string> {
+  try {
+    if (typeof window === 'undefined') return new Set()
+    const raw = window.localStorage.getItem(LOCAL_NOTIFIED_STORAGE_KEY)
+    if (!raw) return new Set()
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return new Set()
+    return new Set(parsed.map(String))
+  } catch {
+    return new Set()
+  }
+}
+
+function saveLocallyNotifiedRewards(ids: Set<string>): void {
+  try {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(LOCAL_NOTIFIED_STORAGE_KEY, JSON.stringify([...ids]))
+  } catch {
+    // ignore localStorage errors
+  }
+}
+
+function markRewardLocallyNotified(rewardId: string): void {
+  const ids = getLocallyNotifiedRewards()
+  if (!ids.has(rewardId)) {
+    ids.add(rewardId)
+    saveLocallyNotifiedRewards(ids)
+  }
+}
+
+function wasRewardLocallyNotified(rewardId: string): boolean {
+  return getLocallyNotifiedRewards().has(rewardId)
+}
+
 interface AchievementsGridProps {
   className?: string
 }
@@ -418,12 +454,18 @@ export default function AchievementsGrid({ className }: AchievementsGridProps) {
               a => a.shouldPlayAnimation && a.animationRewardId
             )
             if (rewardToAnimate) {
-              setCelebration({
-                iconSrc: rewardToAnimate.iconSrc ?? '/achievements/streak-locked.png',
-                levelName: rewardToAnimate.shortTitle,
-                points: rewardToAnimate.animationPoints ?? 0,
-                rewardId: rewardToAnimate.animationRewardId ?? '',
-              })
+              const rewardId = rewardToAnimate.animationRewardId ?? ''
+
+              if (rewardId && !wasRewardLocallyNotified(rewardId)) {
+                markRewardLocallyNotified(rewardId)
+
+                setCelebration({
+                  iconSrc: rewardToAnimate.iconSrc ?? '/achievements/streak-locked.png',
+                  levelName: rewardToAnimate.shortTitle,
+                  points: rewardToAnimate.animationPoints ?? 0,
+                  rewardId,
+                })
+              }
             }
           }
         }
@@ -484,8 +526,12 @@ export default function AchievementsGrid({ className }: AchievementsGridProps) {
   // Обработка закрытия анимации
   const handleCelebrationClose = useCallback(async () => {
     if (celebration?.rewardId) {
-      await markRewardNotified(celebration.rewardId)
-      invalidateAchievementsCache()
+      markRewardLocallyNotified(celebration.rewardId)
+
+      const ok = await markRewardNotified(celebration.rewardId)
+      if (ok) {
+        invalidateAchievementsCache()
+      }
     }
     setCelebration(null)
   }, [celebration])

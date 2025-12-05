@@ -39,7 +39,12 @@ import {
   PREDICTION_TOTAL_MIN_LINE,
 } from '../services/predictionConstants'
 import { serializePrisma } from '../utils/serialization'
-import { defaultCache, PUBLIC_LEAGUE_RESULTS_KEY, PUBLIC_LEAGUE_SCHEDULE_KEY } from '../cache'
+import {
+  defaultCache,
+  PUBLIC_LEAGUE_RESULTS_KEY,
+  PUBLIC_LEAGUE_SCHEDULE_KEY,
+  userCardExtraCacheKey,
+} from '../cache'
 import { deliverTelegramNewsNow, enqueueTelegramNewsJob } from '../queue/newsWorker'
 import { secureEquals } from '../utils/secureEquals'
 import { parseBigIntId, parseNumericId, parseOptionalNumericId } from '../utils/parsers'
@@ -5682,6 +5687,7 @@ export default async function (server: FastifyInstance) {
         })
 
         await defaultCache.invalidate(`user:${updated.telegramId.toString()}`)
+        await defaultCache.invalidate(userCardExtraCacheKey(updated.id))
 
         return sendSerialized(reply, updated)
       })

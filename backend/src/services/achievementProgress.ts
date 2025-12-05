@@ -1,5 +1,7 @@
 import { AchievementMetric, Prisma, PrismaClient } from '@prisma/client'
 import prisma from '../db'
+import { defaultCache } from '../cache'
+import { userCardExtraCacheKey } from '../cache'
 import {
   createAchievementRewardJob,
   getCurrentYearSeasonId,
@@ -11,6 +13,10 @@ import {
   EXPRESS_WINS_REWARD_CONFIG,
   BROADCAST_WATCH_REWARD_CONFIG,
 } from './achievementJobProcessor'
+
+const invalidateUserCardExtra = async (userId: number) => {
+  await defaultCache.invalidate(userCardExtraCacheKey(userId)).catch(() => undefined)
+}
 
 const DEFAULT_CLIENT = prisma
 
@@ -145,6 +151,8 @@ export const incrementAchievementProgress = async (
           await createAchievementRewardJob(userId, 'broadcast_watch', unlockedLevel, points, seasonId, client)
         }
       }
+
+      await invalidateUserCardExtra(userId)
     }
   }
 }
@@ -223,6 +231,8 @@ export const syncSeasonPointsProgress = async (
       if (points) {
         await createAchievementRewardJob(userId, 'credits', unlockedLevel, points, seasonId, client)
       }
+
+      await invalidateUserCardExtra(userId)
     }
   }
 }
@@ -320,6 +330,8 @@ export const syncAllSeasonPointsProgress = async (
         if (points) {
           await createAchievementRewardJob(rating.userId, 'credits', unlockedLevel, points, seasonId, client)
         }
+
+        await invalidateUserCardExtra(rating.userId)
       }
 
       syncedCount++
@@ -404,6 +416,8 @@ export const syncPredictionStreakProgress = async (
       if (points) {
         await createAchievementRewardJob(userId, 'prediction_streak', unlockedLevel, points, seasonId, client)
       }
+
+      await invalidateUserCardExtra(userId)
     }
   }
 }
@@ -482,6 +496,8 @@ export const syncBroadcastWatchProgress = async (
       if (points) {
         await createAchievementRewardJob(userId, 'broadcast_watch', unlockedLevel, points, seasonId, client)
       }
+
+      await invalidateUserCardExtra(userId)
     }
   }
 }

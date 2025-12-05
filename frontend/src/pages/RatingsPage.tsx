@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { MouseEvent } from 'react'
 import type {
   RatingLeaderboardEntryView,
   RatingLevel,
   RatingScopeKey,
 } from '@shared/types'
 import { fetchRatingLeaderboard } from '../api/ratingsApi'
+import { prefetchUserCardExtra } from '../api/userCardApi'
 import { useAdaptivePolling } from '../utils/useAdaptivePolling'
+import ProfileCardModal from '../components/ProfileCardModal'
 import '../styles/ratings.css'
 
 type ScopeState = {
@@ -107,6 +110,9 @@ export function RatingsPage() {
     current: createInitialScopeState(),
     yearly: createInitialScopeState(),
   })
+  const [modalUserId, setModalUserId] = useState<number | null>(null)
+  const [isModalOpen, setModalOpen] = useState(false)
+  const [modalPosition, setModalPosition] = useState<{ x: number; y: number } | null>(null)
   const statesRef = useRef(states)
 
   useEffect(() => {
@@ -221,6 +227,38 @@ export function RatingsPage() {
     }
   )
 
+  useEffect(() => {
+    setModalOpen(false)
+    setModalUserId(null)
+    setModalPosition(null)
+  }, [scope])
+
+  const closeModal = useCallback(() => {
+    setModalOpen(false)
+    setModalUserId(null)
+    setModalPosition(null)
+  }, [])
+
+  const handlePrefetchCard = useCallback((userId: number) => {
+    prefetchUserCardExtra(userId)
+  }, [])
+
+  const handleOpenCard = useCallback((entry: RatingLeaderboardEntryView, evt?: MouseEvent<HTMLButtonElement>) => {
+    const isWide = typeof window !== 'undefined' ? window.innerWidth >= 1024 : false
+    let nextPosition: { x: number; y: number } | null = null
+    if (isWide && evt) {
+      const rect = evt.currentTarget.getBoundingClientRect()
+      nextPosition = { x: rect.right + 12, y: rect.top + rect.height / 2 }
+    }
+    setModalPosition(nextPosition)
+    setModalUserId(entry.userId)
+    setModalOpen(true)
+  }, [])
+
+  const selectedEntry = useMemo(() => {
+    return activeState.entries.find((entry) => entry.userId === modalUserId) ?? null
+  }, [activeState.entries, modalUserId])
+
   const activeState = states[scope]
   const hasMore = activeState.entries.length < activeState.total
   const isLoadingInitial = activeState.loading && activeState.entries.length === 0
@@ -299,13 +337,22 @@ export function RatingsPage() {
                     <td className="col-position">#{entry.position}</td>
                     <td>
                       <div className="rating-user">
-                        <div className={entry.photoUrl ? 'rating-avatar' : 'rating-avatar fallback'}>
-                          {entry.photoUrl ? (
-                            <img src={entry.photoUrl} alt={entry.displayName} loading="lazy" />
-                          ) : (
-                            getFallbackInitials(entry.displayName)
-                          )}
-                        </div>
+                        <button
+                          type="button"
+                          className="rating-avatar-button"
+                          onMouseEnter={() => handlePrefetchCard(entry.userId)}
+                          onFocus={() => handlePrefetchCard(entry.userId)}
+                          onClick={(evt) => handleOpenCard(entry, evt)}
+                          aria-label={`Открыть карточку игрока ${entry.displayName}`}
+                        >
+                          <div className={entry.photoUrl ? 'rating-avatar' : 'rating-avatar fallback'}>
+                            {entry.photoUrl ? (
+                              <img src={entry.photoUrl} alt={entry.displayName} loading="lazy" />
+                            ) : (
+                              getFallbackInitials(entry.displayName)
+                            )}
+                          </div>
+                        </button>
                         <div className="rating-user-info">
                           <span className="rating-name">{entry.displayName}</span>
                           {entry.username ? (
@@ -357,6 +404,13 @@ export function RatingsPage() {
           </button>
         </div>
       ) : null}
+
+      <ProfileCardModal
+        isOpen={isModalOpen}
+        onClose={closeModal}
+        initialData={selectedEntry}
+        position={modalPosition}
+      />
     </div>
   )
 }

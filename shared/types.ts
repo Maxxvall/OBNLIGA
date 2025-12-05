@@ -57,6 +57,32 @@ export interface RatingLeaderboardEntryView {
   predictionAccuracy: number
 }
 
+export interface LeaguePlayerCardInfo {
+  id: number
+  firstName: string
+  lastName: string
+  stats: {
+    totalMatches: number
+    totalGoals: number
+    totalAssists: number
+    yellowCards: number
+    redCards: number
+  }
+  currentClub: {
+    id: number
+    name: string
+    shortName: string
+    logoUrl: string | null
+  } | null
+}
+
+export interface UserCardExtraView {
+  registrationDate: string
+  achievementCount: number
+  achievementMaxLevel: number
+  leaguePlayer: LeaguePlayerCardInfo | null
+}
+
 export interface RatingLeaderboardResponse {
   scope: RatingScopeKey
   total: number

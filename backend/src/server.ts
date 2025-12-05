@@ -57,6 +57,10 @@ server.register(cacheRoutes)
 import userRoutes from './routes/userRoutes'
 server.register(userRoutes)
 
+// register user card extra routes
+import userCardRoutes from './routes/userCardRoutes'
+server.register(userCardRoutes)
+
 // register auth routes (telegram initData verifier)
 import authRoutes from './routes/authRoutes'
 server.register(authRoutes)

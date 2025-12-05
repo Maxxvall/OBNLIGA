@@ -211,6 +211,20 @@
   min-width: 220px;
 }
 
+.rating-avatar-button {
+  border: none;
+  background: transparent;
+  padding: 0;
+  display: inline-flex;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.rating-avatar-button:focus-visible {
+  outline: 2px solid var(--ratings-accent);
+  outline-offset: 3px;
+}
+
 .col-position {
   width: 80px;
   font-weight: 600;
@@ -261,6 +275,7 @@
   overflow: hidden;
   position: relative;
   border: 2px solid rgba(255, 255, 255, 0.2);
+  transition: transform 140ms ease;
 }
 
 .rating-avatar img {
@@ -276,6 +291,11 @@
   background: rgba(79, 112, 255, 0.2);
   color: #ffffff;
   font-weight: 600;
+}
+
+.rating-avatar-button:hover .rating-avatar,
+.rating-avatar-button:focus-visible .rating-avatar {
+  transform: translateY(-1px);
 }
 
 .rating-user-info {

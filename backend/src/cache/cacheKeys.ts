@@ -11,3 +11,4 @@ export const PUBLIC_RATINGS_CURRENT_KEY = 'public:ratings:current'
 export const PUBLIC_RATINGS_YEARLY_KEY = 'public:ratings:yearly'
 export const PUBLIC_SHOP_ITEMS_KEY = 'public:shop:items'
 export const shopHistoryCacheKey = (userKey: string | number) => `public:shop:history:${userKey}`
+export const userCardExtraCacheKey = (userId: number) => `user:card-extra:${userId}`

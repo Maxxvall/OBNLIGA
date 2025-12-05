@@ -11,6 +11,7 @@ import { FastifyInstance } from 'fastify'
 import prisma from '../db'
 import { extractSessionToken, resolveSessionSubject } from '../utils/session'
 import { syncBroadcastWatchProgress } from '../services/achievementProgress'
+import { defaultCache } from '../cache/defaultCache'
 
 // Максимум 1 час за одну сессию (защита от накрутки, матч ~50 мин)
 const MAX_SESSION_SECONDS = 1 * 60 * 60
@@ -97,6 +98,9 @@ export default async function (server: FastifyInstance) {
         // Синхронизируем прогресс достижения (конвертируем секунды в минуты)
         const totalMinutes = watchTime.totalSeconds / 60
         await syncBroadcastWatchProgress(user.id, totalMinutes)
+
+        // Инвалидируем кэш достижений чтобы пользователь увидел обновленный прогресс
+        await defaultCache.invalidatePrefix(`user:achievements:${telegramId}`).catch(() => undefined)
 
         server.log.info(
           {

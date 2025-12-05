@@ -1,5 +1,6 @@
 import React from 'react'
 import { useAppStore } from '../store/appStore'
+import { matchApi } from '../api/matchApi'
 import type {
   MatchDetailsLineups,
   MatchDetailsStats,
@@ -756,6 +757,7 @@ export const MatchDetailsPage: React.FC = () => {
           {activeTab === 'stats' && <StatsView stats={stats} loading={matchDetails.loadingStats} />}
           {activeTab === 'broadcast' && (
             <BroadcastView
+              matchId={matchId}
               broadcast={broadcast}
               loading={loadingBroadcast}
               error={errorBroadcast}
@@ -991,6 +993,7 @@ const StatsView: React.FC<{
 }
 
 type BroadcastViewProps = {
+  matchId?: string
   broadcast?: MatchDetailsBroadcast
   loading: boolean
   error?: string
@@ -1008,6 +1011,7 @@ type BroadcastViewProps = {
 }
 
 const BroadcastView: React.FC<BroadcastViewProps> = ({
+  matchId,
   broadcast,
   loading,
   error,
@@ -1038,6 +1042,87 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
   const landscapeActive = Boolean(landscapeMode)
   const pseudoFullscreenActive = landscapeActive && isTelegramMobile
   const rawBroadcastUrl = broadcast?.url ?? null
+
+  // === Watch time tracking (only current session, no accumulation) ===
+  const sessionStartRef = React.useRef<number>(0)
+  const hasSyncedRef = React.useRef<boolean>(false)
+
+  // Initialize session on mount
+  React.useEffect(() => {
+    if (!broadcastAvailable || !matchId) {
+      return
+    }
+    sessionStartRef.current = Date.now()
+    hasSyncedRef.current = false
+  }, [broadcastAvailable, matchId])
+
+  // Sync accumulated time to server (called only on exit)
+  const syncToServer = React.useCallback(() => {
+    if (!matchId || hasSyncedRef.current) {
+      return
+    }
+
+    const sessionDuration = Math.floor((Date.now() - sessionStartRef.current) / 1000)
+    if (sessionDuration < 60) {
+      // Don't sync if less than 1 minute watched this session
+      return
+    }
+
+    hasSyncedRef.current = true
+    void matchApi.syncWatchTime(matchId, sessionDuration).catch(() => {
+      // If sync fails, user can try watching again - we don't accumulate
+      hasSyncedRef.current = false
+    })
+  }, [matchId])
+
+  // Sync on component unmount (user leaves broadcast tab)
+  React.useEffect(() => {
+    if (!broadcastAvailable || !matchId) {
+      return
+    }
+    return () => {
+      syncToServer()
+    }
+  }, [broadcastAvailable, matchId, syncToServer])
+
+  // Sync on visibility change (user switching to another app)
+  React.useEffect(() => {
+    if (!broadcastAvailable || !matchId) {
+      return
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        syncToServer()
+      } else if (document.visibilityState === 'visible') {
+        // User came back - reset session start to count only continuous watching
+        sessionStartRef.current = Date.now()
+        hasSyncedRef.current = false
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [broadcastAvailable, matchId, syncToServer])
+
+  // Sync on page unload (user closes tab/app)
+  React.useEffect(() => {
+    if (!broadcastAvailable || !matchId) {
+      return
+    }
+
+    const handleBeforeUnload = () => {
+      syncToServer()
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+    }
+  }, [broadcastAvailable, matchId, syncToServer])
+  // === End watch time tracking ===
 
   React.useEffect(() => {
     onCommentsExpandedChange?.(isExpanded)

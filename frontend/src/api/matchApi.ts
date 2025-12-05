@@ -104,6 +104,22 @@ export const matchApi = {
       },
     })
   },
+
+  /**
+   * Sync broadcast watch time to server
+   */
+  syncWatchTime(matchId: string, watchedSeconds: number) {
+    return httpRequest<{ totalSeconds: number }>(
+      `/api/broadcast/sync-watch-time`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ matchId, watchedSeconds }),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    )
+  },
 }
 
 export type { ApiResponse }

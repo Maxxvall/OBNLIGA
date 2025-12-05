@@ -69,6 +69,11 @@ interface SubscriptionsSummaryView {
 
 const getUserCacheKey = (telegramId: bigint) => `user:${telegramId}:subscriptions`
 
+const invalidateUserCaches = async (telegramId: bigint, scopes: Array<'clubs' | 'matches' | 'summary'>) => {
+  const keys = scopes.map(scope => `${getUserCacheKey(telegramId)}:${scope}`)
+  await Promise.all(keys.map(key => defaultCache.invalidate(key)))
+}
+
 /** Парсит telegramId из строки */
 const parseTelegramId = (value: string | null): bigint | null => {
   if (!value) return null
@@ -236,8 +241,7 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
         await scheduleNotificationsForClubSubscription(userId, telegramId, clubId)
 
         // Инвалидируем кэш
-        const cacheKey = `${getUserCacheKey(telegramId)}:clubs`
-        await defaultCache.invalidate(cacheKey)
+        await invalidateUserCaches(telegramId, ['clubs', 'summary'])
 
         return reply.status(201).send({ ok: true, data: { subscribed: true } })
       } catch (err) {
@@ -294,8 +298,7 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
         ])
 
         // Инвалидируем кэш
-        const cacheKey = `${getUserCacheKey(telegramId)}:clubs`
-        await defaultCache.invalidate(cacheKey)
+        await invalidateUserCaches(telegramId, ['clubs', 'summary'])
 
         return reply.send({ ok: true, data: { subscribed: false } })
       } catch (err) {
@@ -493,8 +496,7 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
         }
 
         // Инвалидируем кэш
-        const cacheKey = `${getUserCacheKey(telegramId)}:matches`
-        await defaultCache.invalidate(cacheKey)
+        await invalidateUserCaches(telegramId, ['matches', 'summary'])
 
         return reply.status(201).send({ ok: true, data: { subscribed: true } })
       } catch (err) {
@@ -547,8 +549,7 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
         ])
 
         // Инвалидируем кэш
-        const cacheKey = `${getUserCacheKey(telegramId)}:matches`
-        await defaultCache.invalidate(cacheKey)
+        await invalidateUserCaches(telegramId, ['matches', 'summary'])
 
         return reply.send({ ok: true, data: { subscribed: false } })
       } catch (err) {
@@ -588,6 +589,8 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
         matchEndEnabled: settings.matchEndEnabled,
         goalEnabled: settings.goalEnabled,
       }
+
+      await invalidateUserCaches(telegramId, ['summary'])
 
       return reply.send({ ok: true, data: result })
     } catch (err) {

@@ -255,15 +255,15 @@ export function RatingsPage() {
     setModalOpen(true)
   }, [])
 
-  const selectedEntry = useMemo(() => {
-    return activeState.entries.find((entry) => entry.userId === modalUserId) ?? null
-  }, [activeState.entries, modalUserId])
-
   const activeState = states[scope]
   const hasMore = activeState.entries.length < activeState.total
   const isLoadingInitial = activeState.loading && activeState.entries.length === 0
   const isLoadingMore = activeState.loading && activeState.entries.length > 0
-  
+
+  const selectedEntry = useMemo(() => {
+    return activeState.entries.find((entry) => entry.userId === modalUserId) ?? null
+  }, [activeState.entries, modalUserId])
+
   const scopePointsLabel = scope === 'current' ? 'Сезон' : 'Год'
 
   const handleScopeChange = (nextScope: RatingScopeKey) => {

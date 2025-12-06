@@ -118,6 +118,26 @@ const cronRoutes: FastifyPluginAsync = async fastify => {
           seasonName: notification.match.season?.name,
         }
 
+        // Если матч перенесли, перепланируем напоминание и не отправляем сейчас
+        if (
+          notification.messageType === 'MATCH_REMINDER' &&
+          notification.match.status === 'SCHEDULED'
+        ) {
+          const expected = new Date(notification.match.matchDateTime)
+          expected.setMinutes(expected.getMinutes() - settings.remindBefore)
+
+          if (expected.getTime() !== notification.scheduledAt.getTime()) {
+            // Если новое время уже в будущем — перенесём задачу
+            if (expected.getTime() > now.getTime()) {
+              await prisma.notificationQueue.update({
+                where: { id: notification.id },
+                data: { scheduledAt: expected, status: 'PENDING', retryCount: 0 },
+              })
+              continue
+            }
+          }
+        }
+
         let result: Awaited<ReturnType<typeof sendMatchReminder>>
 
         // Отправляем в зависимости от типа
@@ -199,6 +219,31 @@ const cronRoutes: FastifyPluginAsync = async fastify => {
         data: { sent, failed },
       })
     }
+  })
+
+  // Очистка старых уведомлений (SENT/CANCELLED) старше 1 дня
+  fastify.get('/api/cron/notifications/cleanup', async (request, reply) => {
+    const cronSecret = request.headers['x-cron-secret']
+    const expectedSecret = process.env.CRON_SECRET
+
+    if (!expectedSecret) {
+      fastify.log.warn('CRON_SECRET not configured')
+      return reply.status(500).send({ ok: false, error: 'cron_not_configured' })
+    }
+
+    if (cronSecret !== expectedSecret) {
+      return reply.status(401).send({ ok: false, error: 'unauthorized' })
+    }
+
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    const { count } = await prisma.notificationQueue.deleteMany({
+      where: {
+        status: { in: ['SENT', 'CANCELLED'] },
+        scheduledAt: { lt: cutoff },
+      },
+    })
+
+    return reply.send({ ok: true, data: { deleted: count } })
   })
 
   /**

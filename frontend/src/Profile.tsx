@@ -502,7 +502,7 @@ export default function Profile() {
     if (!user) return
     
     void (async () => {
-      const result = await fetchMyAchievements()
+      const result = await fetchMyAchievements({ force: true })
       if (result.data) {
         setAchievements(result.data)
       }

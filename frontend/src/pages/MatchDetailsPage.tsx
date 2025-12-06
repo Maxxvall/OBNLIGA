@@ -1052,6 +1052,7 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
     if (!broadcastAvailable || !matchId) {
       return
     }
+    console.log('[Broadcast] start session', { matchId, timestamp: new Date().toISOString() })
     sessionStartRef.current = Date.now()
     hasSyncedRef.current = false
   }, [broadcastAvailable, matchId])
@@ -1069,9 +1070,14 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
     }
 
     hasSyncedRef.current = true
-    void matchApi.syncWatchTime(matchId, sessionDuration).catch(() => {
-      // If sync fails, user can try watching again - we don't accumulate
+    console.log('[Broadcast] sync watch time', {
+      matchId,
+      sessionSeconds: sessionDuration,
+      startedAt: new Date(sessionStartRef.current).toISOString(),
+    })
+    void matchApi.syncWatchTime(matchId, sessionDuration).catch(err => {
       hasSyncedRef.current = false
+      console.warn('[Broadcast] sync failed', { matchId, err })
     })
   }, [matchId])
 
@@ -1081,6 +1087,7 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
       return
     }
     return () => {
+      console.log('[Broadcast] unmount sync')
       syncToServer()
     }
   }, [broadcastAvailable, matchId, syncToServer])
@@ -1093,9 +1100,11 @@ const BroadcastView: React.FC<BroadcastViewProps> = ({
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
+        console.log('[Broadcast] visibility hidden, syncing')
         syncToServer()
       } else if (document.visibilityState === 'visible') {
         // User came back - reset session start to count only continuous watching
+        console.log('[Broadcast] visibility visible, reset session')
         sessionStartRef.current = Date.now()
         hasSyncedRef.current = false
       }

@@ -242,7 +242,23 @@ export async function fetchMyAchievementsPaginated(options: {
     }
   }
 
-  const data = response.data
+  const normalizeAchievements = (input: UserAchievementsSummary): UserAchievementsSummary => ({
+    ...input,
+    achievements: input.achievements.map(item => {
+      if (item.group === 'broadcast_watch') {
+        const needsMinutes = item.nextThreshold !== null && item.nextThreshold < 50
+        return {
+          ...item,
+          nextThreshold: item.nextThreshold !== null && needsMinutes
+            ? item.nextThreshold * 60
+            : item.nextThreshold,
+        }
+      }
+      return item
+    }),
+  })
+
+  const data = normalizeAchievements(response.data)
   const etag = response.version
 
   logAchievements('Server returned fresh data', {

@@ -222,10 +222,11 @@ export async function unsubscribeFromClub(
  * Получает настройки уведомлений.
  */
 export async function fetchNotificationSettings(
-  options?: { signal?: AbortSignal }
+  options?: { signal?: AbortSignal; version?: string }
 ): Promise<ApiResponse<NotificationSettingsView>> {
   return httpRequest<NotificationSettingsView>('/api/notifications/settings', {
     ...options,
+    version: options?.version,
     headers: authHeader(),
   })
 }
@@ -257,6 +258,7 @@ export async function fetchSubscriptionsSummary(
 ): Promise<ApiResponse<SubscriptionsSummaryView>> {
   const result = await httpRequest<SubscriptionsSummaryView>('/api/subscriptions/summary', {
     ...options,
+    version: options?.version,
     headers: authHeader(),
   })
 

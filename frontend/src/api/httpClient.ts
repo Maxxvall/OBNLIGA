@@ -77,6 +77,7 @@ export async function httpRequest<T>(path: string, options?: HttpRequestOptions)
     const response = await fetch(url, {
       ...rest,
       cache: 'no-store',
+      credentials: rest.credentials ?? 'include',
       headers: requestHeaders,
     })
 

@@ -204,7 +204,8 @@ const selectMatchesForMode = (
           ? Number.POSITIVE_INFINITY
           : Number.NEGATIVE_INFINITY
         : rightTime
-      return mode === 'schedule' ? safeLeft - safeRight : safeRight - safeLeft
+      // В режиме результатов показываем по возрастанию (старые -> новые)
+      return mode === 'schedule' ? safeLeft - safeRight : safeLeft - safeRight
     })
 
   return sorted.slice(0, limit)

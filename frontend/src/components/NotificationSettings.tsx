@@ -31,6 +31,8 @@ export const NotificationSettings: React.FC<NotificationSettingsProps> = ({ clas
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [summaryVersion, setSummaryVersion] = useState<string | undefined>(undefined)
+  const [settingsVersion, setSettingsVersion] = useState<string | undefined>(undefined)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -38,16 +40,22 @@ export const NotificationSettings: React.FC<NotificationSettingsProps> = ({ clas
 
     try {
       const [summaryResult, settingsResult] = await Promise.all([
-        fetchSubscriptionsSummary(),
-        fetchNotificationSettings(),
+        fetchSubscriptionsSummary({ version: summaryVersion }),
+        fetchNotificationSettings({ version: settingsVersion }),
       ])
 
       if (summaryResult.ok && !('notModified' in summaryResult && summaryResult.notModified)) {
         setClubs(summaryResult.data.clubs)
+        if ('version' in summaryResult && summaryResult.version) {
+          setSummaryVersion(summaryResult.version)
+        }
       }
 
       if (settingsResult.ok && !('notModified' in settingsResult && settingsResult.notModified)) {
         setSettings(settingsResult.data)
+        if ('version' in settingsResult && settingsResult.version) {
+          setSettingsVersion(settingsResult.version)
+        }
       }
     } catch (err) {
       console.error('Failed to load notification settings:', err)

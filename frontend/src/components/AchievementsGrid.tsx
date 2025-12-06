@@ -115,9 +115,9 @@ const ACHIEVEMENT_THRESHOLDS: Record<string, { level: number; threshold: number;
     { level: 3, threshold: 500, points: 1000 },
   ],
   credits: [
-    { level: 1, threshold: 200, points: 0 },
-    { level: 2, threshold: 1000, points: 0 },
-    { level: 3, threshold: 5000, points: 0 },
+    { level: 1, threshold: 200, points: 50 },
+    { level: 2, threshold: 1000, points: 250 },
+    { level: 3, threshold: 5000, points: 1000 },
   ],
   bet_wins: [
     { level: 1, threshold: 10, points: 20 },
@@ -167,7 +167,9 @@ function getProgressUnit(group: string, count: number): string {
   case 'predictions':
     return pluralize(count, 'прогноз', 'прогноза', 'прогнозов')
   case 'credits':
-    return pluralize(count, 'очко', 'очка', 'очков')
+    // Отображать для очков более привычное окончание в интерфейсе:
+    // для 1 — "очко", для всех остальных — "очков" (дизайн-решение)
+    return pluralize(count, 'очко', 'очков', 'очков')
   case 'bet_wins':
     return pluralize(count, 'угаданный прогноз', 'угаданных прогноза', 'угаданных прогнозов')
   case 'prediction_streak':
@@ -326,6 +328,67 @@ function AchievementModal({ achievement, onClose }: AchievementModalProps) {
   const progressUnit = getProgressUnit(achievement.group, achievement.currentProgress)
   const remainingUnit = getProgressUnit(achievement.group, remaining)
 
+  // Короткое описание для некоторых достижений (под заголовком вместо группы)
+  // Сейчас — специальное поведение для "Новичок" в группе predictions
+  const specialDescription: string | null = (() => {
+    if (achievement.group === 'predictions') {
+      // Обобщённое, дружелюбное описание — куда и какие прогнозы считаются
+      if (achievement.currentLevel >= thresholds.length) {
+        return 'Достигнуто максимальное звание за активность в прогнозах.'
+      }
+      return 'Делайте прогнозы на матчи любимых команд — в статистику идут только одиночные прогнозы.'
+    }
+
+    if (achievement.group === 'credits') {
+      // Описание для очков сезона — кратко и ясно
+      if (achievement.currentLevel >= thresholds.length) {
+        return 'Достигнуто максимальное звание по очкам сезона.'
+      }
+      return 'Зарабатывайте сезонные очки в рейтинге — учитываются только очки сезона.'
+    }
+
+    if (achievement.group === 'streak') {
+      // Коротко: что нужно для игрового ряда (стрик)
+      if (achievement.currentLevel >= thresholds.length) {
+        return 'Достигнута максимальная игровая серия.'
+      }
+      return 'Поддерживайте серию дней с активностью — считаются подряд идущие дни.'
+    }
+
+    if (achievement.group === 'bet_wins') {
+      // Короткое описание для угаданных прогнозов
+      if (achievement.currentLevel >= thresholds.length) {
+        return 'Достигнуто максимальное звание по угаданным прогнозам.'
+      }
+      return 'Угадывайте исходы матчей — в зачёт идут только верные одиночные прогнозы.'
+    }
+
+    if (achievement.group === 'prediction_streak') {
+      // Серия побед в прогнозах
+      if (achievement.currentLevel >= thresholds.length) {
+        return 'Достигнута максимальная серия побед.'
+      }
+      return 'Выигрывайте прогнозы подряд — считается длина серии верных прогнозов.'
+    }
+
+    if (achievement.group === 'express_wins') {
+      // Угаданные экспрессы
+      if (achievement.currentLevel >= thresholds.length) {
+        return 'Достигнуто максимальное звание по экспрессам.'
+      }
+      return 'Угадывайте экспресс-прогнозы — в зачёт идут полностью угаданные экспрессы.'
+    }
+
+    if (achievement.group === 'broadcast_watch') {
+      // Просмотр трансляций
+      if (achievement.currentLevel >= thresholds.length) {
+        return 'Достигнуто максимальное звание за просмотр трансляций.'
+      }
+      return 'Смотрите трансляции — в зачёт идут минуты просмотра.'
+    }
+    return null
+  })()
+
   // Закрытие по Escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -362,7 +425,11 @@ function AchievementModal({ achievement, onClose }: AchievementModalProps) {
           <h2 id="achievement-modal-title" className="achievement-modal-title">
             {levelName}
           </h2>
-          <span className="achievement-modal-group">{groupLabel}</span>
+          {specialDescription ? (
+            <div className="achievement-modal-description">{specialDescription}</div>
+          ) : (
+            <span className="achievement-modal-group">{groupLabel}</span>
+          )}
         </div>
 
         <div className="achievement-modal-status">
@@ -385,13 +452,27 @@ function AchievementModal({ achievement, onClose }: AchievementModalProps) {
             const isCurrent = t.level === achievement.currentLevel
             const isUnlocked = t.level <= achievement.currentLevel
             const thresholdUnit = getProgressUnit(achievement.group, t.threshold)
+            // Для групп predictions, credits, streak и bet_wins показываем только число порога (20, 200, 1000...),
+            // для остальных — число + единица (например, "3 дня подряд").
+            const numericOnlyGroups = new Set([
+              'predictions',
+              'credits',
+              'streak',
+              'bet_wins',
+              'prediction_streak',
+              'express_wins',
+              'broadcast_watch',
+            ])
+            const thresholdText = numericOnlyGroups.has(achievement.group)
+              ? String(t.threshold)
+              : `${t.threshold} ${thresholdUnit}`
 
             return (
               <div key={t.level} className="achievement-modal-level-row">
                 <span className={`achievement-modal-level-name ${isCurrent ? 'current' : ''}`}>
                   {isUnlocked ? '✓ ' : ''}{tLevelName}
                 </span>
-                <span className="achievement-modal-level-threshold">{t.threshold} {thresholdUnit}</span>
+                <span className="achievement-modal-level-threshold">{thresholdText}</span>
                 {t.points > 0 && (
                   <span className="achievement-modal-level-points">+{t.points} очков</span>
                 )}

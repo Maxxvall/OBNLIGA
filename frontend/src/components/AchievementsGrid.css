@@ -245,6 +245,18 @@
   margin-top: 4px;
 }
 
+/* Описание для специальных достижений (например, "Новичок" в predictions)
+   Более приятный шрифт и чуть уменьшенный размер */
+.achievement-modal-description {
+  margin-top: 6px;
+  font-size: 12px; /* чуть меньше, чем .achievement-modal-group */
+  color: rgba(230, 247, 255, 0.85);
+  font-weight: 500;
+  font-family: Inter, 'Helvetica Neue', Arial, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  text-align: center;
+  line-height: 1.2;
+}
+
 .achievement-modal-status {
   background: rgba(255, 255, 255, 0.05);
   border-radius: 8px;
@@ -313,6 +325,21 @@
 .achievement-modal-level-points {
   font-size: 12px;
   color: #45b7d1;
+}
+
+/* Выравнивание колонок: название — гибкое, порог — центр, очки — справа */
+.achievement-modal-level-name {
+  flex: 1 1 auto;
+}
+.achievement-modal-level-threshold {
+  width: 72px; /* достаточная ширина для чисел */
+  text-align: center;
+  flex: 0 0 72px;
+}
+.achievement-modal-level-points {
+  width: 80px;
+  text-align: right;
+  flex: 0 0 80px;
 }
 
 .achievement-modal-close {

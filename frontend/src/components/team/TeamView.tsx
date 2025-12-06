@@ -189,24 +189,26 @@ const selectMatchesForMode = (
     return []
   }
 
-  const sorted = filtered
-    .slice()
-    .sort((left, right) => {
-      const leftTime = Date.parse(left.match.d)
-      const rightTime = Date.parse(right.match.d)
-      const safeLeft = Number.isNaN(leftTime)
-        ? mode === 'schedule'
-          ? Number.POSITIVE_INFINITY
-          : Number.NEGATIVE_INFINITY
-        : leftTime
-      const safeRight = Number.isNaN(rightTime)
-        ? mode === 'schedule'
-          ? Number.POSITIVE_INFINITY
-          : Number.NEGATIVE_INFINITY
-        : rightTime
-      // В режиме результатов показываем по возрастанию (старые -> новые)
-      return mode === 'schedule' ? safeLeft - safeRight : safeLeft - safeRight
-    })
+  const sorted = filtered.slice().sort((left, right) => {
+    const leftTime = Date.parse(left.match.d)
+    const rightTime = Date.parse(right.match.d)
+    const safeLeft = Number.isNaN(leftTime)
+      ? mode === 'schedule'
+        ? Number.POSITIVE_INFINITY
+        : Number.NEGATIVE_INFINITY
+      : leftTime
+    const safeRight = Number.isNaN(rightTime)
+      ? mode === 'schedule'
+        ? Number.POSITIVE_INFINITY
+        : Number.NEGATIVE_INFINITY
+      : rightTime
+    return safeLeft - safeRight
+  })
+
+  if (mode === 'results') {
+    // Показываем последние завершённые матчи, но в хронологическом порядке
+    return sorted.slice(-limit)
+  }
 
   return sorted.slice(0, limit)
 }
@@ -217,22 +219,24 @@ const groupMatchesBySeason = (matches: TeamMatchItem[]): TeamMatchGroup[] => {
   }
 
   const groups: TeamMatchGroup[] = []
-  const map = new Map<string, TeamMatchGroup>()
+  const seasonSegments = new Map<number, number>()
 
   matches.forEach(item => {
-    const key = `${item.seasonId}:${item.seasonName}`
-    let group = map.get(key)
-    if (!group) {
-      group = {
-        id: key,
-        seasonId: item.seasonId,
-        seasonName: item.seasonName,
-        matches: [],
-      }
-      map.set(key, group)
-      groups.push(group)
+    const lastGroup = groups[groups.length - 1]
+    if (lastGroup && lastGroup.seasonId === item.seasonId) {
+      lastGroup.matches.push(item)
+      return
     }
-    group.matches.push(item)
+
+    const occurrence = (seasonSegments.get(item.seasonId) ?? 0) + 1
+    seasonSegments.set(item.seasonId, occurrence)
+
+    groups.push({
+      id: `${item.seasonId}:${occurrence}`,
+      seasonId: item.seasonId,
+      seasonName: item.seasonName,
+      matches: [item],
+    })
   })
 
   return groups

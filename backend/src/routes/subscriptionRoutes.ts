@@ -9,7 +9,6 @@ import prisma from '../db'
 import { defaultCache } from '../cache'
 import { buildWeakEtag, matchesIfNoneMatch } from '../utils/httpCaching'
 import { extractSessionToken, resolveSessionSubject } from '../utils/session'
-import { scheduleNotificationsForClubSubscription } from './subscriptionHelpers'
 
 // Константы кэширования
 const SUBSCRIPTIONS_CACHE_TTL_SECONDS = 300 // 5 минут
@@ -53,7 +52,6 @@ interface MatchSubscriptionView {
 
 interface NotificationSettingsView {
   enabled: boolean
-  remindBefore: number
   matchStartEnabled: boolean
   matchEndEnabled: boolean
   goalEnabled: boolean
@@ -104,7 +102,6 @@ const getOrCreateNotificationSettings = async (userId: number) => {
       data: {
         userId,
         enabled: true,
-        remindBefore: 30,
         matchStartEnabled: true,
         matchEndEnabled: false,
         goalEnabled: false,
@@ -236,9 +233,6 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
         await prisma.clubSubscription.create({
           data: { userId, clubId },
         })
-
-        // Планируем уведомления для предстоящих матчей этой команды
-        await scheduleNotificationsForClubSubscription(userId, telegramId, clubId)
 
         // Инвалидируем кэш
         await invalidateUserCaches(telegramId, ['clubs', 'summary'])
@@ -467,34 +461,6 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
           data: { userId, matchId },
         })
 
-        // Планируем уведомление
-        const settings = await getOrCreateNotificationSettings(userId)
-
-        if (settings.enabled && match.status === 'SCHEDULED') {
-          const scheduledAt = new Date(match.matchDateTime)
-          scheduledAt.setMinutes(scheduledAt.getMinutes() - settings.remindBefore)
-
-          if (scheduledAt > new Date()) {
-            await prisma.notificationQueue.upsert({
-              where: {
-                userId_matchId_messageType: {
-                  userId,
-                  matchId,
-                  messageType: 'MATCH_REMINDER',
-                },
-              },
-              create: {
-                userId,
-                telegramId,
-                matchId,
-                scheduledAt,
-                messageType: 'MATCH_REMINDER',
-              },
-              update: { scheduledAt, status: 'PENDING' },
-            })
-          }
-        }
-
         // Инвалидируем кэш
         await invalidateUserCaches(telegramId, ['matches', 'summary'])
 
@@ -584,7 +550,6 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
 
       const result: NotificationSettingsView = {
         enabled: settings.enabled,
-        remindBefore: settings.remindBefore,
         matchStartEnabled: settings.matchStartEnabled,
         matchEndEnabled: settings.matchEndEnabled,
         goalEnabled: settings.goalEnabled,
@@ -621,18 +586,6 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
 
     const body = request.body || {}
 
-    // Валидация remindBefore
-    if (body.remindBefore !== undefined) {
-      const allowed = [15, 30, 60, 1440] // 15 мин, 30 мин, 1 час, 1 день
-      if (!allowed.includes(body.remindBefore)) {
-        return reply.status(400).send({
-          ok: false,
-          error: 'invalid_remind_before',
-          message: 'Допустимые значения: 15, 30, 60, 1440',
-        })
-      }
-    }
-
     try {
       // Получаем или создаём настройки
       await getOrCreateNotificationSettings(userId)
@@ -640,14 +593,12 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
       // Обновляем только переданные поля
       const updateData: Partial<{
         enabled: boolean
-        remindBefore: number
         matchStartEnabled: boolean
         matchEndEnabled: boolean
         goalEnabled: boolean
       }> = {}
 
       if (typeof body.enabled === 'boolean') updateData.enabled = body.enabled
-      if (typeof body.remindBefore === 'number') updateData.remindBefore = body.remindBefore
       if (typeof body.matchStartEnabled === 'boolean') updateData.matchStartEnabled = body.matchStartEnabled
       if (typeof body.matchEndEnabled === 'boolean') updateData.matchEndEnabled = body.matchEndEnabled
       if (typeof body.goalEnabled === 'boolean') updateData.goalEnabled = body.goalEnabled
@@ -657,35 +608,8 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
         data: updateData,
       })
 
-      // Если изменилось время напоминания, пересчитываем scheduledAt для PENDING уведомлений
-      if (body.remindBefore !== undefined) {
-        const pendingNotifications = await prisma.notificationQueue.findMany({
-          where: { userId, status: 'PENDING', messageType: 'MATCH_REMINDER' },
-          include: { match: { select: { matchDateTime: true } } },
-        })
-
-        for (const notification of pendingNotifications) {
-          const newScheduledAt = new Date(notification.match.matchDateTime)
-          newScheduledAt.setMinutes(newScheduledAt.getMinutes() - settings.remindBefore)
-
-          if (newScheduledAt > new Date()) {
-            await prisma.notificationQueue.update({
-              where: { id: notification.id },
-              data: { scheduledAt: newScheduledAt },
-            })
-          } else {
-            // Если новое время уже прошло — отменяем
-            await prisma.notificationQueue.update({
-              where: { id: notification.id },
-              data: { status: 'CANCELLED' },
-            })
-          }
-        }
-      }
-
       const result: NotificationSettingsView = {
         enabled: settings.enabled,
-        remindBefore: settings.remindBefore,
         matchStartEnabled: settings.matchStartEnabled,
         matchEndEnabled: settings.matchEndEnabled,
         goalEnabled: settings.goalEnabled,
@@ -769,7 +693,6 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
             })),
             settings: {
               enabled: settings.enabled,
-              remindBefore: settings.remindBefore,
               matchStartEnabled: settings.matchStartEnabled,
               matchEndEnabled: settings.matchEndEnabled,
               goalEnabled: settings.goalEnabled,

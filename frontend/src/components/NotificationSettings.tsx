@@ -18,13 +18,6 @@ interface NotificationSettingsProps {
   className?: string
 }
 
-const REMIND_OPTIONS = [
-  { value: 15, label: '15 минут' },
-  { value: 30, label: '30 минут' },
-  { value: 60, label: '1 час' },
-  { value: 1440, label: '1 день' },
-]
-
 export const NotificationSettings: React.FC<NotificationSettingsProps> = ({ className = '' }) => {
   const [settings, setSettings] = useState<NotificationSettingsView | null>(null)
   const [clubs, setClubs] = useState<ClubSubscriptionView[]>([])
@@ -169,30 +162,6 @@ export const NotificationSettings: React.FC<NotificationSettingsProps> = ({ clas
 
         {settings.enabled && (
           <>
-            <div className="notification-settings-divider" />
-
-            {/* Время напоминания */}
-            <div className="notification-setting-row">
-              <div className="notification-setting-info">
-                <span className="notification-setting-label">Напоминать за</span>
-                <span className="notification-setting-hint">
-                  Когда отправлять напоминание до начала матча
-                </span>
-              </div>
-              <select
-                className="notification-select"
-                value={settings.remindBefore}
-                onChange={e => handleSettingChange('remindBefore', Number(e.target.value))}
-                disabled={saving}
-              >
-                {REMIND_OPTIONS.map(opt => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
             <div className="notification-settings-divider" />
 
             {/* Дополнительные уведомления */}

@@ -6,11 +6,11 @@
 import { FastifyPluginAsync } from 'fastify'
 import prisma from '../db'
 import {
-  sendMatchReminder,
   sendMatchStartedNotification,
   sendMatchFinishedNotification,
   isNotificationBotConfigured,
   type MatchNotificationDetails,
+  type SendNotificationResult,
 } from '../services/notificationService'
 
 // Размер пакета для обработки
@@ -118,38 +118,18 @@ const cronRoutes: FastifyPluginAsync = async fastify => {
           seasonName: notification.match.season?.name,
         }
 
-        // Если матч перенесли, перепланируем напоминание и не отправляем сейчас
-        if (
-          notification.messageType === 'MATCH_REMINDER' &&
-          notification.match.status === 'SCHEDULED'
-        ) {
-          const expected = new Date(notification.match.matchDateTime)
-          expected.setMinutes(expected.getMinutes() - settings.remindBefore)
-
-          if (expected.getTime() !== notification.scheduledAt.getTime()) {
-            // Если новое время уже в будущем — перенесём задачу
-            if (expected.getTime() > now.getTime()) {
-              await prisma.notificationQueue.update({
-                where: { id: notification.id },
-                data: { scheduledAt: expected, status: 'PENDING', retryCount: 0 },
-              })
-              continue
-            }
-          }
+        if (notification.messageType === 'MATCH_REMINDER') {
+          await prisma.notificationQueue.update({
+            where: { id: notification.id },
+            data: { status: 'CANCELLED', errorMessage: 'match reminder disabled' },
+          })
+          continue
         }
 
-        let result: Awaited<ReturnType<typeof sendMatchReminder>>
+        let result: SendNotificationResult
 
         // Отправляем в зависимости от типа
         switch (notification.messageType) {
-          case 'MATCH_REMINDER':
-            result = await sendMatchReminder(
-              notification.telegramId,
-              matchDetails,
-              settings.remindBefore
-            )
-            break
-
           case 'MATCH_STARTED':
             result = await sendMatchStartedNotification(notification.telegramId, matchDetails)
             break

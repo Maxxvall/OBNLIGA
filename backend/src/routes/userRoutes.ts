@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify'
-import { AchievementMetric } from '@prisma/client'
+import { AchievementMetric, PredictionEntryStatus } from '@prisma/client'
 import prisma from '../db'
 import { serializePrisma, isSerializedAppUserPayload } from '../utils/serialization'
 import { defaultCache } from '../cache'
@@ -24,6 +24,7 @@ import {
 import {
   syncSeasonPointsProgress,
   syncBroadcastWatchProgress,
+  incrementAchievementProgress,
 } from '../services/achievementProgress'
 
 type UserUpsertBody = {
@@ -295,65 +296,78 @@ export default async function (server: FastifyInstance) {
             return null
           }
 
-          // Синхронизируем прогресс из актуальных источников данных
-          // SEASON_POINTS - из userRating.seasonalPoints
-          const userRating = await prisma.userRating.findUnique({
-            where: { userId: user.id },
-            select: { seasonalPoints: true },
-          })
+          const [
+            userRating,
+            watchTime,
+            legacyCorrectPredictions,
+            entryCorrectPredictions,
+            legacyTotalPredictions,
+            entryTotalPredictions,
+            allAchievementTypes,
+            existingProgress,
+          ] = await Promise.all([
+            prisma.userRating.findUnique({
+              where: { userId: user.id },
+              select: { seasonalPoints: true },
+            }),
+            prisma.userBroadcastWatchTime.findUnique({
+              where: { userId: user.id },
+              select: { totalSeconds: true },
+            }),
+            prisma.prediction.count({ where: { userId: user.id, isCorrect: true } }),
+            prisma.predictionEntry.count({ where: { userId: user.id, status: PredictionEntryStatus.WON } }),
+            prisma.prediction.count({ where: { userId: user.id } }),
+            prisma.predictionEntry.count({ where: { userId: user.id } }),
+            prisma.achievementType.findMany({
+              include: {
+                levels: {
+                  orderBy: { level: 'asc' },
+                },
+              },
+              orderBy: { id: 'asc' },
+            }),
+            prisma.achievementProgress.findMany({ where: { userId: user.id } }),
+          ])
+
           if (userRating && userRating.seasonalPoints > 0) {
             await syncSeasonPointsProgress(user.id, userRating.seasonalPoints)
           }
 
-          // CORRECT_PREDICTIONS - подсчитываем из predictions
-          const correctPredictionsCount = await prisma.prediction.count({
-            where: { userId: user.id, isCorrect: true },
-          })
-          if (correctPredictionsCount > 0) {
-            // Синхронизируем через upsert прогресс
-            const correctPredType = await prisma.achievementType.findFirst({
-              where: { metric: AchievementMetric.CORRECT_PREDICTIONS },
-            })
-            if (correctPredType) {
-              await prisma.achievementProgress.upsert({
-                where: {
-                  achievement_progress_unique: {
-                    userId: user.id,
-                    achievementId: correctPredType.id,
-                  },
-                },
-                create: {
-                  userId: user.id,
-                  achievementId: correctPredType.id,
-                  progressCount: correctPredictionsCount,
-                  currentLevel: 0,
-                },
-                update: {
-                  progressCount: correctPredictionsCount,
-                },
-              })
-            }
-          }
-
-          // BROADCAST_WATCH_TIME - из userBroadcastWatchTime
-          const watchTime = await prisma.userBroadcastWatchTime.findUnique({
-            where: { userId: user.id },
-            select: { totalSeconds: true },
-          })
           if (watchTime && watchTime.totalSeconds > 0) {
             const totalMinutes = Math.floor(watchTime.totalSeconds / 60)
             await syncBroadcastWatchProgress(user.id, totalMinutes)
           }
 
-          // Получаем ВСЕ типы достижений с уровнями
-          const allAchievementTypes = await prisma.achievementType.findMany({
-            include: {
-              levels: {
-                orderBy: { level: 'asc' },
-              },
-            },
-            orderBy: { id: 'asc' },
-          })
+          const progressMapInitial = new Map(existingProgress.map(p => [p.achievementId, p]))
+          const achievementIdByMetric = new Map(allAchievementTypes.map(type => [type.metric, type.id]))
+
+          const correctPredictionsCount = legacyCorrectPredictions + entryCorrectPredictions
+          const correctAchievementId = achievementIdByMetric.get(AchievementMetric.CORRECT_PREDICTIONS)
+          const currentCorrectProgress = correctAchievementId
+            ? progressMapInitial.get(correctAchievementId)?.progressCount ?? 0
+            : 0
+
+          if (correctAchievementId && correctPredictionsCount > currentCorrectProgress) {
+            await incrementAchievementProgress(
+              user.id,
+              AchievementMetric.CORRECT_PREDICTIONS,
+              correctPredictionsCount - currentCorrectProgress
+            )
+          }
+
+          const totalPredictionsCount = legacyTotalPredictions + entryTotalPredictions
+          const totalPredictionsAchievementId = achievementIdByMetric.get(AchievementMetric.TOTAL_PREDICTIONS)
+          const currentTotalPredictions = totalPredictionsAchievementId
+            ? progressMapInitial.get(totalPredictionsAchievementId)?.progressCount ?? 0
+            : 0
+
+          if (totalPredictionsAchievementId && totalPredictionsCount > currentTotalPredictions) {
+            await incrementAchievementProgress(
+              user.id,
+              AchievementMetric.TOTAL_PREDICTIONS,
+              totalPredictionsCount - currentTotalPredictions
+            )
+          }
 
           // Получаем прогресс пользователя (уже обновленный)
           const userProgress = await prisma.achievementProgress.findMany({

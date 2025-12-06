@@ -27,7 +27,6 @@ export interface MatchSubscriptionView {
 
 export interface NotificationSettingsView {
   enabled: boolean
-  remindBefore: number
   matchStartEnabled: boolean
   matchEndEnabled: boolean
   goalEnabled: boolean

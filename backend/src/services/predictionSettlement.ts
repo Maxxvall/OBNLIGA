@@ -45,6 +45,7 @@ export type SettlementSummary = {
   lost: number
   voided: number
   cancelled: number
+  winsByUser: Map<number, number>
   // Экспресс-прогнозы
   expressSettlements: ExpressSettlementSummary[]
 }
@@ -397,6 +398,7 @@ const buildSummary = (): SettlementSummary => ({
   lost: 0,
   voided: 0,
   cancelled: 0,
+  winsByUser: new Map<number, number>(),
   expressSettlements: [],
 })
 
@@ -473,6 +475,7 @@ export const settlePredictionEntries = async (
 
       if (resolution.status === PredictionEntryStatus.WON) {
         summary.won += 1
+        summary.winsByUser.set(entry.userId, (summary.winsByUser.get(entry.userId) ?? 0) + 1)
       } else if (resolution.status === PredictionEntryStatus.LOST) {
         summary.lost += 1
       } else if (resolution.status === PredictionEntryStatus.VOID) {

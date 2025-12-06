@@ -90,6 +90,7 @@ type PredictionSettlementResult = {
   lost: number
   voided: number
   cancelled: number
+  winsByUser: Map<number, number>
 }
 
 export async function handleMatchFinalization(
@@ -886,7 +887,7 @@ async function updatePredictions(
         tx,
         logger
       )
-  settlementSummary = settlement as PredictionSettlementResult
+      settlementSummary = settlement as PredictionSettlementResult
       logger.info(
         { matchId: match.id.toString(), settled: settlement.settled, won: settlement.won, lost: settlement.lost },
         'updatePredictions: settlement completed'
@@ -901,6 +902,15 @@ async function updatePredictions(
     }
   } catch (err) {
     logger.error({ err, matchId: match.id.toString() }, 'failed to settle prediction entries')
+  }
+
+  if (settlementSummary && settlementSummary.winsByUser.size > 0) {
+    for (const [userId, wins] of settlementSummary.winsByUser.entries()) {
+      if (wins <= 0) continue
+      await incrementAchievementProgress(userId, AchievementMetric.CORRECT_PREDICTIONS, wins, tx).catch(err => {
+        logger.warn({ err, userId }, 'Failed to increment CORRECT_PREDICTIONS from prediction entries')
+      })
+    }
   }
 
   return settlementSummary

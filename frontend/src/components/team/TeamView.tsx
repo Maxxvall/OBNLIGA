@@ -142,13 +142,6 @@ type TeamMatchItem = {
   match: CompactMatch
 }
 
-type TeamMatchGroup = {
-  id: string
-  seasonId: number
-  seasonName: string
-  matches: TeamMatchItem[]
-}
-
 const collectTeamMatches = (snapshot?: ClubMatchesResponse): TeamMatchItem[] => {
   if (!snapshot) {
     return []
@@ -202,45 +195,23 @@ const selectMatchesForMode = (
         ? Number.POSITIVE_INFINITY
         : Number.NEGATIVE_INFINITY
       : rightTime
-    return safeLeft - safeRight
-  })
 
-  if (mode === 'results') {
-    // Показываем последние завершённые матчи, но в хронологическом порядке
-    return sorted.slice(-limit)
-  }
-
-  return sorted.slice(0, limit)
-}
-
-const groupMatchesBySeason = (matches: TeamMatchItem[]): TeamMatchGroup[] => {
-  if (!matches.length) {
-    return []
-  }
-
-  const groups: TeamMatchGroup[] = []
-  const seasonSegments = new Map<number, number>()
-
-  matches.forEach(item => {
-    const lastGroup = groups[groups.length - 1]
-    if (lastGroup && lastGroup.seasonId === item.seasonId) {
-      lastGroup.matches.push(item)
-      return
+    // Для расписания — сортируем по возрастанию (ближайшие матчи первыми)
+    if (mode === 'schedule') {
+      return safeLeft - safeRight
     }
 
-    const occurrence = (seasonSegments.get(item.seasonId) ?? 0) + 1
-    seasonSegments.set(item.seasonId, occurrence)
-
-    groups.push({
-      id: `${item.seasonId}:${occurrence}`,
-      seasonId: item.seasonId,
-      seasonName: item.seasonName,
-      matches: [item],
-    })
+    // Для результатов — по убыванию (свежие матчи первыми)
+    return safeRight - safeLeft
   })
 
-  return groups
+  // Ограничиваем только расписание (schedule), результаты (results) показываем все
+  if (mode === 'schedule') {
+    return sorted.slice(0, limit)
+  }
+  return sorted
 }
+
 
 const getMatchesEmptyMessage = (mode: TeamMatchesMode) =>
   mode === 'schedule'
@@ -546,12 +517,11 @@ const TeamMatchesList: React.FC<TeamMatchesListProps> = ({ mode, data, loading, 
   const openMatchDetails = useAppStore(state => state.openMatchDetails)
 
   const matches = useMemo(() => collectTeamMatches(data), [data])
-  const selectedMatches = useMemo(() => selectMatchesForMode(matches, mode, 5), [matches, mode])
-  const groups = useMemo(() => groupMatchesBySeason(selectedMatches), [selectedMatches])
+  const selectedMatches = useMemo(() => selectMatchesForMode(matches, mode), [matches, mode])
 
   const isInitialLoading = loading && (!data || data.s.length === 0)
   const emptyMessage = getMatchesEmptyMessage(mode)
-  const isRefreshing = loading && groups.length > 0
+  const isRefreshing = loading && selectedMatches.length > 0
 
   if (isInitialLoading) {
     return (
@@ -563,7 +533,7 @@ const TeamMatchesList: React.FC<TeamMatchesListProps> = ({ mode, data, loading, 
     )
   }
 
-  if (error && groups.length === 0) {
+  if (error && selectedMatches.length === 0) {
     return (
       <div className="inline-feedback error" role="alert">
         <div>Не удалось загрузить данные. Код: {error}</div>
@@ -574,7 +544,7 @@ const TeamMatchesList: React.FC<TeamMatchesListProps> = ({ mode, data, loading, 
     )
   }
 
-  if (groups.length === 0) {
+  if (selectedMatches.length === 0) {
     return (
       <div className="inline-feedback info" role="status">
         {emptyMessage}
@@ -590,90 +560,88 @@ const TeamMatchesList: React.FC<TeamMatchesListProps> = ({ mode, data, loading, 
         </div>
       )}
 
-      {groups.map(group => (
-        <article className="league-round-card team-matches-group" key={group.id}>
-          <header className="league-round-card-header">
-            <h3>{group.seasonName}</h3>
-            <span className="league-round-chip">
-              {mode === 'schedule' ? 'Ближайшие матчи' : 'Недавние матчи'}
-            </span>
-          </header>
-          <div className="league-round-card-body">
-            {group.matches.map(item => {
-              const { match } = item
-              const cardClasses = ['league-match-card', 'team-match-card']
-              const handleOpenMatch = () => {
-                openMatchDetails(match.i, undefined, group.seasonId)
-              }
+      <article className="league-round-card team-matches-group" key="team-matches">
+        <header className="league-round-card-header">
+          <h3>Матчи клуба</h3>
+          <span className="league-round-chip">
+            {mode === 'schedule' ? 'Ближайшие матчи' : 'Недавние матчи'}
+          </span>
+        </header>
+        <div className="league-round-card-body">
+          {selectedMatches.map(item => {
+            const { match } = item
+            const cardClasses = ['league-match-card', 'team-match-card']
+            const handleOpenMatch = () => {
+              openMatchDetails(match.i, undefined, item.seasonId)
+            }
 
-              return (
-                <div
-                  className={cardClasses.join(' ')}
-                  key={match.i}
-                  role="button"
-                  tabIndex={0}
-                  onClick={handleOpenMatch}
-                  onKeyDown={event => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      handleOpenMatch()
-                    }
-                  }}
-                >
-                  <div className="league-match-top">
-                    <span className="match-datetime">{formatMatchDate(match.d)}</span>
+            return (
+              <div
+                className={cardClasses.join(' ')}
+                key={match.i}
+                role="button"
+                tabIndex={0}
+                onClick={handleOpenMatch}
+                onKeyDown={event => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    handleOpenMatch()
+                  }
+                }}
+              >
+                <div className="league-match-top">
+                  <span className="match-datetime">{formatMatchDate(match.d)}</span>
+                </div>
+                <div className="league-match-main">
+                  <div className="league-match-team">
+                    <button
+                      type="button"
+                      className="club-logo-button"
+                      onClick={event => {
+                        event.stopPropagation()
+                        openTeamView(match.h.i)
+                      }}
+                      aria-label={`Открыть страницу клуба ${match.h.n}`}
+                    >
+                      {match.h.l ? (
+                        <img src={match.h.l} alt="" aria-hidden="true" className="club-logo" />
+                      ) : (
+                        <span className="club-logo fallback" aria-hidden="true">
+                          {getFallbackInitials(match.h.n)}
+                        </span>
+                      )}
+                    </button>
+                    <span className="team-name">{match.h.n}</span>
                   </div>
-                  <div className="league-match-main">
-                    <div className="league-match-team">
-                      <button
-                        type="button"
-                        className="club-logo-button"
-                        onClick={event => {
-                          event.stopPropagation()
-                          openTeamView(match.h.i)
-                        }}
-                        aria-label={`Открыть страницу клуба ${match.h.n}`}
-                      >
-                        {match.h.l ? (
-                          <img src={match.h.l} alt="" aria-hidden="true" className="club-logo" />
-                        ) : (
-                          <span className="club-logo fallback" aria-hidden="true">
-                            {getFallbackInitials(match.h.n)}
-                          </span>
-                        )}
-                      </button>
-                      <span className="team-name">{match.h.n}</span>
-                    </div>
-                    <div className="league-match-score">
-                      <span className="score-main">{formatScore(match.sc)}</span>
-                    </div>
-                    <div className="league-match-team">
-                      <button
-                        type="button"
-                        className="club-logo-button"
-                        onClick={event => {
-                          event.stopPropagation()
-                          openTeamView(match.a.i)
-                        }}
-                        aria-label={`Открыть страницу клуба ${match.a.n}`}
-                      >
-                        {match.a.l ? (
-                          <img src={match.a.l} alt="" aria-hidden="true" className="club-logo" />
-                        ) : (
-                          <span className="club-logo fallback" aria-hidden="true">
-                            {getFallbackInitials(match.a.n)}
-                          </span>
-                        )}
-                      </button>
-                      <span className="team-name">{match.a.n}</span>
-                    </div>
+                  <div className="league-match-score">
+                    <span className="score-main">{formatScore(match.sc)}</span>
+                  </div>
+                  <div className="league-match-team">
+                    <button
+                      type="button"
+                      className="club-logo-button"
+                      onClick={event => {
+                        event.stopPropagation()
+                        openTeamView(match.a.i)
+                      }}
+                      aria-label={`Открыть страницу клуба ${match.a.n}`}
+                    >
+                      {match.a.l ? (
+                        <img src={match.a.l} alt="" aria-hidden="true" className="club-logo" />
+                      ) : (
+                        <span className="club-logo fallback" aria-hidden="true">
+                          {getFallbackInitials(match.a.n)}
+                        </span>
+                      )}
+                    </button>
+                    <span className="team-name">{match.a.n}</span>
                   </div>
                 </div>
-              )
-            })}
-          </div>
-        </article>
-      ))}
+              </div>
+            )
+          })}
+        </div>
+      </article>
     </div>
   )
 }

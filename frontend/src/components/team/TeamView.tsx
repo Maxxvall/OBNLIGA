@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { ClubMatchesResponse, ClubSummaryResponse, MatchStatus } from '@shared/types'
 import { useAppStore, TeamSubTab, TeamMatchesMode } from '../../store/appStore'
@@ -225,6 +225,8 @@ const MATCH_DATE_FORMATTER = new Intl.DateTimeFormat('ru-RU', {
   hour: '2-digit',
   minute: '2-digit',
 })
+
+const RESULTS_PAGE_SIZE = 5
 
 const formatMatchDate = (value: string): string => {
   const date = new Date(value)
@@ -518,10 +520,26 @@ const TeamMatchesList: React.FC<TeamMatchesListProps> = ({ mode, data, loading, 
 
   const matches = useMemo(() => collectTeamMatches(data), [data])
   const selectedMatches = useMemo(() => selectMatchesForMode(matches, mode), [matches, mode])
+  const [resultsPageLimit, setResultsPageLimit] = useState(RESULTS_PAGE_SIZE)
+
+  useEffect(() => {
+    if (mode !== 'results') {
+      return
+    }
+    setResultsPageLimit(RESULTS_PAGE_SIZE)
+  }, [mode, selectedMatches.length])
 
   const isInitialLoading = loading && (!data || data.s.length === 0)
   const emptyMessage = getMatchesEmptyMessage(mode)
   const isRefreshing = loading && selectedMatches.length > 0
+  const matchesToRender =
+    mode === 'results' ? selectedMatches.slice(0, resultsPageLimit) : selectedMatches
+  const canLoadMoreResults = mode === 'results' && selectedMatches.length > resultsPageLimit
+  const loadMoreResults = () => {
+    setResultsPageLimit(prev =>
+      Math.min(prev + RESULTS_PAGE_SIZE, selectedMatches.length)
+    )
+  }
 
   if (isInitialLoading) {
     return (
@@ -568,7 +586,7 @@ const TeamMatchesList: React.FC<TeamMatchesListProps> = ({ mode, data, loading, 
           </span>
         </header>
         <div className="league-round-card-body">
-          {selectedMatches.map(item => {
+          {matchesToRender.map(item => {
             const { match } = item
             const cardClasses = ['league-match-card', 'team-match-card']
             const handleOpenMatch = () => {
@@ -641,6 +659,13 @@ const TeamMatchesList: React.FC<TeamMatchesListProps> = ({ mode, data, loading, 
             )
           })}
         </div>
+        {canLoadMoreResults && (
+          <div className="team-matches-load-more">
+            <button type="button" className="button-secondary" onClick={loadMoreResults}>
+              Ещё 5 матчей
+            </button>
+          </div>
+        )}
       </article>
     </div>
   )

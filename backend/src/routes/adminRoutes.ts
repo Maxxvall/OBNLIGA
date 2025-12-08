@@ -11,6 +11,7 @@ import {
   MatchStatus,
   PredictionMarketType,
   Prisma,
+  PrismaClient,
   RatingLevel,
   RatingScope,
   RoundType,

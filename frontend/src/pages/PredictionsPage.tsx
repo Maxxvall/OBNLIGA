@@ -9,6 +9,7 @@ import type {
 import { fetchActivePredictions, fetchMyPredictions, submitPrediction } from '../api/predictionsApi'
 import { ExpressCartProvider } from '../store/ExpressCartContext'
 import { useExpressCart, createCartItem } from '../store/expressCartHooks'
+import { useAppStore } from '../store/appStore'
 import ExpressCartButton from '../components/ExpressCartButton'
 import ExpressCartModal from '../components/ExpressCartModal'
 import ExpressList from '../components/ExpressList'
@@ -387,17 +388,30 @@ const resolveTemplateMeta = (template: PredictionTemplateView): TemplateMeta => 
 }
 
 const renderClubCompactWithLogo = (
-  club: ActivePredictionMatch['homeClub']
-) => (
-  <div className="prediction-club-compact">
-    {club.logoUrl ? (
-      <img src={club.logoUrl} alt={club.name} className="prediction-club-logo" />
-    ) : (
-      <div className="prediction-club-logo-placeholder" />
-    )}
-    <span className="prediction-club-name">{club.name}</span>
-  </div>
-)
+  club: ActivePredictionMatch['homeClub'],
+  onClick?: () => void
+) => {
+  const handleClick = (event: React.MouseEvent) => {
+    event.stopPropagation()
+    onClick?.()
+  }
+
+  return (
+    <button
+      type="button"
+      className="prediction-club-compact"
+      onClick={handleClick}
+      aria-label={`Открыть клуб ${club.name}`}
+    >
+      {club.logoUrl ? (
+        <img src={club.logoUrl} alt="" aria-hidden="true" className="prediction-club-logo" />
+      ) : (
+        <div className="prediction-club-logo-placeholder" aria-hidden="true" />
+      )}
+      <span className="prediction-club-name">{club.name}</span>
+    </button>
+  )
+}
 
 const getClubShortName = (club: { name: string; shortName: string | null }): string => {
   if (club.shortName) return club.shortName
@@ -410,21 +424,44 @@ const getClubShortName = (club: { name: string; shortName: string | null }): str
   return words.map(w => w[0]).join('').slice(0, 3).toUpperCase()
 }
 
-const renderUpcomingMatchHeader = (match: ActivePredictionMatch) => {
+const renderUpcomingMatchHeader = (
+  match: ActivePredictionMatch,
+  onMatchClick?: (match: ActivePredictionMatch) => void,
+  onTeamClick?: (clubId: number) => void
+) => {
   const competitionLabel = match.competitionName && match.seasonName
     ? `${match.competitionName} • ${match.seasonName}`
     : match.competitionName || match.seasonName || 'Матч'
+
+  const handleMatchActivate = () => {
+    onMatchClick?.(match)
+  }
+
+  const handleHeaderKeyDown = (event: React.KeyboardEvent) => {
+    if (!onMatchClick) return
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      handleMatchActivate()
+    }
+  }
   
   return (
-    <header className="prediction-card-header-compact">
+    <header
+      className="prediction-card-header-compact"
+      onClick={handleMatchActivate}
+      onKeyDown={handleHeaderKeyDown}
+      role={onMatchClick ? 'button' : undefined}
+      tabIndex={onMatchClick ? 0 : -1}
+      style={onMatchClick ? { cursor: 'pointer' } : undefined}
+    >
       <div className="prediction-card-meta-compact">
         <span className="prediction-card-competition">{competitionLabel}</span>
         <span className="prediction-card-time">{formatMatchTime(match.matchDateTime)}</span>
       </div>
       <div className="prediction-card-teams-compact">
-        {renderClubCompactWithLogo(match.homeClub)}
+        {renderClubCompactWithLogo(match.homeClub, () => onTeamClick?.(match.homeClub.id))}
         <span className="prediction-vs-compact">VS</span>
-        {renderClubCompactWithLogo(match.awayClub)}
+        {renderClubCompactWithLogo(match.awayClub, () => onTeamClick?.(match.awayClub.id))}
       </div>
     </header>
   )
@@ -549,6 +586,22 @@ const PredictionsPageInner: React.FC = () => {
   const [submitErrors, setSubmitErrors] = useState<Record<string, string | undefined>>({})
   const [submitSuccess, setSubmitSuccess] = useState<Record<string, string | undefined>>({})
   const [expandedMatches, setExpandedMatches] = useState<Record<string, boolean>>({})
+  const openTeamView = useAppStore(state => state.openTeamView)
+  const openMatchDetails = useAppStore(state => state.openMatchDetails)
+
+  const handleMatchOpen = useCallback(
+    (match: ActivePredictionMatch) => {
+      openMatchDetails(match.matchId, undefined, undefined)
+    },
+    [openMatchDetails]
+  )
+
+  const handleTeamOpen = useCallback(
+    (clubId: number) => {
+      openTeamView(clubId)
+    },
+    [openTeamView]
+  )
 
 
   useEffect(() => {
@@ -713,7 +766,7 @@ const PredictionsPageInner: React.FC = () => {
                 if (!match.templates.length) {
                   return (
                     <li key={match.matchId} className="prediction-match">
-                      {renderUpcomingMatchHeader(match)}
+                      {renderUpcomingMatchHeader(match, handleMatchOpen, handleTeamOpen)}
                       <p className="prediction-note compact">Настройки прогнозов появятся позже.</p>
                     </li>
                   )
@@ -767,7 +820,7 @@ const PredictionsPageInner: React.FC = () => {
 
                 return (
                   <li key={match.matchId} className="prediction-match-compact">
-                    {renderUpcomingMatchHeader(match)}
+                    {renderUpcomingMatchHeader(match, handleMatchOpen, handleTeamOpen)}
 
                     {outcomeTemplate ? renderTemplateOptions(outcomeTemplate) : null}
 

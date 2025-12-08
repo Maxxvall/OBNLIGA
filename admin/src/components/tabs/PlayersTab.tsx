@@ -8,13 +8,15 @@ import {
   PlayerTransferInput,
 } from '../../api/adminClient'
 import { useAdminStore } from '../../store/adminStore'
-import { Club, Disqualification, Person } from '../../types'
+import { Club, Disqualification, Person, Season } from '../../types'
 
 type EditPersonFormState = {
   id: number | ''
   firstName: string
   lastName: string
   isPlayer: boolean
+  transferSeasonId: number | ''
+  transferFromClubId: number | ''
   transferClubId: number | ''
 }
 
@@ -34,6 +36,7 @@ type TransferDraft = {
   person: Person
   fromClub: Club | null
   toClub: Club
+  season: Season
 }
 
 const defaultEditPersonForm: EditPersonFormState = {
@@ -41,6 +44,8 @@ const defaultEditPersonForm: EditPersonFormState = {
   firstName: '',
   lastName: '',
   isPlayer: true,
+  transferSeasonId: '',
+  transferFromClubId: '',
   transferClubId: '',
 }
 
@@ -66,16 +71,25 @@ const formatDisqualificationReason = (reason: Disqualification['reason']) => {
 }
 
 export const PlayersTab = () => {
-  const { token, data, fetchDictionaries, fetchDisqualifications, loading, error } = useAdminStore(
-    state => ({
-      token: state.token,
-      data: state.data,
-      fetchDictionaries: state.fetchDictionaries,
-      fetchDisqualifications: state.fetchDisqualifications,
-      loading: state.loading,
-      error: state.error,
-    })
-  )
+  const {
+    token,
+    data,
+    selectedSeasonId,
+    fetchDictionaries,
+    fetchDisqualifications,
+    fetchSeasons,
+    loading,
+    error,
+  } = useAdminStore(state => ({
+    token: state.token,
+    data: state.data,
+    selectedSeasonId: state.selectedSeasonId,
+    fetchDictionaries: state.fetchDictionaries,
+    fetchDisqualifications: state.fetchDisqualifications,
+    fetchSeasons: state.fetchSeasons,
+    loading: state.loading,
+    error: state.error,
+  }))
 
   const [editPersonForm, setEditPersonForm] = useState<EditPersonFormState>(defaultEditPersonForm)
   const [disqualificationForm, setDisqualificationForm] = useState<DisqualificationFormState>(
@@ -91,7 +105,7 @@ export const PlayersTab = () => {
   const transferCounterRef = useRef(0)
   const [transferProcessing, setTransferProcessing] = useState(false)
 
-  const isLoading = Boolean(loading.dictionaries || loading.disqualifications)
+  const isLoading = Boolean(loading.dictionaries || loading.disqualifications || loading.seasons)
 
   // Одноразовая инициализация словарей и дисквалификаций
   const bootRef = useRef(false)
@@ -101,7 +115,19 @@ export const PlayersTab = () => {
     bootRef.current = true
     void fetchDictionaries().catch(() => undefined)
     void fetchDisqualifications().catch(() => undefined)
-  }, [token, fetchDictionaries, fetchDisqualifications])
+    void fetchSeasons().catch(() => undefined)
+  }, [token, fetchDictionaries, fetchDisqualifications, fetchSeasons])
+
+  useEffect(() => {
+    if (editPersonForm.transferSeasonId || !data.seasons.length) return
+    const preferredSeason =
+      (selectedSeasonId && data.seasons.find(season => season.id === selectedSeasonId)) ||
+      data.seasons.find(season => season.isActive) ||
+      data.seasons[0]
+    if (preferredSeason) {
+      setEditPersonForm(form => ({ ...form, transferSeasonId: preferredSeason.id }))
+    }
+  }, [data.seasons, editPersonForm.transferSeasonId, selectedSeasonId])
 
   useEffect(() => {
     const clubId =
@@ -158,10 +184,25 @@ export const PlayersTab = () => {
       handleFeedback('Выберите игрока для перехода', 'error')
       return
     }
+    if (!editPersonForm.transferSeasonId || typeof editPersonForm.transferSeasonId !== 'number') {
+      handleFeedback('Выберите сезон для перехода', 'error')
+      return
+    }
+    const transferSeason = data.seasons.find(season => season.id === editPersonForm.transferSeasonId)
+    if (!transferSeason) {
+      handleFeedback('Сезон недоступен для перехода', 'error')
+      return
+    }
+
+    const seasonClubIds = new Set(seasonClubs.map(club => club.id))
     const targetClubId =
       typeof editPersonForm.transferClubId === 'number' ? editPersonForm.transferClubId : null
     if (!targetClubId) {
       handleFeedback('Выберите клуб для перехода', 'error')
+      return
+    }
+    if (!seasonClubIds.has(targetClubId)) {
+      handleFeedback('Клуб не участвует в выбранном сезоне', 'error')
       return
     }
 
@@ -171,13 +212,20 @@ export const PlayersTab = () => {
       return
     }
 
-    const toClub = data.clubs.find(club => club.id === targetClubId)
+    const toClub =
+      seasonClubs.find(club => club.id === targetClubId) ||
+      data.clubs.find(club => club.id === targetClubId)
     if (!toClub) {
       handleFeedback('Клуб для перехода не найден', 'error')
       return
     }
 
-    const fromClub = person.currentClub ?? null
+    const selectedFromClubId =
+      typeof editPersonForm.transferFromClubId === 'number' ? editPersonForm.transferFromClubId : null
+    const fromClub =
+      selectedFromClubId && seasonClubIds.has(selectedFromClubId)
+        ? seasonClubs.find(club => club.id === selectedFromClubId) ?? null
+        : null
     if (fromClub && fromClub.id === toClub.id) {
       handleFeedback('Игрок уже закреплён за выбранным клубом', 'error')
       return
@@ -201,10 +249,11 @@ export const PlayersTab = () => {
           person,
           fromClub,
           toClub,
+          season: transferSeason,
         },
       ]
     })
-    setEditPersonForm(form => ({ ...form, transferClubId: '' }))
+    setEditPersonForm(form => ({ ...form, transferClubId: '', transferFromClubId: '' }))
     handleFeedback('Переход добавлен в список', 'success')
   }
 
@@ -261,6 +310,45 @@ export const PlayersTab = () => {
     [data.persons, editPersonForm.id]
   )
 
+  const selectedSeason = useMemo<Season | undefined>(
+    () =>
+      typeof editPersonForm.transferSeasonId === 'number'
+        ? data.seasons.find(season => season.id === editPersonForm.transferSeasonId)
+        : undefined,
+    [data.seasons, editPersonForm.transferSeasonId]
+  )
+
+  const seasonClubs = useMemo(() => {
+    if (!selectedSeason?.participants?.length) {
+      return data.clubs
+    }
+    const seen = new Set<number>()
+    const clubs: Club[] = []
+    selectedSeason.participants.forEach(participant => {
+      const club = participant.club ?? data.clubs.find(entry => entry.id === participant.clubId)
+      if (club && !seen.has(club.id)) {
+        seen.add(club.id)
+        clubs.push(club)
+      }
+    })
+    return clubs.length ? clubs : data.clubs
+  }, [data.clubs, selectedSeason])
+
+  const personSeasonClubs = useMemo(() => {
+    const allowed = new Set(seasonClubs.map(club => club.id))
+    const clubs: Club[] = []
+    const pushClub = (club?: Club | null) => {
+      if (club && allowed.has(club.id) && !clubs.some(item => item.id === club.id)) {
+        clubs.push(club)
+      }
+    }
+    if (selectedPerson) {
+      pushClub(selectedPerson.currentClub)
+      selectedPerson.clubs?.forEach(pushClub)
+    }
+    return clubs
+  }, [seasonClubs, selectedPerson])
+
   const handlePersonEditSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!editPersonForm.id) {
@@ -297,11 +385,43 @@ export const PlayersTab = () => {
   const handleSelectPersonToEdit = (personId: number) => {
     const person = data.persons.find(item => item.id === personId)
     if (!person) return
+    const nextSeasonId =
+      editPersonForm.transferSeasonId ||
+      selectedSeasonId ||
+      data.seasons.find(season => season.isActive)?.id ||
+      data.seasons[0]?.id ||
+      ''
+    const seasonForSelection =
+      typeof nextSeasonId === 'number'
+        ? data.seasons.find(season => season.id === nextSeasonId)
+        : undefined
+    const seasonClubsForSelection = (() => {
+      if (seasonForSelection?.participants?.length) {
+        const seen = new Set<number>()
+        const clubs: Club[] = []
+        seasonForSelection.participants.forEach(participant => {
+          const club = participant.club ?? data.clubs.find(entry => entry.id === participant.clubId)
+          if (club && !seen.has(club.id)) {
+            seen.add(club.id)
+            clubs.push(club)
+          }
+        })
+        if (clubs.length) {
+          return clubs
+        }
+      }
+      return data.clubs
+    })()
+    const allowedIds = new Set(seasonClubsForSelection.map(club => club.id))
+    const currentClubIdCandidate =
+      person.currentClub && allowedIds.has(person.currentClub.id) ? person.currentClub.id : ''
     setEditPersonForm({
       id: person.id,
       firstName: person.firstName,
       lastName: person.lastName,
       isPlayer: person.isPlayer,
+      transferSeasonId: nextSeasonId,
+      transferFromClubId: currentClubIdCandidate,
       transferClubId: '',
     })
   }
@@ -392,6 +512,7 @@ export const PlayersTab = () => {
               <thead>
                 <tr>
                   <th>Игрок</th>
+                  <th>Сезон</th>
                   <th>Было</th>
                   <th>Станет</th>
                   <th aria-label="Действия" />
@@ -403,8 +524,9 @@ export const PlayersTab = () => {
                     <td>
                       {draft.person.lastName} {draft.person.firstName}
                     </td>
-                    <td>{draft.fromClub ? draft.fromClub.shortName : 'Свободный агент'}</td>
-                    <td>{draft.toClub.shortName}</td>
+                    <td>{draft.season?.name ?? '—'}</td>
+                    <td>{draft.fromClub ? draft.fromClub.name : 'Свободный агент'}</td>
+                    <td>{draft.toClub.name}</td>
                     <td className="table-actions">
                       <button
                         type="button"
@@ -470,11 +592,48 @@ export const PlayersTab = () => {
             {selectedPerson ? (
               <p className="muted">
                 Текущий клуб:{' '}
-                {selectedPerson.currentClub
-                  ? selectedPerson.currentClub.shortName
-                  : 'Свободный агент'}
+                {selectedPerson.currentClub ? selectedPerson.currentClub.name : 'Свободный агент'}
               </p>
             ) : null}
+            <label>
+              Сезон
+              <select
+                value={editPersonForm.transferSeasonId}
+                onChange={event => {
+                  const value = event.target.value ? Number(event.target.value) : ''
+                  setEditPersonForm(form => ({
+                    ...form,
+                    transferSeasonId: value,
+                    transferClubId: '',
+                    transferFromClubId: '',
+                  }))
+                }}
+              >
+                <option value="">—</option>
+                {data.seasons.map(season => (
+                  <option key={season.id} value={season.id}>
+                    {season.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Текущий клуб
+              <select
+                value={editPersonForm.transferFromClubId}
+                onChange={event => {
+                  const value = event.target.value ? Number(event.target.value) : ''
+                  setEditPersonForm(form => ({ ...form, transferFromClubId: value }))
+                }}
+              >
+                <option value="">Свободный агент</option>
+                {personSeasonClubs.map(club => (
+                  <option key={club.id} value={club.id}>
+                    {club.name}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label>
               Клуб перехода
               <select
@@ -485,9 +644,9 @@ export const PlayersTab = () => {
                 }}
               >
                 <option value="">—</option>
-                {data.clubs.map(club => (
+                {seasonClubs.map(club => (
                   <option key={club.id} value={club.id}>
-                    {club.shortName}
+                    {club.name}
                   </option>
                 ))}
               </select>
@@ -526,7 +685,10 @@ export const PlayersTab = () => {
                 type="button"
                 onClick={handleAddTransferDraft}
                 disabled={
-                  !editPersonForm.id || !editPersonForm.transferClubId || transferProcessing
+                  !editPersonForm.id ||
+                  !editPersonForm.transferClubId ||
+                  !editPersonForm.transferSeasonId ||
+                  transferProcessing
                 }
               >
                 Добавить в список
@@ -566,7 +728,7 @@ export const PlayersTab = () => {
                 <option value="">Выберите клуб</option>
                 {data.clubs.map(club => (
                   <option key={club.id} value={club.id}>
-                    {club.shortName}
+                    {club.name}
                   </option>
                 ))}
               </select>
@@ -689,7 +851,7 @@ export const PlayersTab = () => {
                 <td>{person.lastName}</td>
                 <td>{person.firstName}</td>
                 <td>{person.isPlayer ? 'Игрок' : 'Персонал'}</td>
-                <td>{person.currentClub ? person.currentClub.shortName : 'Свободный агент'}</td>
+                <td>{person.currentClub ? person.currentClub.name : 'Свободный агент'}</td>
                 <td className="table-actions">
                   <button type="button" onClick={() => handleSelectPersonToEdit(person.id)}>
                     Изм.
@@ -735,7 +897,7 @@ export const PlayersTab = () => {
                 <td>
                   {entry.person.lastName} {entry.person.firstName}
                 </td>
-                <td>{entry.club?.shortName ?? '—'}</td>
+                <td>{entry.club?.name ?? '—'}</td>
                 <td>{formatDisqualificationReason(entry.reason)}</td>
                 <td>{entry.banDurationMatches}</td>
                 <td>{entry.matchesMissed}</td>
@@ -798,7 +960,7 @@ export const PlayersTab = () => {
                 <td>
                   {entry.person.lastName} {entry.person.firstName}
                 </td>
-                <td>{entry.club?.shortName ?? '—'}</td>
+                <td>{entry.club?.name ?? '—'}</td>
                 <td>{formatDisqualificationReason(entry.reason)}</td>
                 <td>{entry.banDurationMatches}</td>
                 <td>{entry.matchesMissed}</td>

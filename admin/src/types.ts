@@ -477,7 +477,25 @@ export interface AchievementType {
   name: string
   description?: string | null
   requiredValue: number
-  metric: 'DAILY_LOGIN' | 'TOTAL_PREDICTIONS' | 'CORRECT_PREDICTIONS'
+  metric:
+    | 'DAILY_LOGIN'
+    | 'TOTAL_PREDICTIONS'
+    | 'CORRECT_PREDICTIONS'
+    | 'SEASON_POINTS'
+    | 'PREDICTION_STREAK'
+    | 'EXPRESS_WINS'
+    | 'BROADCAST_WATCH_TIME'
+  levels: AchievementLevel[]
+}
+
+export interface AchievementLevel {
+  id: number
+  level: number
+  threshold: number
+  title: string
+  description?: string | null
+  iconUrl?: string | null
+  rewardPoints?: number | null
 }
 
 export interface UserAchievement {

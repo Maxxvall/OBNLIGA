@@ -92,6 +92,13 @@ import {
 import {
   processPendingAchievementJobs,
   getAchievementJobsStats,
+  STREAK_REWARD_CONFIG,
+  PREDICTIONS_REWARD_CONFIG,
+  SEASON_POINTS_REWARD_CONFIG,
+  BET_WINS_REWARD_CONFIG,
+  PREDICTION_STREAK_REWARD_CONFIG,
+  EXPRESS_WINS_REWARD_CONFIG,
+  BROADCAST_WATCH_REWARD_CONFIG,
 } from '../services/achievementJobProcessor'
 import { syncAllSeasonPointsProgress } from '../services/achievementProgress'
 import {
@@ -3550,26 +3557,54 @@ export default async function (server: FastifyInstance) {
         let newsPayload: unknown = null
         if (applied.length) {
           try {
-            const dateLabel = new Date().toLocaleDateString('ru-RU')
-            const lines = applied
-              .map(entry => {
-                const fromLabel = entry.fromClub ? entry.fromClub.shortName : 'свободного статуса'
-                const toLabel = entry.toClub ? entry.toClub.shortName : 'без клуба'
-                return `• ${entry.person.lastName} ${entry.person.firstName}: ${fromLabel} → ${toLabel}`
-              })
-              .join('\n')
+            const clubSections = new Map<
+              number,
+              { name: string; incoming: string[]; outgoing: string[] }
+            >()
 
-            const first = applied[0]
-            const targetLabel = first.toClub ? first.toClub.shortName : 'новый клуб'
-            const title =
-              applied.length === 1
-                ? `Трансфер: ${first.person.lastName} ${first.person.firstName} → ${targetLabel}`
-                : `Трансферы (${dateLabel})`
-            const content = `Завершены трансферные изменения:\n\n${lines}`
+            const ensureClub = (id: number, name: string) => {
+              const existing = clubSections.get(id)
+              if (existing) return existing
+              const next = { name, incoming: [] as string[], outgoing: [] as string[] }
+              clubSections.set(id, next)
+              return next
+            }
+
+            for (const entry of applied) {
+              const playerName = `${entry.person.lastName} ${entry.person.firstName}`
+              if (entry.toClub) {
+                const club = ensureClub(entry.toClub.id, entry.toClub.name)
+                club.incoming.push(playerName)
+              }
+              if (entry.fromClub) {
+                const club = ensureClub(entry.fromClub.id, entry.fromClub.name)
+                club.outgoing.push(playerName)
+              }
+            }
+
+            const lines: string[] = ['ТРАНСФЕРЫ', '']
+            Array.from(clubSections.values()).forEach(club => {
+              lines.push(club.name)
+              if (club.incoming.length) {
+                lines.push('🟢→')
+                club.incoming.forEach(player => lines.push(`- ${player}`))
+              }
+              if (club.outgoing.length) {
+                lines.push('🔴←')
+                club.outgoing.forEach(player => lines.push(`- ${player}`))
+              }
+              lines.push('')
+            })
+
+            while (lines.length && lines[lines.length - 1] === '') {
+              lines.pop()
+            }
+
+            const content = lines.join('\n')
 
             const news = await prisma.news.create({
               data: {
-                title,
+                title: 'ТРАНСФЕРЫ',
                 content,
                 coverUrl: null,
                 sendToTelegram: false,
@@ -5819,31 +5854,133 @@ export default async function (server: FastifyInstance) {
         return sendSerialized(reply, prediction)
       })
 
+      const rewardPointsForLevel = (metric: AchievementMetric, level: number): number | null => {
+        switch (metric) {
+          case AchievementMetric.DAILY_LOGIN:
+            return STREAK_REWARD_CONFIG[level] ?? null
+          case AchievementMetric.TOTAL_PREDICTIONS:
+            return PREDICTIONS_REWARD_CONFIG[level] ?? null
+          case AchievementMetric.SEASON_POINTS:
+            return SEASON_POINTS_REWARD_CONFIG[level] ?? null
+          case AchievementMetric.CORRECT_PREDICTIONS:
+            return BET_WINS_REWARD_CONFIG[level] ?? null
+          case AchievementMetric.PREDICTION_STREAK:
+            return PREDICTION_STREAK_REWARD_CONFIG[level] ?? null
+          case AchievementMetric.EXPRESS_WINS:
+            return EXPRESS_WINS_REWARD_CONFIG[level] ?? null
+          case AchievementMetric.BROADCAST_WATCH_TIME:
+            return BROADCAST_WATCH_REWARD_CONFIG[level] ?? null
+          default:
+            return null
+        }
+      }
+
+      const normalizeAchievementLevelsInput = (
+        metric: AchievementMetric | undefined,
+        levels: unknown
+      ) => {
+        if (!metric || !Array.isArray(levels)) return []
+        const normalized = (levels as Array<Record<string, unknown>>)
+          .map(level => {
+            const levelNumber = Number(level.level)
+            const threshold = Number(level.threshold)
+            if (!Number.isFinite(levelNumber) || !Number.isFinite(threshold) || threshold <= 0) {
+              return null
+            }
+            const safeLevel = Math.max(1, Math.min(3, Math.round(levelNumber)))
+            const title = typeof level.title === 'string' && level.title.trim()
+              ? level.title.trim()
+              : `Уровень ${safeLevel}`
+            const description =
+              typeof level.description === 'string' && level.description.trim()
+                ? level.description.trim()
+                : null
+            const iconUrl =
+              typeof level.iconUrl === 'string' && level.iconUrl.trim()
+                ? level.iconUrl.trim()
+                : null
+
+            return {
+              level: safeLevel,
+              threshold: Math.round(threshold),
+              title,
+              description,
+              iconUrl,
+              rewardPoints: rewardPointsForLevel(metric, safeLevel),
+            }
+          })
+          .filter((entry): entry is { level: number; threshold: number; title: string; description: string | null; iconUrl: string | null; rewardPoints: number | null } => Boolean(entry))
+
+        const deduped = new Map<number, (typeof normalized)[number]>()
+        normalized.forEach(level => {
+          if (!deduped.has(level.level)) {
+            deduped.set(level.level, level)
+          }
+        })
+
+        return Array.from(deduped.values()).sort((a, b) => a.level - b.level)
+      }
+
+      const mapAchievementTypeWithRewards = <T extends { metric: AchievementMetric; levels: Array<{ level: number }> }>(
+        type: T
+      ) => ({
+        ...type,
+        levels: type.levels.map(level => ({
+          ...level,
+          rewardPoints: rewardPointsForLevel(type.metric, level.level),
+        })),
+      })
+
       // Achievements
       admin.get('/achievements/types', async (_request, reply) => {
-        const types = await prisma.achievementType.findMany({ orderBy: { name: 'asc' } })
-        return reply.send({ ok: true, data: types })
+        const types = await prisma.achievementType.findMany({
+          orderBy: { name: 'asc' },
+          include: {
+            levels: { orderBy: { level: 'asc' } },
+          },
+        })
+        return reply.send({ ok: true, data: types.map(mapAchievementTypeWithRewards) })
       })
 
       admin.post('/achievements/types', async (request, reply) => {
         const body = request.body as {
           name?: string
           description?: string
-          requiredValue?: number
           metric?: AchievementMetric
+          levels?: Array<{
+            level?: number
+            threshold?: number
+            title?: string
+            description?: string
+            iconUrl?: string
+          }>
         }
-        if (!body?.name || !body?.requiredValue || !body?.metric) {
+        const levels = normalizeAchievementLevelsInput(body.metric, body.levels)
+        if (!body?.name || !body?.metric || !levels.length) {
           return reply.status(400).send({ ok: false, error: 'achievement_fields_required' })
         }
+        const requiredValue = Math.max(...levels.map(level => level.threshold))
         const type = await prisma.achievementType.create({
           data: {
             name: body.name.trim(),
             description: body.description?.trim() ?? null,
-            requiredValue: body.requiredValue,
+            requiredValue,
             metric: body.metric,
+            levels: {
+              create: levels.map(level => ({
+                level: level.level,
+                threshold: level.threshold,
+                title: level.title,
+                description: level.description,
+                iconUrl: level.iconUrl,
+              })),
+            },
+          },
+          include: {
+            levels: { orderBy: { level: 'asc' } },
           },
         })
-        return reply.send({ ok: true, data: type })
+        return reply.send({ ok: true, data: mapAchievementTypeWithRewards(type) })
       })
 
       admin.put('/achievements/types/:achievementTypeId', async (request, reply) => {
@@ -5854,20 +5991,45 @@ export default async function (server: FastifyInstance) {
         const body = request.body as {
           name?: string
           description?: string
-          requiredValue?: number
           metric?: AchievementMetric
+          levels?: Array<{
+            level?: number
+            threshold?: number
+            title?: string
+            description?: string
+            iconUrl?: string
+          }>
         }
+        const levels = normalizeAchievementLevelsInput(body.metric, body.levels)
+        if (!body?.name || !body?.metric || !levels.length) {
+          return reply.status(400).send({ ok: false, error: 'achievement_fields_required' })
+        }
+        const requiredValue = Math.max(...levels.map(level => level.threshold))
+
         const type = await prisma.achievementType.update({
           where: { id: achievementTypeId },
           data: {
             name: body.name?.trim(),
-            description: body.description?.trim(),
-            requiredValue: body.requiredValue ?? undefined,
-            metric: body.metric ?? undefined,
+            description: body.description?.trim() ?? null,
+            requiredValue,
+            metric: body.metric,
+            levels: {
+              deleteMany: {},
+              create: levels.map(level => ({
+                level: level.level,
+                threshold: level.threshold,
+                title: level.title,
+                description: level.description,
+                iconUrl: level.iconUrl,
+              })),
+            },
+          },
+          include: {
+            levels: { orderBy: { level: 'asc' } },
           },
         })
         await recomputeAchievementsForType(achievementTypeId)
-        return reply.send({ ok: true, data: type })
+        return reply.send({ ok: true, data: mapAchievementTypeWithRewards(type) })
       })
 
       admin.delete('/achievements/types/:achievementTypeId', async (request, reply) => {
@@ -5884,7 +6046,11 @@ export default async function (server: FastifyInstance) {
         const achievements = await prisma.userAchievement.findMany({
           include: {
             user: true,
-            achievementType: true,
+            achievementType: {
+              include: {
+                levels: { orderBy: { level: 'asc' } },
+              },
+            },
           },
           orderBy: { achievedDate: 'desc' },
         })
@@ -6074,30 +6240,89 @@ export default async function (server: FastifyInstance) {
 }
 
 async function recomputeAchievementsForType(achievementTypeId: number) {
-  const type = await prisma.achievementType.findUnique({ where: { id: achievementTypeId } })
-  if (!type) return
-  const users = await prisma.appUser.findMany({
-    include: { predictions: true, achievements: true },
+  const type = await prisma.achievementType.findUnique({
+    where: { id: achievementTypeId },
+    include: {
+      levels: true,
+    },
   })
-  for (const user of users) {
-    let achieved = false
-    if (type.metric === AchievementMetric.TOTAL_PREDICTIONS) {
-      achieved = user.predictions.length >= type.requiredValue
-    } else if (type.metric === AchievementMetric.CORRECT_PREDICTIONS) {
-      const correct = user.predictions.filter(p => p.isCorrect).length
-      achieved = correct >= type.requiredValue
+  if (!type || !type.levels.length) return
+
+  const thresholds = type.levels
+    .map(level => ({ level: level.level, threshold: level.threshold }))
+    .sort((a, b) => a.level - b.level)
+
+  const resolveUnlockedLevel = (value: number) => {
+    let unlocked = 0
+    for (const entry of thresholds) {
+      if (value >= entry.threshold && entry.level > unlocked) {
+        unlocked = entry.level
+      }
     }
-    if (achieved) {
-      const existing = user.achievements.find(ua => ua.achievementTypeId === type.id)
-      if (!existing) {
-        await prisma.userAchievement.create({
-          data: {
+    return unlocked
+  }
+
+  if (
+    type.metric !== AchievementMetric.TOTAL_PREDICTIONS &&
+    type.metric !== AchievementMetric.CORRECT_PREDICTIONS
+  ) {
+    return
+  }
+
+  const users = await prisma.appUser.findMany({ select: { id: true } })
+
+  for (const user of users) {
+    let progressCount: number | null = null
+
+    if (type.metric === AchievementMetric.TOTAL_PREDICTIONS) {
+      progressCount = await prisma.prediction.count({ where: { userId: user.id } })
+    } else if (type.metric === AchievementMetric.CORRECT_PREDICTIONS) {
+      progressCount = await prisma.prediction.count({ where: { userId: user.id, isCorrect: true } })
+    }
+
+    if (progressCount === null) continue
+
+    const unlockedLevel = resolveUnlockedLevel(progressCount)
+    const lastUnlockedAt = unlockedLevel > 0 ? new Date() : null
+
+    await prisma.achievementProgress.upsert({
+      where: {
+        achievement_progress_unique: {
+          userId: user.id,
+          achievementId: type.id,
+        },
+      },
+      create: {
+        userId: user.id,
+        achievementId: type.id,
+        progressCount,
+        currentLevel: unlockedLevel,
+        lastUnlockedAt,
+      },
+      update: {
+        progressCount,
+        currentLevel: unlockedLevel,
+        lastUnlockedAt,
+      },
+    })
+
+    if (unlockedLevel > 0) {
+      await prisma.userAchievement.upsert({
+        where: {
+          userId_achievementTypeId: {
             userId: user.id,
             achievementTypeId: type.id,
-            achievedDate: new Date(),
           },
-        })
-      }
+        },
+        update: {
+          achievedDate: lastUnlockedAt ?? new Date(),
+        },
+        create: {
+          userId: user.id,
+          achievementTypeId: type.id,
+          achievedDate: lastUnlockedAt ?? new Date(),
+        },
+      })
     }
   }
 }

@@ -188,6 +188,19 @@
   gap: 8px;
   flex: 1;
   min-width: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: center;
+  -webkit-appearance: none;
+}
+
+.prediction-club-compact:focus-visible {
+  outline: 2px solid rgba(0, 240, 255, 0.9);
+  outline-offset: 2px;
 }
 
 .prediction-club-logo {

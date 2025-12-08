@@ -258,6 +258,12 @@
 
 .profile-card-achievement-count .achievement-icon {
   font-size: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  height: 20px;
+  vertical-align: middle;
 }
 
 .profile-card-achievement-count .achievement-value {
@@ -291,6 +297,29 @@
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+@media (max-width: 480px) {
+  .profile-card-player-stats {
+    flex-wrap: nowrap;
+    gap: 8px;
+    overflow: hidden;
+  }
+
+  .player-stat-item {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 6px 8px;
+  }
+
+  .player-stat-value {
+    font-size: 14px;
+  }
+
+  .player-stat-label,
+  .stat-label {
+    font-size: 11px;
+  }
 }
 
 .player-stat-icon {

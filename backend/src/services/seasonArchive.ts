@@ -190,6 +190,29 @@ export interface ArchiveValidationDetails {
   totalSeries: number
 }
 
+const countUnfinishedSeriesForArchive = async (seasonId: number): Promise<number> => {
+  const candidateSeries = await prisma.matchSeries.findMany({
+    where: { seasonId, seriesStatus: { not: SeriesStatus.FINISHED } },
+    select: {
+      id: true,
+      winnerClubId: true,
+      matches: { select: { status: true } },
+    },
+  })
+
+  let unfinished = 0
+  for (const series of candidateSeries) {
+    const allMatchesFinished = series.matches.every(match => match.status === MatchStatus.FINISHED)
+    const hasWinner = typeof series.winnerClubId === 'number'
+    if (allMatchesFinished && hasWinner) {
+      continue
+    }
+    unfinished += 1
+  }
+
+  return unfinished
+}
+
 /**
  * Проверяет готовность сезона к архивации
  */
@@ -231,12 +254,7 @@ export const validateSeasonForArchive = async (
   }
 
   // Проверяем незавершённые серии плей-офф
-  const unfinishedSeries = await prisma.matchSeries.count({
-    where: {
-      seasonId,
-      seriesStatus: { not: SeriesStatus.FINISHED },
-    },
-  })
+  const unfinishedSeries = await countUnfinishedSeriesForArchive(seasonId)
 
   if (unfinishedSeries > 0) {
     return {
@@ -284,12 +302,7 @@ export const getSeasonArchiveValidationDetails = async (
     prisma.matchSeries.count({
       where: { seasonId },
     }),
-    prisma.matchSeries.count({
-      where: {
-        seasonId,
-        seriesStatus: { not: SeriesStatus.FINISHED },
-      },
-    }),
+    countUnfinishedSeriesForArchive(seasonId),
   ])
 
   const allMatchesFinished = unfinishedMatches === 0

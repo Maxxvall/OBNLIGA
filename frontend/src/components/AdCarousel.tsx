@@ -413,7 +413,7 @@ export function AdCarousel() {
       return 'Рекламный блок'
     }
     const single = displayAds[0]
-    return single.safeTarget ? 'Тапните для перехода по ссылке' : null
+    return single.safeTarget ? 'Нажмите для перехода по ссылке' : null
   }, [displayAds])
 
   if (loading && displayAds.length === 0) {

@@ -661,8 +661,10 @@ export const generateQuarterFinalPairs2Groups = (
     entries.sort((a, b) => a.placement - b.placement)
   }
 
-  const groupA = byGroup.get(1) ?? []
-  const groupB = byGroup.get(2) ?? []
+  const sortedGroups = Array.from(byGroup.entries()).sort((a, b) => a[0] - b[0])
+  if (sortedGroups.length < 2) return plans
+  const groupA = sortedGroups[0][1]
+  const groupB = sortedGroups[1][1]
 
   const getTeam = (group: GroupStandingEntry[], placement: number) =>
     group.find(e => e.placement === placement)

@@ -16,6 +16,7 @@ import {
   generateQualificationPairs4x3,
   CUP_STAGE_NAMES,
   needsQualification,
+  getCupQualifyCount,
   type GroupStandingEntry,
 } from './cupBracketLogic'
 
@@ -1350,6 +1351,16 @@ export const createSeasonPlayoffs = async (
       // Для 4×3 нужны ВСЕ команды (включая 3-и места) для квалификации
       const is4x3Configuration = season.competition.type === CompetitionType.CUP &&
         needsQualification(detectedGroupCount, detectedGroupSize)
+
+      // Если сезон кубковый — переопределим qualifyCount для уже созданных групп
+      // Это нужно для старых сезонов, где поле могло быть задано некорректно.
+      if (season.competition.type === CompetitionType.CUP) {
+        const cupQualify = getCupQualifyCount(detectedGroupCount, detectedGroupSize)
+        for (const g of groups) {
+          // modify in-memory object only, не делаем запись в БД
+          ;(g as any).qualifyCount = cupQualify
+        }
+      }
 
       groupSeedDetails = computeGroupPlayoffSeeds(groups, groupMatchSummaries, is4x3Configuration)
       seededClubIds = groupSeedDetails.map(entry => entry.clubId)

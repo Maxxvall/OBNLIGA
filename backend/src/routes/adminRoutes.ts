@@ -22,6 +22,7 @@ import { buildLeagueTable } from '../services/leagueTable'
 import { refreshFriendlyAggregates, refreshLeagueMatchAggregates } from '../services/leagueSchedule'
 import { matchBroadcastCacheKey } from '../services/matchDetailsPublic'
 import { createSeasonPlayoffs, runSeasonAutomation } from '../services/seasonAutomation'
+import { getCupQualifyCount } from '../services/cupBracketLogic'
 import {
   ensurePredictionTemplatesForMatch,
   invalidateUpcomingPredictionCaches,
@@ -259,10 +260,10 @@ const shouldSyncSeasonRoster = (season: { endDate: Date }): boolean => {
 }
 
 const syncClubSeasonRosters = async (
-  tx: Prisma.TransactionClient,
+  client: Prisma.TransactionClient | PrismaClient,
   clubId: number
 ): Promise<number[]> => {
-  const clubPlayers = await tx.clubPlayer.findMany({
+  const clubPlayers = await client.clubPlayer.findMany({
     where: { clubId },
     orderBy: [{ defaultShirtNumber: 'asc' }, { personId: 'asc' }],
   })
@@ -272,7 +273,7 @@ const syncClubSeasonRosters = async (
     desiredNumbers.set(player.personId, normalizeShirtNumber(player.defaultShirtNumber))
   }
 
-  const currentParticipants = await tx.seasonParticipant.findMany({
+  const currentParticipants = await client.seasonParticipant.findMany({
     where: { clubId },
     include: {
       season: {
@@ -293,14 +294,14 @@ const syncClubSeasonRosters = async (
       continue
     }
 
-    const rosterEntries = await tx.seasonRoster.findMany({
+    const rosterEntries = await client.seasonRoster.findMany({
       where: { seasonId: season.id, clubId },
       orderBy: [{ shirtNumber: 'asc' }],
     })
 
     const obsoleteEntries = rosterEntries.filter(entry => !clubPlayerIds.has(entry.personId))
     if (obsoleteEntries.length) {
-      await tx.seasonRoster.deleteMany({
+      await client.seasonRoster.deleteMany({
         where: {
           seasonId: season.id,
           clubId,
@@ -339,7 +340,7 @@ const syncClubSeasonRosters = async (
 
     if (updates.length) {
       for (const update of updates) {
-        await tx.seasonRoster.update({
+        await client.seasonRoster.update({
           where: {
             seasonId_clubId_personId: {
               seasonId: season.id,
@@ -353,7 +354,7 @@ const syncClubSeasonRosters = async (
     }
 
     if (creations.length) {
-      await tx.seasonRoster.createMany({
+      await client.seasonRoster.createMany({
         data: creations.map(entry => ({
           seasonId: season.id,
           clubId,
@@ -2849,7 +2850,6 @@ export default async function (server: FastifyInstance) {
           await prisma.$transaction(async tx => {
             if (!normalized.length) {
               await tx.clubPlayer.deleteMany({ where: { clubId } })
-              await syncClubSeasonRosters(tx, clubId)
               return
             }
 
@@ -2886,7 +2886,6 @@ export default async function (server: FastifyInstance) {
               })
             }
 
-            await syncClubSeasonRosters(tx, clubId)
           }, { timeout: 20000, maxWait: 2000 })
         } catch (err) {
           const prismaErr = err as Prisma.PrismaClientKnownRequestError
@@ -2895,6 +2894,12 @@ export default async function (server: FastifyInstance) {
           }
           request.server.log.error({ err }, 'club players update failed')
           return reply.status(500).send({ ok: false, error: 'club_players_update_failed' })
+        }
+
+        try {
+          await syncClubSeasonRosters(prisma, clubId)
+        } catch (err) {
+          request.server.log.error({ err, clubId }, 'club roster sync failed')
         }
 
         const players = await prisma.clubPlayer.findMany({
@@ -3087,11 +3092,16 @@ export default async function (server: FastifyInstance) {
               clubPersonIds.add(person.id)
             }
 
-            await syncClubSeasonRosters(tx, clubId)
           })
         } catch (err) {
           request.server.log.error({ err }, 'club players import failed')
           return reply.status(500).send({ ok: false, error: 'club_players_import_failed' })
+        }
+
+        try {
+          await syncClubSeasonRosters(prisma, clubId)
+        } catch (err) {
+          request.server.log.error({ err, clubId }, 'club roster sync failed')
         }
 
         const players = await prisma.clubPlayer.findMany({
@@ -3542,9 +3552,6 @@ export default async function (server: FastifyInstance) {
               })
             }
 
-            for (const clubId of affectedClubIds) {
-              await syncClubSeasonRosters(tx, clubId)
-            }
           })
         } catch (err) {
           if (err instanceof TransferError) {
@@ -3552,6 +3559,14 @@ export default async function (server: FastifyInstance) {
           }
           request.server.log.error({ err }, 'player transfers failed')
           return reply.status(500).send({ ok: false, error: 'transfer_failed' })
+        }
+
+        for (const clubId of affectedClubIds) {
+          try {
+            await syncClubSeasonRosters(prisma, clubId)
+          } catch (err) {
+            admin.log.error({ err, clubId }, 'transfer roster sync failed')
+          }
         }
 
         let newsPayload: unknown = null
@@ -3582,7 +3597,9 @@ export default async function (server: FastifyInstance) {
               }
             }
 
-            const lines: string[] = ['ТРАНСФЕРЫ', '']
+            // Заголовок новости задаётся отдельно (title: 'ТРАНСФЕРЫ'),
+            // поэтому не дублируем его в теле контента — начинаем сразу с секций клубов.
+            const lines: string[] = []
             Array.from(clubSections.values()).forEach(club => {
               lines.push(club.name)
               if (club.incoming.length) {
@@ -3968,6 +3985,21 @@ export default async function (server: FastifyInstance) {
             groupSize,
             qualifyCount: Number(rawGroupStage.qualifyCount ?? parsedGroups[0]?.qualifyCount ?? 0),
             groups: parsedGroups,
+          }
+
+          if (isCupForCompetition && groupStageConfig.groupCount && groupStageConfig.groupSize) {
+            const cupQualifyCount = getCupQualifyCount(
+              groupStageConfig.groupCount,
+              groupStageConfig.groupSize
+            )
+            groupStageConfig = {
+              ...groupStageConfig,
+              qualifyCount: cupQualifyCount,
+              groups: groupStageConfig.groups.map(group => ({
+                ...group,
+                qualifyCount: cupQualifyCount,
+              })),
+            }
           }
 
           clubIds = []

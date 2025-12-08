@@ -963,7 +963,7 @@ const PredictionsPageInner: React.FC = () => {
           <div>
             <h1 className="predictions-title">Прогнозы</h1>
             <p className="predictions-subtitle">
-              Выбирайте исходы матчей и зарабатывайте очки в рейтинге. Лимит: 10 прогнозов в неделю.
+              Выбирайте исходы матчей и зарабатывайте очки в рейтинге. Лимит: 10 прогнозов и 2 экспресса в неделю.
             </p>
           </div>
         </div>

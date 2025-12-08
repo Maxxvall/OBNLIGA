@@ -326,9 +326,66 @@ export const NewsSection = () => {
                   </div>
                 ) : null}
                 <div className="news-content">
-                  {modalState.item.content.split('\n').map((paragraph, idx) => (
-                    <p key={idx}>{paragraph}</p>
-                  ))}
+                  {(() => {
+                    const parts = modalState.item.content
+                      .split('\n')
+                      .map(p => p.trim())
+                      .filter(p => p.length > 0)
+
+                    type TeamBlock = { type: 'team'; name: string; items: string[] }
+                    type ParaBlock = { type: 'para'; text: string }
+                    const blocks: Array<TeamBlock | ParaBlock> = []
+
+                    const isTeamHeader = (text: string) => {
+                      if (!text) return false
+                      if (text.startsWith('-')) return false
+                      const words = text.split(/\s+/).filter(Boolean)
+                      if (words.length > 4) return false
+                      if (text.length > 40) return false
+                      // likely a short line — treat as team name
+                      return true
+                    }
+
+                    for (let i = 0; i < parts.length; i++) {
+                      const p = parts[i]
+                      if (isTeamHeader(p)) {
+                        const team: TeamBlock = { type: 'team', name: p, items: [] }
+                        let j = i + 1
+                        while (j < parts.length && !isTeamHeader(parts[j])) {
+                          team.items.push(parts[j])
+                          j++
+                        }
+                        blocks.push(team)
+                        i = j - 1
+                      } else {
+                        blocks.push({ type: 'para', text: p })
+                      }
+                    }
+
+                    return blocks.map((b, idx) => {
+                      if (b.type === 'team') {
+                        return (
+                          <div className="news-team" key={idx}>
+                            <div className="news-team-name">{b.name}</div>
+                            {b.items.length ? (
+                              <ul className="news-team-list">
+                                {b.items.map((it, i) => (
+                                  <li key={i} className="news-team-item">
+                                    {it}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : null}
+                          </div>
+                        )
+                      }
+                      return (
+                        <p key={idx} className="news-paragraph">
+                          {b.text}
+                        </p>
+                      )
+                    })
+                  })()}
                 </div>
                 <button className="news-close" type="button" onClick={closeModal}>
                     Закрыть

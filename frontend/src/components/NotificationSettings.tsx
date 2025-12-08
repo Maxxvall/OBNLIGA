@@ -56,8 +56,7 @@ export const NotificationSettings: React.FC<NotificationSettingsProps> = ({ clas
     } finally {
       setLoading(false)
     }
-  }, [])
-
+  }, [summaryVersion, settingsVersion])
   useEffect(() => {
     void loadData()
   }, [loadData])

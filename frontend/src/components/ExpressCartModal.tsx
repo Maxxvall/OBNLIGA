@@ -214,7 +214,7 @@ const ExpressCartModal: React.FC<ExpressCartModalProps> = ({ onExpressCreated })
             {weekCount && (
               <div className="express-modal-limits">
                 <span className="express-modal-limits-label">
-                  Экспрессов за {weekCount.periodDays} дней:
+                  Экспрессов за {weekCount.periodDays === 6 ? 7 : weekCount.periodDays} дней:
                 </span>
                 <span className={`express-modal-limits-value ${weeklyLimitReached ? 'limit-reached' : ''}`}>
                   {weekCount.count}/{weekCount.limit}

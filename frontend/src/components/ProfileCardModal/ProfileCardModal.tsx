@@ -98,21 +98,18 @@ export function ProfileCardModal({ isOpen, onClose, initialData, position }: Pro
       <section className="profile-card-player">
         <div className="profile-card-section-title">Карьера игрока</div>
         <div className="profile-card-player-stats">
-          <div className="player-stat-item">
-            <span className="player-stat-icon">⚽</span>
-            <span className="player-stat-value">{formatNumber(leaguePlayer.stats.totalGoals)}</span>
-            <span className="player-stat-label">голов</span>
-          </div>
-          <div className="player-stat-item">
-            <span className="player-stat-icon">👟</span>
-            <span className="player-stat-value">{formatNumber(leaguePlayer.stats.totalAssists)}</span>
-            <span className="player-stat-label">передач</span>
-          </div>
-          <div className="player-stat-item">
-            <span className="player-stat-icon">🏟️</span>
-            <span className="player-stat-value">{formatNumber(leaguePlayer.stats.totalMatches)}</span>
-            <span className="player-stat-label">матчей</span>
-          </div>
+            <div className="player-stat-item">
+              <span className="player-stat-icon">🏟️</span>
+              <span className="player-stat-value">{formatNumber(leaguePlayer.stats.totalMatches)}</span>
+            </div>
+            <div className="player-stat-item">
+              <span className="player-stat-icon">⚽</span>
+              <span className="player-stat-value">{formatNumber(leaguePlayer.stats.totalGoals)}</span>
+            </div>
+            <div className="player-stat-item">
+              <span className="player-stat-icon">👟</span>
+              <span className="player-stat-value">{formatNumber(leaguePlayer.stats.totalAssists)}</span>
+            </div>
           <div className="player-stat-item">
             <span className="player-stat-icon yellow">▬</span>
             <span className="player-stat-value">{formatNumber(leaguePlayer.stats.yellowCards)}</span>

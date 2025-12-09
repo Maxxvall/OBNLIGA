@@ -1358,7 +1358,7 @@ export const createSeasonPlayoffs = async (
         const cupQualify = getCupQualifyCount(detectedGroupCount, detectedGroupSize)
         for (const g of groups) {
           // modify in-memory object only, не делаем запись в БД
-          ;(g as any).qualifyCount = cupQualify
+          g.qualifyCount = cupQualify
         }
       }
 

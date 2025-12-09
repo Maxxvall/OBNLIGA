@@ -144,10 +144,19 @@ declare module '@shared/types' {
     clubs: LeaguePlayerClubInfo[]
   }
 
+  export interface UserAchievementBadge {
+    achievementId: number
+    group: string
+    level: number
+    iconUrl: string | null
+    title: string | null
+  }
+
   export interface UserCardExtraView {
     registrationDate: string
     achievementCount: number
     achievementMaxLevel: number
+    achievementBadges: UserAchievementBadge[]
     leaguePlayer: LeaguePlayerCardInfo | null
   }
 }

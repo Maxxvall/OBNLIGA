@@ -1,5 +1,6 @@
+import { AchievementMetric } from '@prisma/client'
 import { describe, expect, it } from 'vitest'
-import { mapAchievementStats, mapLeaguePlayerCardInfo } from '../routes/userCardRoutes'
+import { mapAchievementBadges, mapAchievementStats, mapLeaguePlayerCardInfo } from '../routes/userCardRoutes'
 
 describe('mapAchievementStats', () => {
   it('returns zeros when aggregate is null', () => {
@@ -14,6 +15,65 @@ describe('mapAchievementStats', () => {
     })
 
     expect(result).toEqual({ achievementCount: 5, achievementMaxLevel: 3 })
+  })
+})
+
+describe('mapAchievementBadges', () => {
+  it('returns empty array when no progress entries', () => {
+    expect(mapAchievementBadges([], [])).toEqual([])
+  })
+
+  it('maps badges with icon and title from levels', () => {
+    const result = mapAchievementBadges(
+      [
+        {
+          achievementId: 42,
+          currentLevel: 3,
+          achievementType: { name: 'Daily Login', metric: AchievementMetric.DAILY_LOGIN },
+        },
+      ],
+      [
+        {
+          achievementId: 42,
+          level: 3,
+          iconUrl: '/icons/streak-gold.webp',
+          title: 'Капитан',
+        },
+      ]
+    )
+
+    expect(result).toEqual([
+      {
+        achievementId: 42,
+        group: 'streak',
+        level: 3,
+        iconUrl: '/icons/streak-gold.webp',
+        title: 'Капитан',
+      },
+    ])
+  })
+
+  it('falls back to achievement type name when level data is missing', () => {
+    const result = mapAchievementBadges(
+      [
+        {
+          achievementId: 7,
+          currentLevel: 1,
+          achievementType: { name: 'Season Points', metric: AchievementMetric.SEASON_POINTS },
+        },
+      ],
+      []
+    )
+
+    expect(result).toEqual([
+      {
+        achievementId: 7,
+        group: 'credits',
+        level: 1,
+        iconUrl: null,
+        title: 'Season Points',
+      },
+    ])
   })
 })
 

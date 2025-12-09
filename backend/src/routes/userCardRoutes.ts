@@ -1,5 +1,11 @@
+import { AchievementMetric } from '@prisma/client'
 import { FastifyInstance } from 'fastify'
-import type { LeaguePlayerCardInfo, LeaguePlayerClubInfo, UserCardExtraView } from '@shared/types'
+import type {
+  LeaguePlayerCardInfo,
+  LeaguePlayerClubInfo,
+  UserAchievementBadge,
+  UserCardExtraView,
+} from '@shared/types'
 import prisma from '../db'
 import { defaultCache, type CacheFetchOptions } from '../cache'
 import { userCardExtraCacheKey } from '../cache'
@@ -10,6 +16,16 @@ const USER_CARD_EXTRA_CACHE_OPTIONS: CacheFetchOptions = {
   lockTimeoutSeconds: 5,
 }
 
+const ACHIEVEMENT_GROUP_BY_METRIC: Record<AchievementMetric, string> = {
+  [AchievementMetric.DAILY_LOGIN]: 'streak',
+  [AchievementMetric.TOTAL_PREDICTIONS]: 'predictions',
+  [AchievementMetric.CORRECT_PREDICTIONS]: 'bet_wins',
+  [AchievementMetric.SEASON_POINTS]: 'credits',
+  [AchievementMetric.PREDICTION_STREAK]: 'prediction_streak',
+  [AchievementMetric.EXPRESS_WINS]: 'express_wins',
+  [AchievementMetric.BROADCAST_WATCH_TIME]: 'broadcast_watch',
+}
+
 const mapAchievementStats = (aggregate: {
   _count?: { _all?: number | null }
   _max?: { currentLevel?: number | null }
@@ -17,6 +33,85 @@ const mapAchievementStats = (aggregate: {
   const achievementCount = aggregate?._count?._all ?? 0
   const achievementMaxLevel = aggregate?._max?.currentLevel ?? 0
   return { achievementCount, achievementMaxLevel }
+}
+
+const mapAchievementBadges = (
+  progressEntries: Array<{
+    achievementId: number
+    currentLevel: number
+    achievementType: { name: string; metric: AchievementMetric }
+  }>,
+  levelEntries: Array<{ achievementId: number; level: number; iconUrl: string | null; title: string | null }>
+): UserAchievementBadge[] => {
+  if (!progressEntries.length) {
+    return []
+  }
+
+  const levelMap = new Map<string, { iconUrl: string | null; title: string | null }>()
+
+  for (const level of levelEntries) {
+    levelMap.set(`${level.achievementId}:${level.level}`, {
+      iconUrl: level.iconUrl ?? null,
+      title: level.title ?? null,
+    })
+  }
+
+  return progressEntries.map(entry => {
+    const group = ACHIEVEMENT_GROUP_BY_METRIC[entry.achievementType.metric] ?? entry.achievementType.name
+    const levelKey = `${entry.achievementId}:${entry.currentLevel}`
+    const levelData = levelMap.get(levelKey)
+
+    return {
+      achievementId: entry.achievementId,
+      group,
+      level: entry.currentLevel,
+      iconUrl: levelData?.iconUrl ?? null,
+      title: levelData?.title ?? entry.achievementType.name,
+    }
+  })
+}
+
+const loadAchievementBadges = async (userId: number, limit = 8): Promise<UserAchievementBadge[]> => {
+  const progressEntries = await prisma.achievementProgress.findMany({
+    where: { userId, currentLevel: { gt: 0 } },
+    orderBy: [
+      { currentLevel: 'desc' },
+      { lastUnlockedAt: 'desc' },
+      { updatedAt: 'desc' },
+    ],
+    take: limit,
+    select: {
+      achievementId: true,
+      currentLevel: true,
+      achievementType: {
+        select: {
+          name: true,
+          metric: true,
+        },
+      },
+    },
+  })
+
+  if (!progressEntries.length) {
+    return []
+  }
+
+  const levelFilters = progressEntries.map(entry => ({
+    achievementId: entry.achievementId,
+    level: entry.currentLevel,
+  }))
+
+  const levelEntries = await prisma.achievementLevel.findMany({
+    where: { OR: levelFilters },
+    select: {
+      achievementId: true,
+      level: true,
+      iconUrl: true,
+      title: true,
+    },
+  })
+
+  return mapAchievementBadges(progressEntries, levelEntries)
 }
 
 const mapLeaguePlayerCardInfo = (input: {
@@ -171,13 +266,14 @@ export default async function userCardRoutes(server: FastifyInstance) {
             return null
           }
 
-          const [achievementAggregate, leaguePlayer] = await Promise.all([
+          const [achievementAggregate, leaguePlayer, achievementBadges] = await Promise.all([
             prisma.achievementProgress.aggregate({
               where: { userId: user.id, currentLevel: { gt: 0 } },
               _count: { _all: true },
               _max: { currentLevel: true },
             }),
             loadLeaguePlayerCardInfo(user.leaguePlayerId, user.leaguePlayerStatus === 'VERIFIED'),
+            loadAchievementBadges(user.id),
           ])
 
           const { achievementCount, achievementMaxLevel } = mapAchievementStats(achievementAggregate)
@@ -186,6 +282,7 @@ export default async function userCardRoutes(server: FastifyInstance) {
             registrationDate: user.registrationDate.toISOString(),
             achievementCount,
             achievementMaxLevel,
+            achievementBadges,
             leaguePlayer,
           }
         },
@@ -205,4 +302,11 @@ export default async function userCardRoutes(server: FastifyInstance) {
   })
 }
 
-export { USER_CARD_EXTRA_CACHE_OPTIONS, mapAchievementStats, mapLeaguePlayerCardInfo, loadLeaguePlayerCardInfo }
+export {
+  USER_CARD_EXTRA_CACHE_OPTIONS,
+  mapAchievementStats,
+  mapLeaguePlayerCardInfo,
+  loadLeaguePlayerCardInfo,
+  mapAchievementBadges,
+  loadAchievementBadges,
+}

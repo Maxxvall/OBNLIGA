@@ -18,6 +18,64 @@ const formatPercent = (value: number) => {
 
 const formatNumber = (value: number) => new Intl.NumberFormat('ru-RU').format(value)
 
+type AchievementBadge = UserCardExtraView['achievementBadges'][number]
+
+const BADGE_ICON_FALLBACKS: Record<string, Record<number, string>> = {
+  streak: {
+    0: '/achievements/streak-locked.webp',
+    1: '/achievements/streak-bronze.webp',
+    2: '/achievements/streak-silver.webp',
+    3: '/achievements/streak-gold.webp',
+  },
+  predictions: {
+    0: '/achievements/betcount-locked.webp',
+    1: '/achievements/betcount-bronze.webp',
+    2: '/achievements/betcount-silver.webp',
+    3: '/achievements/betcount-gold.webp',
+  },
+  credits: {
+    0: '/achievements/credits-locked.webp',
+    1: '/achievements/credits-bronze.webp',
+    2: '/achievements/credits-silver.webp',
+    3: '/achievements/credits-gold.webp',
+  },
+  bet_wins: {
+    0: '/achievements/betwins-locked.webp',
+    1: '/achievements/betwins-bronze.webp',
+    2: '/achievements/betwins-silver.webp',
+    3: '/achievements/betwins-gold.webp',
+  },
+  prediction_streak: {
+    0: '/achievements/prediction-streak-locked.webp',
+    1: '/achievements/prediction-streak-bronze.webp',
+    2: '/achievements/prediction-streak-silver.webp',
+    3: '/achievements/prediction-streak-gold.webp',
+  },
+  express_wins: {
+    0: '/achievements/express-locked.webp',
+    1: '/achievements/express-bronze.webp',
+    2: '/achievements/express-silver.webp',
+    3: '/achievements/express-gold.webp',
+  },
+  broadcast_watch: {
+    0: '/achievements/broadcast-locked.webp',
+    1: '/achievements/broadcast-bronze.webp',
+    2: '/achievements/broadcast-silver.webp',
+    3: '/achievements/broadcast-gold.webp',
+  },
+}
+
+const resolveBadgeIcon = (badge: AchievementBadge): string => {
+  const groupIcons = BADGE_ICON_FALLBACKS[badge.group]
+  if (badge.iconUrl && badge.iconUrl.length > 0) {
+    return badge.iconUrl
+  }
+  if (groupIcons) {
+    return groupIcons[badge.level] ?? groupIcons[0] ?? '/achievements/streak-locked.webp'
+  }
+  return '/achievements/streak-locked.webp'
+}
+
 export function ProfileCardModal({ isOpen, onClose, initialData, position }: ProfileCardModalProps) {
   const [extra, setExtra] = useState<UserCardExtraView | null>(null)
   const [loading, setLoading] = useState(false)
@@ -79,6 +137,7 @@ export function ProfileCardModal({ isOpen, onClose, initialData, position }: Pro
 
   const accuracyLabel = formatPercent(initialData.predictionAccuracy)
   const streakLabel = `${initialData.currentStreak} / макс: ${initialData.maxStreak}`
+  const achievementBadges = extra?.achievementBadges ?? []
   const positionStyle = position
     ? ({
       '--card-x': `${position.x}px`,
@@ -98,18 +157,18 @@ export function ProfileCardModal({ isOpen, onClose, initialData, position }: Pro
       <section className="profile-card-player">
         <div className="profile-card-section-title">Карьера игрока</div>
         <div className="profile-card-player-stats">
-            <div className="player-stat-item">
-              <span className="player-stat-icon">🏟️</span>
-              <span className="player-stat-value">{formatNumber(leaguePlayer.stats.totalMatches)}</span>
-            </div>
-            <div className="player-stat-item">
-              <span className="player-stat-icon">⚽</span>
-              <span className="player-stat-value">{formatNumber(leaguePlayer.stats.totalGoals)}</span>
-            </div>
-            <div className="player-stat-item">
-              <span className="player-stat-icon">👟</span>
-              <span className="player-stat-value">{formatNumber(leaguePlayer.stats.totalAssists)}</span>
-            </div>
+          <div className="player-stat-item">
+            <span className="player-stat-icon">🏟️</span>
+            <span className="player-stat-value">{formatNumber(leaguePlayer.stats.totalMatches)}</span>
+          </div>
+          <div className="player-stat-item">
+            <span className="player-stat-icon">⚽</span>
+            <span className="player-stat-value">{formatNumber(leaguePlayer.stats.totalGoals)}</span>
+          </div>
+          <div className="player-stat-item">
+            <span className="player-stat-icon">👟</span>
+            <span className="player-stat-value">{formatNumber(leaguePlayer.stats.totalAssists)}</span>
+          </div>
           <div className="player-stat-item">
             <span className="player-stat-icon yellow">▬</span>
             <span className="player-stat-value">{formatNumber(leaguePlayer.stats.yellowCards)}</span>
@@ -200,14 +259,32 @@ export function ProfileCardModal({ isOpen, onClose, initialData, position }: Pro
             <ProfileCardSkeleton />
           ) : error ? (
             <div className="profile-card-error">Не удалось загрузить данные профиля</div>
-          ) : extra ? (
-            <div className="profile-card-achievement-count">
-              <span className="achievement-icon">🏆</span>
-              <span className="achievement-value">{formatNumber(extra.achievementCount)}</span>
-              <span className="achievement-label">достижений</span>
+          ) : achievementBadges.length ? (
+            <div
+              className="profile-card-achievement-badges"
+              aria-label={`Открытые достижения: ${formatNumber(achievementBadges.length)}`}
+              role="list"
+            >
+              {achievementBadges.slice(0, 10).map(badge => {
+                const title = badge.title ?? 'Достижение'
+                return (
+                  <div
+                    key={`${badge.achievementId}-${badge.level}`}
+                    className="profile-card-badge"
+                    role="listitem"
+                    title={`${title} · уровень ${badge.level}`}
+                  >
+                    <img
+                      src={resolveBadgeIcon(badge)}
+                      alt={`${title}, уровень ${badge.level}`}
+                      loading="lazy"
+                    />
+                  </div>
+                )
+              })}
             </div>
           ) : (
-            <div className="profile-card-placeholder">Нет данных</div>
+            <div className="profile-card-placeholder">Достижения пока не открыты</div>
           )}
         </section>
 

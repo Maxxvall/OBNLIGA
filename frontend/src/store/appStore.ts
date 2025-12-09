@@ -2414,7 +2414,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   closeMatchDetails: () => {
     get().stopMatchDetailsPolling()
     set({ matchDetails: { ...INITIAL_MATCH_DETAILS }, matchDetailsPollingAttached: false })
-    get().ensureLeaguePolling()
   },
   setMatchDetailsTab: tab => {
     set(prev => ({

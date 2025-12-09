@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FRIENDLY_SEASON_ID, FRIENDLY_SEASON_NAME } from '@shared/types'
 import { LeagueTableView } from '../components/league/LeagueTableView'
 import { LeagueRoundsView } from '../components/league/LeagueRoundsView'
 import { LeagueStatsView } from '../components/league/LeagueStatsView'
 import { LeagueSubTab, useAppStore } from '../store/appStore'
 import type { LeagueSeasonSummary } from '@shared/types'
+import { useAdaptivePolling } from '../utils/useAdaptivePolling'
 
 const subTabLabels: Record<LeagueSubTab, string> = {
   table: 'Таблица',
@@ -14,6 +15,8 @@ const subTabLabels: Record<LeagueSubTab, string> = {
 }
 
 const SUBTAB_ORDER: LeagueSubTab[] = ['table', 'stats', 'schedule', 'results']
+
+const FRIENDLY_SCHEDULE_REFRESH_INTERVAL_MS = 60_000
 
 type CompetitionGroup = {
   competitionId: number
@@ -82,12 +85,11 @@ const LeaguePage: React.FC = () => {
   const fetchSchedule = useAppStore(state => state.fetchLeagueSchedule)
   const fetchResults = useAppStore(state => state.fetchLeagueResults)
   const fetchStats = useAppStore(state => state.fetchLeagueStats)
-  const ensureLeaguePolling = useAppStore(state => state.ensureLeaguePolling)
-  const stopLeaguePolling = useAppStore(state => state.stopLeaguePolling)
   const setSelectedSeason = useAppStore(state => state.setSelectedSeason)
   const selectedSeasonId = useAppStore(state => state.selectedSeasonId)
   const activeSeasonId = useAppStore(state => state.activeSeasonId)
   const leagueSubTab = useAppStore(state => state.leagueSubTab)
+  const currentTab = useAppStore(state => state.currentTab)
   const setLeagueSubTab = useAppStore(state => state.setLeagueSubTab)
   const loadingSeasons = useAppStore(state => state.loading.seasons)
   const loadingTable = useAppStore(state => state.loading.table)
@@ -106,6 +108,9 @@ const LeaguePage: React.FC = () => {
   const schedules = useAppStore(state => state.schedules)
   const results = useAppStore(state => state.results)
   const stats = useAppStore(state => state.stats)
+  const friendlyScheduleFetchedAt = useAppStore(
+    state => state.scheduleFetchedAt[FRIENDLY_SEASON_ID] ?? 0
+  )
   const [expandedCities, setExpandedCities] = useState<Set<string>>(() => new Set())
   const [expandedCompetitions, setExpandedCompetitions] = useState<Set<string>>(
     () => new Set()
@@ -402,13 +407,67 @@ const LeaguePage: React.FC = () => {
   ])
 
   useEffect(() => {
-    ensureLeaguePolling()
     void fetchSeasons()
+  }, [fetchSeasons])
 
-    return () => {
-      stopLeaguePolling()
+  const leaguePollingCallback = useCallback(() => {
+    if (typeof document !== 'undefined' && document.hidden) {
+      return
     }
-  }, [ensureLeaguePolling, stopLeaguePolling, fetchSeasons])
+
+    if (currentTab !== 'league') {
+      return
+    }
+
+    const now = Date.now()
+    if (now - friendlyScheduleFetchedAt > FRIENDLY_SCHEDULE_REFRESH_INTERVAL_MS) {
+      void fetchSchedule({ seasonId: FRIENDLY_SEASON_ID })
+    }
+
+    const seasonId = selectedSeasonId ?? activeSeasonId
+    if (!seasonId) {
+      return
+    }
+
+    if (leagueSubTab === 'table') {
+      void fetchTable({ seasonId })
+      return
+    }
+
+    if (leagueSubTab === 'schedule') {
+      void fetchSchedule({ seasonId })
+      return
+    }
+
+    if (leagueSubTab === 'results') {
+      void fetchResults({ seasonId })
+      return
+    }
+
+    if (leagueSubTab === 'stats') {
+      if (isFriendlySelected) {
+        return
+      }
+      void fetchStats({ seasonId })
+    }
+  }, [
+    activeSeasonId,
+    currentTab,
+    fetchResults,
+    fetchSchedule,
+    fetchStats,
+    fetchTable,
+    friendlyScheduleFetchedAt,
+    isFriendlySelected,
+    leagueSubTab,
+    selectedSeasonId,
+  ])
+
+  useAdaptivePolling(leaguePollingCallback, {
+    activeInterval: 30_000,
+    inactiveInterval: 120_000,
+    backgroundInterval: 300_000,
+  })
 
   useEffect(() => {
     if (selectedSeasonId && !isFriendlySelected) {

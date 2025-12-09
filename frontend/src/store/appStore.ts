@@ -67,6 +67,7 @@ type MatchDetailsState = {
   eventsEtag?: string
   broadcastEtag?: string
   commentsEtag?: string
+  fullEtag?: string
   loadingHeader: boolean
   loadingLineups: boolean
   loadingStats: boolean
@@ -96,8 +97,14 @@ type MatchDetailsCacheEntry = {
   eventsEtag?: string
   broadcastEtag?: string
   commentsEtag?: string
+  fullEtag?: string
   seasonId?: number
   updatedAt: number
+}
+
+type PrefetchedResource<T> = {
+  data: T
+  version?: string
 }
 
 const INITIAL_TEAM_VIEW: TeamViewState = {
@@ -122,8 +129,8 @@ const INITIAL_MATCH_DETAILS: MatchDetailsState = {
   submittingComment: false,
 }
 
-const SEASONS_TTL_MS = 55_000
-const TABLE_TTL_MS = 30_000
+const SEASONS_TTL_MS = 600_000
+const TABLE_TTL_MS = 60_000
 const SCHEDULE_TTL_MS = 12_000
 const RESULTS_TTL_MS = 20_000
 const STATS_TTL_MS = 300_000
@@ -132,7 +139,7 @@ const CLUB_MATCHES_TTL_MS = 86_400_000
 const DOUBLE_TAP_THRESHOLD_MS = 280
 const MATCH_DETAILS_CACHE_LIMIT = 8
 const FRIENDLY_REFRESH_INTERVAL_MS = 60_000
-const SHOP_ITEMS_TTL_MS = 45_000
+const SHOP_ITEMS_TTL_MS = 600_000
 const SHOP_HISTORY_TTL_MS = 45_000
 const SHOP_NOTE_MAX_LENGTH = 500
 const DEFAULT_ITEM_LIMIT = 99
@@ -1163,10 +1170,17 @@ interface AppState {
   ensureTeamPolling: () => void
   stopTeamPolling: () => void
   openMatchDetails: (matchId: string, snapshot?: LeagueMatchView, seasonId?: number) => void
+  loadMatchBasics: (matchId: string, options?: { force?: boolean }) => Promise<FetchResult>
   closeMatchDetails: () => void
   setMatchDetailsTab: (tab: MatchDetailsTab) => void
-  fetchMatchHeader: (matchId: string, options?: { force?: boolean }) => Promise<FetchResult>
-  fetchMatchLineups: (matchId: string, options?: { force?: boolean }) => Promise<FetchResult>
+  fetchMatchHeader: (
+    matchId: string,
+    options?: { force?: boolean; prefetched?: PrefetchedResource<MatchDetailsHeader> }
+  ) => Promise<FetchResult>
+  fetchMatchLineups: (
+    matchId: string,
+    options?: { force?: boolean; prefetched?: PrefetchedResource<MatchDetailsLineups> }
+  ) => Promise<FetchResult>
   fetchMatchStats: (matchId: string, options?: { force?: boolean }) => Promise<FetchResult>
   fetchMatchEvents: (matchId: string, options?: { force?: boolean }) => Promise<FetchResult>
   fetchMatchBroadcast: (matchId: string, options?: { force?: boolean }) => Promise<FetchResult>
@@ -2347,6 +2361,237 @@ export const useAppStore = create<AppState>((set, get) => ({
     clearTeamPolling()
     set({ teamPollingAttached: false, teamPollingClubId: undefined })
   },
+  loadMatchBasics: async (matchId, options = {}) => {
+    const state = get()
+    const requestVersion = options.force ? undefined : state.matchDetails.fullEtag
+
+    set(prev => ({
+      matchDetails: {
+        ...prev.matchDetails,
+        loadingHeader: true,
+        loadingLineups: true,
+        loadingStats: true,
+        loadingEvents: true,
+        loadingBroadcast: true,
+        loadingComments: true,
+        errorHeader: undefined,
+        errorLineups: undefined,
+        errorStats: undefined,
+        errorEvents: undefined,
+        errorBroadcast: undefined,
+        errorComments: undefined,
+      },
+    }))
+
+    const response = await matchApi.fetchFull(matchId, { version: requestVersion })
+
+    if (!response.ok) {
+      set(prev => ({
+        matchDetails: {
+          ...prev.matchDetails,
+          loadingHeader: false,
+          loadingLineups: false,
+          loadingStats: false,
+          loadingEvents: false,
+          loadingBroadcast: false,
+          loadingComments: false,
+          errorHeader: response.error,
+        },
+      }))
+      return { ok: false, error: response.error }
+    }
+
+    const now = Date.now()
+
+    if (!('data' in response)) {
+      set(prev => ({
+        matchDetails: {
+          ...prev.matchDetails,
+          loadingHeader: false,
+          loadingLineups: false,
+          loadingStats: false,
+          loadingEvents: false,
+          loadingBroadcast: false,
+          loadingComments: false,
+        },
+      }))
+      return { ok: true }
+    }
+
+    const payload = response.data
+
+    if (payload.header) {
+      await get().fetchMatchHeader(matchId, {
+        prefetched: { data: payload.header, version: payload.versions.header },
+      })
+    } else {
+      set(prev => ({
+        matchDetails: { ...prev.matchDetails, loadingHeader: false },
+      }))
+    }
+
+    if (payload.lineups) {
+      await get().fetchMatchLineups(matchId, {
+        prefetched: { data: payload.lineups, version: payload.versions.lineups },
+      })
+    } else {
+      set(prev => ({ matchDetails: { ...prev.matchDetails, loadingLineups: false } }))
+    }
+
+    if (payload.stats) {
+      const version = payload.versions.stats
+      set(prev => {
+        const { cache, order } = upsertMatchCacheEntry(
+          prev.matchDetailsCache,
+          prev.matchDetailsCacheOrder,
+          matchId,
+          existing => {
+            const entry: MatchDetailsCacheEntry = existing ? { ...existing } : { updatedAt: now }
+            entry.stats = payload.stats
+            entry.statsEtag = version
+            entry.updatedAt = now
+            return entry
+          }
+        )
+        return {
+          matchDetails: {
+            ...prev.matchDetails,
+            stats: payload.stats,
+            statsEtag: version,
+            loadingStats: false,
+            errorStats: undefined,
+          },
+          matchDetailsCache: cache,
+          matchDetailsCacheOrder: order,
+        }
+      })
+    } else {
+      set(prev => ({ matchDetails: { ...prev.matchDetails, loadingStats: false } }))
+    }
+
+    if (payload.events) {
+      const version = payload.versions.events
+      set(prev => {
+        const { cache, order } = upsertMatchCacheEntry(
+          prev.matchDetailsCache,
+          prev.matchDetailsCacheOrder,
+          matchId,
+          existing => {
+            const entry: MatchDetailsCacheEntry = existing ? { ...existing } : { updatedAt: now }
+            entry.events = payload.events
+            entry.eventsEtag = version
+            entry.updatedAt = now
+            return entry
+          }
+        )
+        return {
+          matchDetails: {
+            ...prev.matchDetails,
+            events: payload.events,
+            eventsEtag: version,
+            loadingEvents: false,
+            errorEvents: undefined,
+          },
+          matchDetailsCache: cache,
+          matchDetailsCacheOrder: order,
+        }
+      })
+    } else {
+      set(prev => ({ matchDetails: { ...prev.matchDetails, loadingEvents: false } }))
+    }
+
+    if (payload.broadcast) {
+      const version = payload.versions.broadcast
+      set(prev => {
+        const { cache, order } = upsertMatchCacheEntry(
+          prev.matchDetailsCache,
+          prev.matchDetailsCacheOrder,
+          matchId,
+          existing => {
+            const entry: MatchDetailsCacheEntry = existing ? { ...existing } : { updatedAt: now }
+            entry.broadcast = payload.broadcast
+            entry.broadcastEtag = version
+            if (prev.matchDetails.comments && !existing?.comments) {
+              entry.comments = prev.matchDetails.comments
+              entry.commentsEtag = prev.matchDetails.commentsEtag
+            }
+            entry.updatedAt = now
+            return entry
+          }
+        )
+        return {
+          matchDetails: {
+            ...prev.matchDetails,
+            broadcast: payload.broadcast,
+            broadcastEtag: version,
+            loadingBroadcast: false,
+            errorBroadcast: undefined,
+          },
+          matchDetailsCache: cache,
+          matchDetailsCacheOrder: order,
+        }
+      })
+    } else {
+      set(prev => ({ matchDetails: { ...prev.matchDetails, loadingBroadcast: false } }))
+    }
+
+    if (payload.comments) {
+      const version = payload.versions.comments
+      set(prev => {
+        const { cache, order } = upsertMatchCacheEntry(
+          prev.matchDetailsCache,
+          prev.matchDetailsCacheOrder,
+          matchId,
+          existing => {
+            const entry: MatchDetailsCacheEntry = existing ? { ...existing } : { updatedAt: now }
+            entry.comments = payload.comments
+            entry.commentsEtag = version
+            entry.updatedAt = now
+            return entry
+          }
+        )
+        return {
+          matchDetails: {
+            ...prev.matchDetails,
+            comments: payload.comments,
+            commentsEtag: version,
+            loadingComments: false,
+            errorComments: undefined,
+          },
+          matchDetailsCache: cache,
+          matchDetailsCacheOrder: order,
+        }
+      })
+    } else {
+      set(prev => ({ matchDetails: { ...prev.matchDetails, loadingComments: false } }))
+    }
+
+    const latest = get().matchDetails
+    const fullVersion = response.version ?? latest.fullEtag
+    set(prev => {
+      const { cache, order } = upsertMatchCacheEntry(
+        prev.matchDetailsCache,
+        prev.matchDetailsCacheOrder,
+        matchId,
+        existing => {
+          const entry: MatchDetailsCacheEntry = existing ? { ...existing } : { updatedAt: now }
+          entry.fullEtag = fullVersion
+          entry.updatedAt = now
+          return entry
+        }
+      )
+      return {
+        matchDetails: {
+          ...latest,
+          fullEtag: fullVersion,
+        },
+        matchDetailsCache: cache,
+        matchDetailsCacheOrder: order,
+      }
+    })
+
+    return { ok: true }
+  },
   openMatchDetails: (matchId, snapshot, seasonId) => {
     const state = get()
     state.stopLeaguePolling()
@@ -2372,6 +2617,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       broadcastEtag: cachedEntry?.broadcastEtag,
       comments: cachedEntry?.comments,
       commentsEtag: cachedEntry?.commentsEtag,
+      fullEtag: cachedEntry?.fullEtag,
     }
 
     set(prev => {
@@ -2403,13 +2649,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         matchDetailsCacheOrder: order,
       }
     })
-    void get().fetchMatchHeader(matchId)
-    void get().fetchMatchLineups(matchId)
-    void get().fetchMatchBroadcast(matchId)
-    if (snapshot?.status === 'LIVE' || snapshot?.status === 'FINISHED') {
-      void get().fetchMatchEvents(matchId)
-      void get().fetchMatchStats(matchId)
-    }
+    void get().loadMatchBasics(matchId)
   },
   closeMatchDetails: () => {
     get().stopMatchDetailsPolling()
@@ -2443,18 +2683,131 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   fetchMatchHeader: async (matchId, options) => {
     const state = get()
-    if (state.matchDetails.loadingHeader && !options?.force) {
+    const prefetched = options?.prefetched
+
+    if (!prefetched && state.matchDetails.loadingHeader && !options?.force) {
       return { ok: true }
     }
 
-    const shouldShowLoader = options?.force || !state.matchDetails.header
-    set(prev => ({
-      matchDetails: {
-        ...prev.matchDetails,
-        loadingHeader: shouldShowLoader,
-        errorHeader: undefined,
-      },
-    }))
+    const shouldShowLoader = options?.force || (!state.matchDetails.header && !prefetched)
+    if (shouldShowLoader) {
+      set(prev => ({
+        matchDetails: {
+          ...prev.matchDetails,
+          loadingHeader: true,
+          errorHeader: undefined,
+        },
+      }))
+    }
+
+    const now = Date.now()
+    const applyPayload = (data: MatchDetailsHeader, version?: string) => {
+      const previousStatus = state.matchDetails.header?.st ?? state.matchDetails.snapshot?.status
+      const seasonIdForFetch =
+        state.matchDetails.seasonId ?? state.selectedSeasonId ?? state.activeSeasonId
+      const summary = extractHeaderSyncPayload(data)
+
+      set(prev => {
+        const targetSeasonId =
+          prev.matchDetails.seasonId ?? prev.selectedSeasonId ?? prev.activeSeasonId
+
+        let schedulesMap = prev.schedules
+        let resultsMap = prev.results
+        let scheduleChanged = false
+        let resultsChanged = false
+
+        if (targetSeasonId) {
+          const currentSchedule = prev.schedules[targetSeasonId]
+          if (currentSchedule) {
+            const patchedSchedule = syncScheduleCollectionWithHeader(
+              currentSchedule,
+              matchId,
+              summary
+            )
+            if (patchedSchedule !== currentSchedule) {
+              schedulesMap = { ...prev.schedules, [targetSeasonId]: patchedSchedule }
+              scheduleChanged = true
+            }
+          }
+
+          const currentResults = prev.results[targetSeasonId]
+          if (currentResults) {
+            const patchedResults = syncResultsCollectionWithHeader(
+              currentResults,
+              matchId,
+              summary
+            )
+            if (patchedResults !== currentResults) {
+              resultsMap = { ...prev.results, [targetSeasonId]: patchedResults }
+              resultsChanged = true
+            }
+          }
+        }
+
+        if (scheduleChanged) {
+          writeToStorage('schedules', schedulesMap)
+        }
+        if (resultsChanged) {
+          writeToStorage('results', resultsMap)
+        }
+
+        const nextSnapshot = syncSnapshotWithHeader(prev.matchDetails.snapshot, matchId, summary)
+
+        const { cache, order } = upsertMatchCacheEntry(
+          prev.matchDetailsCache,
+          prev.matchDetailsCacheOrder,
+          matchId,
+          existing => {
+            const entry: MatchDetailsCacheEntry = existing ? { ...existing } : { updatedAt: now }
+            entry.header = data
+            entry.headerEtag = version
+            entry.snapshot = nextSnapshot ?? entry.snapshot
+            if (targetSeasonId !== undefined) {
+              entry.seasonId = targetSeasonId
+            }
+            entry.updatedAt = now
+            return entry
+          }
+        )
+
+        return {
+          ...prev,
+          schedules: scheduleChanged ? schedulesMap : prev.schedules,
+          results: resultsChanged ? resultsMap : prev.results,
+          matchDetails: {
+            ...prev.matchDetails,
+            header: data,
+            headerEtag: version,
+            loadingHeader: false,
+            errorHeader: undefined,
+            snapshot: nextSnapshot,
+          },
+          matchDetailsCache: cache,
+          matchDetailsCacheOrder: order,
+        }
+      })
+
+      const headerStatus = data.st
+      if (headerStatus === 'LIVE' || headerStatus === 'FINISHED') {
+        const current = get().matchDetails
+        if (!current.events && !current.loadingEvents) {
+          void get().fetchMatchEvents(matchId)
+        }
+        if (!current.stats && !current.loadingStats) {
+          void get().fetchMatchStats(matchId)
+        }
+      }
+      if (headerStatus === 'FINISHED' && previousStatus !== 'FINISHED' && seasonIdForFetch) {
+        void get().fetchLeagueSchedule({ seasonId: seasonIdForFetch, force: true })
+        void get().fetchLeagueResults({ seasonId: seasonIdForFetch, force: true })
+      }
+    }
+
+    if (prefetched) {
+      applyPayload(prefetched.data, prefetched.version)
+      get().ensureMatchDetailsPolling()
+      return { ok: true }
+    }
 
     const requestEtag = options?.force ? undefined : state.matchDetails.headerEtag
     const response = await matchApi.fetchHeader(matchId, {
@@ -2471,8 +2824,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       }))
       return { ok: false }
     }
-
-    const now = Date.now()
 
     if (!('data' in response)) {
       set(prev => {
@@ -2492,121 +2843,73 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { ok: true }
     }
 
-    const previousStatus = state.matchDetails.header?.st ?? state.matchDetails.snapshot?.status
-    const seasonIdForFetch =
-      state.matchDetails.seasonId ?? state.selectedSeasonId ?? state.activeSeasonId
-    const summary = extractHeaderSyncPayload(response.data)
-
-    set(prev => {
-      const targetSeasonId =
-        prev.matchDetails.seasonId ?? prev.selectedSeasonId ?? prev.activeSeasonId
-
-      let schedulesMap = prev.schedules
-      let resultsMap = prev.results
-      let scheduleChanged = false
-      let resultsChanged = false
-
-      if (targetSeasonId) {
-        const currentSchedule = prev.schedules[targetSeasonId]
-        if (currentSchedule) {
-          const patchedSchedule = syncScheduleCollectionWithHeader(
-            currentSchedule,
-            matchId,
-            summary
-          )
-          if (patchedSchedule !== currentSchedule) {
-            schedulesMap = { ...prev.schedules, [targetSeasonId]: patchedSchedule }
-            scheduleChanged = true
-          }
-        }
-
-        const currentResults = prev.results[targetSeasonId]
-        if (currentResults) {
-          const patchedResults = syncResultsCollectionWithHeader(
-            currentResults,
-            matchId,
-            summary
-          )
-          if (patchedResults !== currentResults) {
-            resultsMap = { ...prev.results, [targetSeasonId]: patchedResults }
-            resultsChanged = true
-          }
-        }
-      }
-
-      if (scheduleChanged) {
-        writeToStorage('schedules', schedulesMap)
-      }
-      if (resultsChanged) {
-        writeToStorage('results', resultsMap)
-      }
-
-      const nextSnapshot = syncSnapshotWithHeader(prev.matchDetails.snapshot, matchId, summary)
-
-      const { cache, order } = upsertMatchCacheEntry(
-        prev.matchDetailsCache,
-        prev.matchDetailsCacheOrder,
-        matchId,
-        existing => {
-          const entry: MatchDetailsCacheEntry = existing ? { ...existing } : { updatedAt: now }
-          entry.header = response.data
-          entry.headerEtag = response.version
-          entry.snapshot = nextSnapshot ?? entry.snapshot
-          if (targetSeasonId !== undefined) {
-            entry.seasonId = targetSeasonId
-          }
-          entry.updatedAt = now
-          return entry
-        }
-      )
-
-      return {
-        ...prev,
-        schedules: scheduleChanged ? schedulesMap : prev.schedules,
-        results: resultsChanged ? resultsMap : prev.results,
-        matchDetails: {
-          ...prev.matchDetails,
-          header: response.data,
-          headerEtag: response.version,
-          loadingHeader: false,
-          errorHeader: undefined,
-          snapshot: nextSnapshot,
-        },
-        matchDetailsCache: cache,
-        matchDetailsCacheOrder: order,
-      }
-    })
-    const headerStatus = response.data.st
-    if (headerStatus === 'LIVE' || headerStatus === 'FINISHED') {
-      const current = get().matchDetails
-      if (!current.events && !current.loadingEvents) {
-        void get().fetchMatchEvents(matchId)
-      }
-      if (!current.stats && !current.loadingStats) {
-        void get().fetchMatchStats(matchId)
-      }
-    }
-    if (headerStatus === 'FINISHED' && previousStatus !== 'FINISHED' && seasonIdForFetch) {
-      void get().fetchLeagueSchedule({ seasonId: seasonIdForFetch, force: true })
-      void get().fetchLeagueResults({ seasonId: seasonIdForFetch, force: true })
-    }
+    applyPayload(response.data, response.version)
     get().ensureMatchDetailsPolling()
     return { ok: true }
   },
   fetchMatchLineups: async (matchId, options) => {
     const state = get()
-    if (state.matchDetails.loadingLineups && !options?.force) {
+    const prefetched = options?.prefetched
+
+    if (!prefetched && state.matchDetails.loadingLineups && !options?.force) {
       return { ok: true }
     }
 
-    const shouldShowLoader = options?.force || !state.matchDetails.lineups
-    set(prev => ({
-      matchDetails: {
-        ...prev.matchDetails,
-        loadingLineups: shouldShowLoader,
-        errorLineups: undefined,
-      },
-    }))
+    const shouldShowLoader = options?.force || (!state.matchDetails.lineups && !prefetched)
+    if (shouldShowLoader) {
+      set(prev => ({
+        matchDetails: {
+          ...prev.matchDetails,
+          loadingLineups: true,
+          errorLineups: undefined,
+        },
+      }))
+    }
+
+    const now = Date.now()
+    const applyPayload = (data: MatchDetailsLineups, version?: string) => {
+      set(prev => {
+        const { cache, order } = upsertMatchCacheEntry(
+          prev.matchDetailsCache,
+          prev.matchDetailsCacheOrder,
+          matchId,
+          existing => {
+            const entry: MatchDetailsCacheEntry = existing ? { ...existing } : { updatedAt: now }
+            entry.lineups = data
+            entry.lineupsEtag = version
+            entry.updatedAt = now
+            return entry
+          }
+        )
+
+        return {
+          matchDetails: {
+            ...prev.matchDetails,
+            lineups: data,
+            lineupsEtag: version,
+            loadingLineups: false,
+            errorLineups: undefined,
+          },
+          matchDetailsCache: cache,
+          matchDetailsCacheOrder: order,
+        }
+      })
+
+      const latest = get().matchDetails
+      if (
+        latest.matchId === matchId &&
+        latest.activeTab === 'broadcast' &&
+        !latest.loadingComments &&
+        (!latest.comments || options?.force)
+      ) {
+        void get().fetchMatchComments(matchId)
+      }
+    }
+
+    if (prefetched) {
+      applyPayload(prefetched.data, prefetched.version)
+      return { ok: true }
+    }
 
     const requestEtag = options?.force ? undefined : state.matchDetails.lineupsEtag
     const response = await matchApi.fetchLineups(matchId, {
@@ -2623,8 +2926,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       }))
       return { ok: false }
     }
-
-    const now = Date.now()
 
     if (!('data' in response)) {
       set(prev => {
@@ -2643,42 +2944,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { ok: true }
     }
 
-    set(prev => {
-      const { cache, order } = upsertMatchCacheEntry(
-        prev.matchDetailsCache,
-        prev.matchDetailsCacheOrder,
-        matchId,
-        existing => {
-          const entry: MatchDetailsCacheEntry = existing ? { ...existing } : { updatedAt: now }
-          entry.lineups = response.data
-          entry.lineupsEtag = response.version
-          entry.updatedAt = now
-          return entry
-        }
-      )
-
-      return {
-        matchDetails: {
-          ...prev.matchDetails,
-          lineups: response.data,
-          lineupsEtag: response.version,
-          loadingLineups: false,
-          errorLineups: undefined,
-        },
-        matchDetailsCache: cache,
-        matchDetailsCacheOrder: order,
-      }
-    })
-
-    const latest = get().matchDetails
-    if (
-      latest.matchId === matchId &&
-      latest.activeTab === 'broadcast' &&
-      !latest.loadingComments &&
-      (!latest.comments || options?.force)
-    ) {
-      void get().fetchMatchComments(matchId)
-    }
+    applyPayload(response.data, response.version)
     return { ok: true }
   },
   fetchMatchStats: async (matchId, options) => {

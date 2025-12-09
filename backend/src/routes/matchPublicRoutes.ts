@@ -13,6 +13,7 @@ import {
   fetchMatchComments,
   appendMatchComment,
   CommentValidationError,
+  fetchMatchFull,
 } from '../services/matchDetailsPublic'
 
 const buildEtag = (version: number) => `"${version}"`
@@ -38,6 +39,29 @@ const setCachingHeaders = (reply: FastifyReply, etag: string, version: number, c
 }
 
 const matchPublicRoutes: FastifyPluginCallback = (server, _opts, done) => {
+  server.get<{ Params: { id: string } }>(
+    '/api/matches/:id/full',
+    async (request, reply) => {
+      const { id } = request.params
+      const aggregated = await fetchMatchFull(id)
+
+      if (!aggregated) {
+        return reply.code(404).send({ ok: false, error: 'Match not found' })
+      }
+
+      const etag = buildEtag(aggregated.version)
+      const clientEtag = request.headers['if-none-match']
+
+      if (hasMatchingEtag(clientEtag, etag)) {
+        setCachingHeaders(reply, etag, aggregated.version, 'public, max-age=5, stale-while-revalidate=10')
+        return reply.code(304).send()
+      }
+
+      setCachingHeaders(reply, etag, aggregated.version, 'public, max-age=5, stale-while-revalidate=10')
+      return reply.send({ ok: true, data: aggregated.payload })
+    }
+  )
+
   /**
    * GET /api/public/matches/:id/header
    * Returns match header (status, score, teams, current minute)

@@ -25,6 +25,8 @@ const wrapCachedResult = <T>(value: T | null | undefined, version: number): Cach
   }
 }
 
+const buildEtag = (version: number) => `"${version}"`
+
 // Local type definitions (minimal payload for public API)
 type MatchDetailsHeader = {
   st: 'SCHEDULED' | 'LIVE' | 'POSTPONED' | 'FINISHED'
@@ -754,6 +756,79 @@ export async function appendMatchComment(
     comment,
     version: updated.version,
   }
+}
+
+type FullMatchPayload = {
+  header?: MatchDetailsHeader
+  lineups?: MatchDetailsLineups
+  stats?: MatchDetailsStats
+  events?: MatchDetailsEvents
+  broadcast?: MatchDetailsBroadcast
+  comments?: MatchCommentPayload[]
+  versions: {
+    header?: string
+    lineups?: string
+    stats?: string
+    events?: string
+    broadcast?: string
+    comments?: string
+  }
+  links?: Partial<Record<'stats' | 'events' | 'broadcast' | 'comments', string>>
+}
+
+export async function fetchMatchFull(
+  matchId: string
+): Promise<{ payload: FullMatchPayload; version: number } | null> {
+  const [header, lineups, stats, events, broadcast, comments] = await Promise.all([
+    fetchMatchHeader(matchId),
+    fetchMatchLineups(matchId),
+    fetchMatchStats(matchId),
+    fetchMatchEvents(matchId),
+    fetchMatchBroadcast(matchId),
+    fetchMatchComments(matchId),
+  ])
+
+  if (!header && !lineups) {
+    return null
+  }
+
+  const versionsNumeric = [
+    header?.version,
+    lineups?.version,
+    stats?.version,
+    events?.version,
+    broadcast?.version,
+    comments?.version,
+  ].filter((value): value is number => typeof value === 'number')
+
+  const aggregateVersion = versionsNumeric.length
+    ? Math.max(...versionsNumeric)
+    : Math.floor(Date.now() / 1000)
+
+  const payload: FullMatchPayload = {
+    header: header?.data,
+    lineups: lineups?.data,
+    stats: stats?.data,
+    events: events?.data,
+    broadcast: broadcast?.data,
+    comments: comments?.data,
+    versions: {
+      header: header ? buildEtag(header.version) : undefined,
+      lineups: lineups ? buildEtag(lineups.version) : undefined,
+      stats: stats ? buildEtag(stats.version) : undefined,
+      events: events ? buildEtag(events.version) : undefined,
+      broadcast: broadcast ? buildEtag(broadcast.version) : undefined,
+      comments: comments ? buildEtag(comments.version) : undefined,
+    },
+    links: {
+      stats: `/api/public/matches/${matchId}/stats`,
+      events: `/api/public/matches/${matchId}/events`,
+      broadcast: `/api/public/matches/${matchId}/broadcast`,
+      comments: `/api/public/matches/${matchId}/comments`,
+    },
+  }
+
+  return { payload, version: aggregateVersion }
 }
 
 /**

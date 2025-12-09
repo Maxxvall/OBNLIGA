@@ -13,6 +13,24 @@ import type {
 } from '@shared/types'
 import { httpRequest, type ApiResponse } from './httpClient'
 
+export type MatchFullResponse = {
+  header?: MatchDetailsHeader
+  lineups?: MatchDetailsLineups
+  stats?: MatchDetailsStats
+  events?: MatchDetailsEvents
+  broadcast?: MatchDetailsBroadcast
+  comments?: MatchComment[]
+  versions: {
+    header?: string
+    lineups?: string
+    stats?: string
+    events?: string
+    broadcast?: string
+    comments?: string
+  }
+  links?: Partial<Record<'stats' | 'events' | 'broadcast' | 'comments', string>>
+}
+
 type RequestOptions = {
   signal?: AbortSignal
   etag?: string
@@ -85,6 +103,16 @@ export const matchApi = {
   fetchComments(matchId: string, options?: RequestOptions) {
     return httpRequest<MatchComment[]>(
       `/api/public/matches/${matchId}/comments`,
+      mapRequestOptions(options)
+    )
+  },
+
+  /**
+   * Fetch aggregated match payload (header + lineups + optional lazy parts)
+   */
+  fetchFull(matchId: string, options?: RequestOptions) {
+    return httpRequest<MatchFullResponse>(
+      `/api/matches/${matchId}/full`,
       mapRequestOptions(options)
     )
   },

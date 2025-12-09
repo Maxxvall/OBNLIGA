@@ -65,6 +65,34 @@ export const EXPRESS_WINS_REWARD_CONFIG: Record<number, number> = {
   3: 1000,  // Gold (Экспресс-легенда) — 50 угаданных экспрессов
 }
 
+// Конфигурация очков для уровней express_bets_created (созданные экспрессы)
+export const EXPRESS_CREATED_REWARD_CONFIG: Record<number, number> = {
+  1: 50,    // Bronze — 5 созданных экспрессов
+  2: 250,   // Silver — 25 созданных экспрессов
+  3: 1000,  // Gold — 100 созданных экспрессов
+}
+
+// Конфигурация очков для уровней total_goals_predictions_won (угаданные тоталы)
+export const TOTAL_GOALS_WINS_REWARD_CONFIG: Record<number, number> = {
+  1: 50,    // Bronze — 15 угаданных тоталов
+  2: 250,   // Silver — 50 угаданных тоталов
+  3: 1000,  // Gold — 150 угаданных тоталов
+}
+
+// Конфигурация очков для уровней shop_orders_completed (подтверждённые заказы)
+export const SHOP_ORDERS_COMPLETED_REWARD_CONFIG: Record<number, number> = {
+  1: 150,   // Bronze — 1 подтверждённый заказ
+  2: 500,   // Silver — 5 подтверждённых заказов
+  3: 5000,  // Gold — 15 подтверждённых заказов
+}
+
+// Конфигурация очков для уровней broadcast_comments (комментарии в эфире)
+export const BROADCAST_COMMENTS_REWARD_CONFIG: Record<number, number> = {
+  1: 50,    // Bronze — 20 комментариев
+  2: 250,   // Silver — 100 комментариев
+  3: 1000,  // Gold — 500 комментариев
+}
+
 // Конфигурация очков для уровней broadcast_watch_time (часы просмотра трансляций)
 export const BROADCAST_WATCH_REWARD_CONFIG: Record<number, number> = {
   1: 50,    // Bronze (Зритель) — 5 часов просмотра

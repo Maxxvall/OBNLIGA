@@ -449,6 +449,10 @@ export const createExpressBet = async (
     },
   })
 
+  await incrementAchievementProgress(userId, AchievementMetric.EXPRESS_BETS_CREATED, 1, tx).catch(err => {
+    logger.warn({ err, userId }, 'Failed to increment EXPRESS_BETS_CREATED achievement')
+  })
+
   logger.info(
     {
       expressId: expressBet.id.toString(),

@@ -7,7 +7,8 @@
 import { randomUUID } from 'crypto'
 import prisma from '../db'
 import { defaultCache } from '../cache'
-import { MatchStatus, LineupRole } from '@prisma/client'
+import { AchievementMetric, MatchStatus, LineupRole } from '@prisma/client'
+import { incrementAchievementProgress } from './achievementProgress'
 
 type CachedResult<T> = {
   data: T
@@ -688,6 +689,7 @@ export async function appendMatchComment(
   const appUser = await prisma.appUser.findUnique({
     where: { telegramId },
     select: {
+      id: true,
       telegramId: true,
       firstName: true,
       photoUrl: true,
@@ -743,6 +745,10 @@ export async function appendMatchComment(
     async () => nextComments,
     COMMENT_CACHE_OPTIONS
   )
+
+  if (appUser.id) {
+    await incrementAchievementProgress(appUser.id, AchievementMetric.BROADCAST_COMMENTS, 1).catch(() => undefined)
+  }
 
   return {
     comment,

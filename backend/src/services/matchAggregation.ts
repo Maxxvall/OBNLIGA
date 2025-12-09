@@ -913,6 +913,15 @@ async function updatePredictions(
     }
   }
 
+  if (settlementSummary && settlementSummary.totalGoalsWinsByUser.size > 0) {
+    for (const [userId, wins] of settlementSummary.totalGoalsWinsByUser.entries()) {
+      if (wins <= 0) continue
+      await incrementAchievementProgress(userId, AchievementMetric.TOTAL_GOALS_PREDICTIONS_WON, wins, tx).catch(err => {
+        logger.warn({ err, userId }, 'Failed to increment TOTAL_GOALS_PREDICTIONS_WON from prediction entries')
+      })
+    }
+  }
+
   return settlementSummary
 }
 

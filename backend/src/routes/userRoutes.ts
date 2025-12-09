@@ -20,6 +20,10 @@ import {
   PREDICTION_STREAK_REWARD_CONFIG,
   EXPRESS_WINS_REWARD_CONFIG,
   BROADCAST_WATCH_REWARD_CONFIG,
+  EXPRESS_CREATED_REWARD_CONFIG,
+  TOTAL_GOALS_WINS_REWARD_CONFIG,
+  SHOP_ORDERS_COMPLETED_REWARD_CONFIG,
+  BROADCAST_COMMENTS_REWARD_CONFIG,
 } from '../services/achievementJobProcessor'
 import {
   syncSeasonPointsProgress,
@@ -592,6 +596,14 @@ function getAchievementGroup(metric: string): string {
       return 'express_wins'
     case 'BROADCAST_WATCH_TIME':
       return 'broadcast_watch'
+    case 'BROADCAST_COMMENTS':
+      return 'broadcast_comments'
+    case 'EXPRESS_BETS_CREATED':
+      return 'express_created'
+    case 'TOTAL_GOALS_PREDICTIONS_WON':
+      return 'total_goals'
+    case 'SHOP_ORDERS_COMPLETED':
+      return 'shop_orders'
     default:
       return metric.toLowerCase()
   }
@@ -613,6 +625,14 @@ function getAchievementIconUrl(metric: string, level: number): string {
       return getExpressWinsIconUrl(level)
     case 'BROADCAST_WATCH_TIME':
       return getBroadcastWatchIconUrl(level)
+    case 'BROADCAST_COMMENTS':
+      return getBroadcastCommentsIconUrl(level)
+    case 'EXPRESS_BETS_CREATED':
+      return getExpressCreatedIconUrl(level)
+    case 'TOTAL_GOALS_PREDICTIONS_WON':
+      return getTotalGoalsWinsIconUrl(level)
+    case 'SHOP_ORDERS_COMPLETED':
+      return getShopOrdersIconUrl(level)
     default:
       return '/achievements/default-locked.png'
   }
@@ -634,6 +654,14 @@ function getAchievementLevelTitle(metric: string, level: number): string {
       return getExpressWinsLevelTitle(level)
     case 'BROADCAST_WATCH_TIME':
       return getBroadcastWatchLevelTitle(level)
+    case 'BROADCAST_COMMENTS':
+      return getBroadcastCommentsLevelTitle(level)
+    case 'EXPRESS_BETS_CREATED':
+      return getExpressCreatedLevelTitle(level)
+    case 'TOTAL_GOALS_PREDICTIONS_WON':
+      return getTotalGoalsWinsLevelTitle(level)
+    case 'SHOP_ORDERS_COMPLETED':
+      return getShopOrdersLevelTitle(level)
     default:
       return `Уровень ${level}`
   }
@@ -655,6 +683,14 @@ function getAchievementRewardPoints(metric: string, level: number): number {
       return EXPRESS_WINS_REWARD_CONFIG[level] ?? 0
     case 'BROADCAST_WATCH_TIME':
       return BROADCAST_WATCH_REWARD_CONFIG[level] ?? 0
+    case 'BROADCAST_COMMENTS':
+      return BROADCAST_COMMENTS_REWARD_CONFIG[level] ?? 0
+    case 'EXPRESS_BETS_CREATED':
+      return EXPRESS_CREATED_REWARD_CONFIG[level] ?? 0
+    case 'TOTAL_GOALS_PREDICTIONS_WON':
+      return TOTAL_GOALS_WINS_REWARD_CONFIG[level] ?? 0
+    case 'SHOP_ORDERS_COMPLETED':
+      return SHOP_ORDERS_COMPLETED_REWARD_CONFIG[level] ?? 0
     default:
       return 0
   }
@@ -827,6 +863,43 @@ function getExpressWinsIconUrl(level: number): string {
   }
 }
 
+function getExpressCreatedIconUrl(level: number): string {
+  // Используем те же placeholder-иконки экспрессов для созданных экспрессов
+  return getExpressWinsIconUrl(level)
+}
+
+function getTotalGoalsWinsIconUrl(level: number): string {
+  // Используем иконки betcount как плейсхолдер для тоталов
+  switch (level) {
+    case 0:
+      return '/achievements/betcount-locked.webp'
+    case 1:
+      return '/achievements/betcount-bronze.webp'
+    case 2:
+      return '/achievements/betcount-silver.webp'
+    case 3:
+      return '/achievements/betcount-gold.webp'
+    default:
+      return '/achievements/betcount-locked.webp'
+  }
+}
+
+function getShopOrdersIconUrl(level: number): string {
+  // Плейсхолдер: используем иконки credits
+  switch (level) {
+    case 0:
+      return '/achievements/credits-locked.webp'
+    case 1:
+      return '/achievements/credits-bronze.webp'
+    case 2:
+      return '/achievements/credits-silver.webp'
+    case 3:
+      return '/achievements/credits-gold.webp'
+    default:
+      return '/achievements/credits-locked.webp'
+  }
+}
+
 function getExpressWinsLevelTitle(level: number): string {
   switch (level) {
     case 0:
@@ -858,6 +931,11 @@ function getBroadcastWatchIconUrl(level: number): string {
   }
 }
 
+function getBroadcastCommentsIconUrl(level: number): string {
+  // Плейсхолдер: используем иконки трансляций
+  return getBroadcastWatchIconUrl(level)
+}
+
 function getBroadcastWatchLevelTitle(level: number): string {
   switch (level) {
     case 0:
@@ -870,5 +948,65 @@ function getBroadcastWatchLevelTitle(level: number): string {
       return 'Постоянный зритель'
     default:
       return 'Новичок'
+  }
+}
+
+function getBroadcastCommentsLevelTitle(level: number): string {
+  switch (level) {
+    case 0:
+      return 'Тихий зритель'
+    case 1:
+      return 'Голос эфира'
+    case 2:
+      return 'Драйвер чата'
+    case 3:
+      return 'Комментатор'
+    default:
+      return 'Тихий зритель'
+  }
+}
+
+function getExpressCreatedLevelTitle(level: number): string {
+  switch (level) {
+    case 0:
+      return 'Новичок комбинирования'
+    case 1:
+      return 'Сборщик купонов'
+    case 2:
+      return 'Комбо-инженер'
+    case 3:
+      return 'Маэстро экспрессов'
+    default:
+      return 'Новичок комбинирования'
+  }
+}
+
+function getTotalGoalsWinsLevelTitle(level: number): string {
+  switch (level) {
+    case 0:
+      return 'Новичок тоталов'
+    case 1:
+      return 'Ловец тоталов'
+    case 2:
+      return 'Стратег тоталов'
+    case 3:
+      return 'Оракул тоталов'
+    default:
+      return 'Новичок тоталов'
+  }
+}
+
+function getShopOrdersLevelTitle(level: number): string {
+  switch (level) {
+    case 0:
+      return 'Посетитель витрины'
+    case 1:
+      return 'Коллекционер мерча'
+    case 2:
+      return 'Хранитель коллекции'
+    case 3:
+      return 'Повелитель мерча'
+    default:
+      return 'Посетитель витрины'
   }
 }

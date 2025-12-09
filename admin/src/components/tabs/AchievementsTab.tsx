@@ -30,6 +30,10 @@ const metricLabels: Record<AchievementType['metric'], string> = {
   PREDICTION_STREAK: 'Серия побед',
   EXPRESS_WINS: 'Угаданные экспрессы',
   BROADCAST_WATCH_TIME: 'Часы просмотра трансляций',
+  EXPRESS_BETS_CREATED: 'Созданные экспрессы',
+  TOTAL_GOALS_PREDICTIONS_WON: 'Угаданные тоталы',
+  SHOP_ORDERS_COMPLETED: 'Подтверждённые заказы',
+  BROADCAST_COMMENTS: 'Комментарии в эфире',
 }
 
 const rewardPointsByMetric: Record<AchievementType['metric'], Record<number, number>> = {
@@ -40,6 +44,10 @@ const rewardPointsByMetric: Record<AchievementType['metric'], Record<number, num
   PREDICTION_STREAK: { 1: 50, 2: 250, 3: 1000 },
   EXPRESS_WINS: { 1: 50, 2: 250, 3: 1000 },
   BROADCAST_WATCH_TIME: { 1: 50, 2: 200, 3: 1500 },
+  EXPRESS_BETS_CREATED: { 1: 50, 2: 250, 3: 1000 },
+  TOTAL_GOALS_PREDICTIONS_WON: { 1: 50, 2: 250, 3: 1000 },
+  SHOP_ORDERS_COMPLETED: { 1: 150, 2: 500, 3: 5000 },
+  BROADCAST_COMMENTS: { 1: 50, 2: 250, 3: 1000 },
 }
 
 const getRewardPoints = (metric: AchievementType['metric'], level: number): number | null =>

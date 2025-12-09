@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify'
-import { Prisma, ShopOrderStatus, type ShopItem } from '@prisma/client'
+import { AchievementMetric, Prisma, ShopOrderStatus, type ShopItem } from '@prisma/client'
 import prisma from '../db'
 import { adminAuthHook } from '../utils/adminAuth'
 import { defaultCache, PUBLIC_SHOP_ITEMS_KEY, shopHistoryCacheKey } from '../cache'
@@ -8,6 +8,7 @@ import {
   serializeShopOrderView,
   type ShopItemWithImage,
 } from '../services/shop/serializers'
+import { incrementAchievementProgress } from '../services/achievementProgress'
 
 const MAX_SHOP_TITLE_LENGTH = 80
 const MAX_SHOP_SUBTITLE_LENGTH = 160
@@ -735,7 +736,11 @@ export default async function adminShopRoutes(server: FastifyInstance) {
               }
             }
 
-            return { order: updated, restocked: changedStatus && nextStatus === ShopOrderStatus.CANCELLED }
+            return {
+              order: updated,
+              restocked: changedStatus && nextStatus === ShopOrderStatus.CANCELLED,
+              confirmed: changedStatus && nextStatus === ShopOrderStatus.CONFIRMED,
+            }
           })
 
           if (result.restocked) {
@@ -745,6 +750,14 @@ export default async function adminShopRoutes(server: FastifyInstance) {
             await invalidateHistoryCache(result.order.telegramId)
           } else if (noteProvided) {
             await invalidateHistoryCache(result.order.telegramId)
+          }
+
+          if (result.confirmed && result.order.userId != null) {
+            await incrementAchievementProgress(
+              result.order.userId,
+              AchievementMetric.SHOP_ORDERS_COMPLETED,
+              1
+            ).catch(err => request.log.warn({ err, orderId, userId: result.order.userId }, 'failed to increment SHOP_ORDERS_COMPLETED'))
           }
 
           return reply.send({ ok: true, data: serializeShopOrderView(result.order) })

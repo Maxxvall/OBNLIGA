@@ -24,6 +24,10 @@ const ACHIEVEMENT_GROUP_BY_METRIC: Record<AchievementMetric, string> = {
   [AchievementMetric.PREDICTION_STREAK]: 'prediction_streak',
   [AchievementMetric.EXPRESS_WINS]: 'express_wins',
   [AchievementMetric.BROADCAST_WATCH_TIME]: 'broadcast_watch',
+  [AchievementMetric.EXPRESS_BETS_CREATED]: 'express_created',
+  [AchievementMetric.TOTAL_GOALS_PREDICTIONS_WON]: 'total_goals',
+  [AchievementMetric.SHOP_ORDERS_COMPLETED]: 'shop_orders',
+  [AchievementMetric.BROADCAST_COMMENTS]: 'broadcast_comments',
 }
 
 const mapAchievementStats = (aggregate: {

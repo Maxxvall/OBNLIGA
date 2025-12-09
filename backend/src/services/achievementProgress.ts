@@ -12,6 +12,10 @@ import {
   PREDICTION_STREAK_REWARD_CONFIG,
   EXPRESS_WINS_REWARD_CONFIG,
   BROADCAST_WATCH_REWARD_CONFIG,
+  EXPRESS_CREATED_REWARD_CONFIG,
+  TOTAL_GOALS_WINS_REWARD_CONFIG,
+  SHOP_ORDERS_COMPLETED_REWARD_CONFIG,
+  BROADCAST_COMMENTS_REWARD_CONFIG,
 } from './achievementJobProcessor'
 
 const invalidateUserCardExtra = async (userId: number) => {
@@ -149,6 +153,26 @@ export const incrementAchievementProgress = async (
         const points = BROADCAST_WATCH_REWARD_CONFIG[unlockedLevel]
         if (points) {
           await createAchievementRewardJob(userId, 'broadcast_watch', unlockedLevel, points, seasonId, client)
+        }
+      } else if (metric === AchievementMetric.EXPRESS_BETS_CREATED) {
+        const points = EXPRESS_CREATED_REWARD_CONFIG[unlockedLevel]
+        if (points) {
+          await createAchievementRewardJob(userId, 'express_created', unlockedLevel, points, seasonId, client)
+        }
+      } else if (metric === AchievementMetric.TOTAL_GOALS_PREDICTIONS_WON) {
+        const points = TOTAL_GOALS_WINS_REWARD_CONFIG[unlockedLevel]
+        if (points) {
+          await createAchievementRewardJob(userId, 'total_goals_wins', unlockedLevel, points, seasonId, client)
+        }
+      } else if (metric === AchievementMetric.SHOP_ORDERS_COMPLETED) {
+        const points = SHOP_ORDERS_COMPLETED_REWARD_CONFIG[unlockedLevel]
+        if (points) {
+          await createAchievementRewardJob(userId, 'shop_orders', unlockedLevel, points, seasonId, client)
+        }
+      } else if (metric === AchievementMetric.BROADCAST_COMMENTS) {
+        const points = BROADCAST_COMMENTS_REWARD_CONFIG[unlockedLevel]
+        if (points) {
+          await createAchievementRewardJob(userId, 'broadcast_comments', unlockedLevel, points, seasonId, client)
         }
       }
 

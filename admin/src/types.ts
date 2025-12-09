@@ -485,6 +485,10 @@ export interface AchievementType {
     | 'PREDICTION_STREAK'
     | 'EXPRESS_WINS'
     | 'BROADCAST_WATCH_TIME'
+    | 'EXPRESS_BETS_CREATED'
+    | 'TOTAL_GOALS_PREDICTIONS_WON'
+    | 'SHOP_ORDERS_COMPLETED'
+    | 'BROADCAST_COMMENTS'
   levels: AchievementLevel[]
 }
 

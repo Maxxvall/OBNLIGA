@@ -89,6 +89,30 @@ const ACHIEVEMENT_LEVEL_NAMES: Record<string, Record<number, string>> = {
     2: 'Фанат трансляций',
     3: 'Постоянный зритель',
   },
+  broadcast_comments: {
+    0: 'Тихий зритель',
+    1: 'Голос эфира',
+    2: 'Драйвер чата',
+    3: 'Комментатор',
+  },
+  express_created: {
+    0: 'Новичок комбинирования',
+    1: 'Сборщик купонов',
+    2: 'Комбо-инженер',
+    3: 'Маэстро экспрессов',
+  },
+  total_goals: {
+    0: 'Новичок тоталов',
+    1: 'Ловец тоталов',
+    2: 'Стратег тоталов',
+    3: 'Оракул тоталов',
+  },
+  shop_orders: {
+    0: 'Посетитель витрины',
+    1: 'Коллекционер мерча',
+    2: 'Хранитель коллекции',
+    3: 'Повелитель мерча',
+  },
 }
 
 // Группа для отображения
@@ -100,6 +124,10 @@ const ACHIEVEMENT_GROUP_LABELS: Record<string, string> = {
   prediction_streak: 'Серия побед',
   express_wins: 'Мастер экспрессов',
   broadcast_watch: 'Просмотр трансляций',
+  broadcast_comments: 'Комментатор',
+  express_created: 'Комбинатор',
+  total_goals: 'Тоталист',
+  shop_orders: 'Коллекционер',
 }
 
 // Конфигурация порогов и очков для каждой группы
@@ -138,6 +166,26 @@ const ACHIEVEMENT_THRESHOLDS: Record<string, { level: number; threshold: number;
     { level: 1, threshold: 300, points: 50 },
     { level: 2, threshold: 1500, points: 200 },
     { level: 3, threshold: 6000, points: 1500 },
+  ],
+  broadcast_comments: [
+    { level: 1, threshold: 20, points: 50 },
+    { level: 2, threshold: 100, points: 250 },
+    { level: 3, threshold: 500, points: 1000 },
+  ],
+  express_created: [
+    { level: 1, threshold: 5, points: 50 },
+    { level: 2, threshold: 25, points: 250 },
+    { level: 3, threshold: 100, points: 1000 },
+  ],
+  total_goals: [
+    { level: 1, threshold: 15, points: 50 },
+    { level: 2, threshold: 50, points: 250 },
+    { level: 3, threshold: 150, points: 1000 },
+  ],
+  shop_orders: [
+    { level: 1, threshold: 1, points: 150 },
+    { level: 2, threshold: 5, points: 500 },
+    { level: 3, threshold: 15, points: 5000 },
   ],
 }
 
@@ -178,6 +226,14 @@ function getProgressUnit(group: string, count: number): string {
     return pluralize(count, 'угаданный экспресс', 'угаданных экспресса', 'угаданных экспрессов')
   case 'broadcast_watch':
     return pluralize(count, 'минута просмотра', 'минуты просмотра', 'минут просмотра')
+  case 'broadcast_comments':
+    return pluralize(count, 'комментарий', 'комментария', 'комментариев')
+  case 'express_created':
+    return pluralize(count, 'созданный экспресс', 'созданных экспресса', 'созданных экспрессов')
+  case 'total_goals':
+    return pluralize(count, 'угаданный тотал', 'угаданных тотала', 'угаданных тоталов')
+  case 'shop_orders':
+    return pluralize(count, 'подтверждённый заказ', 'подтверждённых заказа', 'подтверждённых заказов')
   default:
     return ''
   }
@@ -268,6 +324,54 @@ const DEFAULT_ACHIEVEMENTS: UserAchievementSummaryItem[] = [
     animationRewardId: null,
     animationPoints: null,
   },
+  {
+    achievementId: -8,
+    group: 'broadcast_comments',
+    currentLevel: 0,
+    currentProgress: 0,
+    nextThreshold: 20,
+    iconSrc: '/achievements/broadcast-locked.webp',
+    shortTitle: 'Тихий зритель',
+    shouldPlayAnimation: false,
+    animationRewardId: null,
+    animationPoints: null,
+  },
+  {
+    achievementId: -9,
+    group: 'express_created',
+    currentLevel: 0,
+    currentProgress: 0,
+    nextThreshold: 5,
+    iconSrc: '/achievements/express-locked.webp',
+    shortTitle: 'Новичок комбинирования',
+    shouldPlayAnimation: false,
+    animationRewardId: null,
+    animationPoints: null,
+  },
+  {
+    achievementId: -10,
+    group: 'total_goals',
+    currentLevel: 0,
+    currentProgress: 0,
+    nextThreshold: 15,
+    iconSrc: '/achievements/betcount-locked.webp',
+    shortTitle: 'Новичок тоталов',
+    shouldPlayAnimation: false,
+    animationRewardId: null,
+    animationPoints: null,
+  },
+  {
+    achievementId: -11,
+    group: 'shop_orders',
+    currentLevel: 0,
+    currentProgress: 0,
+    nextThreshold: 1,
+    iconSrc: '/achievements/credits-locked.webp',
+    shortTitle: 'Посетитель витрины',
+    shouldPlayAnimation: false,
+    animationRewardId: null,
+    animationPoints: null,
+  },
 ]
 
 // Специальные иконки для группы "bet_wins" (угаданные прогнозы)
@@ -294,6 +398,22 @@ const BROADCAST_WATCH_ICONS: Record<number, string> = {
   3: '/achievements/broadcast-gold.webp',
 }
 
+const EXPRESS_CREATED_ICONS: Record<number, string> = EXPRESS_WINS_ICONS
+
+const TOTAL_GOALS_ICONS: Record<number, string> = {
+  0: '/achievements/betcount-locked.webp',
+  1: '/achievements/betcount-bronze.webp',
+  2: '/achievements/betcount-silver.webp',
+  3: '/achievements/betcount-gold.webp',
+}
+
+const SHOP_ORDERS_ICONS: Record<number, string> = {
+  0: '/achievements/credits-locked.webp',
+  1: '/achievements/credits-bronze.webp',
+  2: '/achievements/credits-silver.webp',
+  3: '/achievements/credits-gold.webp',
+}
+
 // Иконки для prediction_streak (серия побед в прогнозах)
 const PREDICTION_STREAK_ICONS: Record<number, string> = {
   0: '/achievements/prediction-streak-locked.webp',
@@ -318,8 +438,24 @@ function resolveAchievementIcon(achievement: UserAchievementSummaryItem): string
     return BROADCAST_WATCH_ICONS[achievement.currentLevel] ?? achievement.iconSrc ?? '/achievements/broadcast-locked.webp'
   }
 
+  if (achievement.group === 'broadcast_comments') {
+    return BROADCAST_WATCH_ICONS[achievement.currentLevel] ?? achievement.iconSrc ?? '/achievements/broadcast-locked.webp'
+  }
+
   if (achievement.group === 'prediction_streak') {
     return PREDICTION_STREAK_ICONS[achievement.currentLevel] ?? achievement.iconSrc ?? '/achievements/prediction-streak-locked.webp'
+  }
+
+  if (achievement.group === 'express_created') {
+    return EXPRESS_CREATED_ICONS[achievement.currentLevel] ?? achievement.iconSrc ?? '/achievements/express-locked.webp'
+  }
+
+  if (achievement.group === 'total_goals') {
+    return TOTAL_GOALS_ICONS[achievement.currentLevel] ?? achievement.iconSrc ?? '/achievements/betcount-locked.webp'
+  }
+
+  if (achievement.group === 'shop_orders') {
+    return SHOP_ORDERS_ICONS[achievement.currentLevel] ?? achievement.iconSrc ?? '/achievements/credits-locked.webp'
   }
 
   // По умолчанию используем иконку из данных или общий fallback
@@ -442,6 +578,34 @@ function AchievementModal({ achievement, onClose }: AchievementModalProps) {
       }
       return 'Смотрите трансляции — в зачёт идут минуты просмотра.'
     }
+
+    if (achievement.group === 'broadcast_comments') {
+      if (achievement.currentLevel >= thresholds.length) {
+        return 'Достигнуто максимальное звание за участие в чате эфира.'
+      }
+      return 'Комментируйте во время эфира — в зачёт идут отправленные сообщения.'
+    }
+
+    if (achievement.group === 'express_created') {
+      if (achievement.currentLevel >= thresholds.length) {
+        return 'Достигнуто максимальное звание за создание экспрессов.'
+      }
+      return 'Собирайте экспрессы из разных матчей — учитываются все созданные экспрессы.'
+    }
+
+    if (achievement.group === 'total_goals') {
+      if (achievement.currentLevel >= thresholds.length) {
+        return 'Достигнуто максимальное звание за тоталы.'
+      }
+      return 'Угадывайте тоталы по голам — считаются победы в рынках тоталов.'
+    }
+
+    if (achievement.group === 'shop_orders') {
+      if (achievement.currentLevel >= thresholds.length) {
+        return 'Достигнуто максимальное звание по заказам.'
+      }
+      return 'Оформляйте и получайте подтверждение заказов в магазине — учитываются подтверждённые администратором заказы.'
+    }
     return null
   })()
 
@@ -518,6 +682,10 @@ function AchievementModal({ achievement, onClose }: AchievementModalProps) {
               'prediction_streak',
               'express_wins',
               'broadcast_watch',
+              'broadcast_comments',
+              'express_created',
+              'total_goals',
+              'shop_orders',
             ])
             const thresholdText = numericOnlyGroups.has(achievement.group)
               ? String(t.threshold)

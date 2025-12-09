@@ -1,4 +1,4 @@
-﻿-- Baseline schema generated from prisma/schema.prisma
+-- Baseline schema generated from prisma/schema.prisma
 
 -- CreateEnum
 CREATE TYPE "CompetitionType" AS ENUM ('LEAGUE', 'CUP');
@@ -1440,6 +1440,22 @@ ALTER TYPE "AchievementMetric" ADD VALUE 'PREDICTION_STREAK';
 ALTER TYPE "AchievementMetric" ADD VALUE 'EXPRESS_WINS';
 ALTER TYPE "AchievementMetric" ADD VALUE 'BROADCAST_WATCH_TIME';
 
+-- Add additional AchievementMetric values (merged from later migrations)
+DO $$ BEGIN
+    BEGIN
+        ALTER TYPE "AchievementMetric" ADD VALUE 'BROADCAST_COMMENTS';
+    EXCEPTION WHEN duplicate_object THEN NULL; END;
+    BEGIN
+        ALTER TYPE "AchievementMetric" ADD VALUE 'EXPRESS_BETS_CREATED';
+    EXCEPTION WHEN duplicate_object THEN NULL; END;
+    BEGIN
+        ALTER TYPE "AchievementMetric" ADD VALUE 'TOTAL_GOALS_PREDICTIONS_WON';
+    EXCEPTION WHEN duplicate_object THEN NULL; END;
+    BEGIN
+        ALTER TYPE "AchievementMetric" ADD VALUE 'SHOP_ORDERS_COMPLETED';
+    EXCEPTION WHEN duplicate_object THEN NULL; END;
+END $$;
+
 -- РЎРѕР·РґР°С‘Рј С‚Р°Р±Р»РёС†Сѓ РґР»СЏ РѕС‚СЃР»РµР¶РёРІР°РЅРёСЏ РІСЂРµРјРµРЅРё РїСЂРѕСЃРјРѕС‚СЂР° С‚СЂР°РЅСЃР»СЏС†РёР№
 CREATE TABLE user_broadcast_watch_time (
   user_id INTEGER PRIMARY KEY REFERENCES app_user(user_id) ON DELETE CASCADE,
@@ -1576,4 +1592,285 @@ ALTER COLUMN "last_updated_at" SET DATA TYPE TIMESTAMP(3);
 
 -- AddForeignKey
 ALTER TABLE "user_broadcast_watch_time" ADD CONSTRAINT "user_broadcast_watch_time_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "app_user"("user_id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- BEGIN: merged seed from 20251209_seed_achievement_data
+-- Ensure the broadcast comments, express creation, total goals, and shop order achievements exist with their new metadata
+
+INSERT INTO "achievement_type" ("name", "description", "required_value", "metric", "created_at", "updated_at")
+SELECT 'Комментатор', 'Достижение за активность в чате трансляций', 500, 'BROADCAST_COMMENTS', NOW(), NOW()
+WHERE NOT EXISTS (SELECT 1 FROM "achievement_type" WHERE "metric" = 'BROADCAST_COMMENTS');
+
+INSERT INTO "achievement_type" ("name", "description", "required_value", "metric", "created_at", "updated_at")
+SELECT 'Комбинатор', 'Достижение за создание экспресс-ставок', 100, 'EXPRESS_BETS_CREATED', NOW(), NOW()
+WHERE NOT EXISTS (SELECT 1 FROM "achievement_type" WHERE "metric" = 'EXPRESS_BETS_CREATED');
+
+INSERT INTO "achievement_type" ("name", "description", "required_value", "metric", "created_at", "updated_at")
+SELECT 'Тоталист', 'Достижение за точные тоталы', 150, 'TOTAL_GOALS_PREDICTIONS_WON', NOW(), NOW()
+WHERE NOT EXISTS (SELECT 1 FROM "achievement_type" WHERE "metric" = 'TOTAL_GOALS_PREDICTIONS_WON');
+
+INSERT INTO "achievement_type" ("name", "description", "required_value", "metric", "created_at", "updated_at")
+SELECT 'Коллекционер', 'Достижение за подтверждённые заказы в магазине', 15, 'SHOP_ORDERS_COMPLETED', NOW(), NOW()
+WHERE NOT EXISTS (SELECT 1 FROM "achievement_type" WHERE "metric" = 'SHOP_ORDERS_COMPLETED');
+
+-- seed levels for broadcast comments
+INSERT INTO "achievement_level" ("achievement_id", "level", "threshold", "icon_url", "title", "description", "created_at", "updated_at")
+SELECT at.achievement_type_id, 1, 20, '/achievements/broadcast-bronze.webp', 'Голос эфира', 'Написано 20 комментариев в эфире', NOW(), NOW()
+FROM "achievement_type" at
+WHERE at.metric = 'BROADCAST_COMMENTS'
+    AND NOT EXISTS (
+        SELECT 1 FROM "achievement_level" al
+        WHERE al.achievement_id = at.achievement_type_id AND al.level = 1
+    );
+
+INSERT INTO "achievement_level" ("achievement_id", "level", "threshold", "icon_url", "title", "description", "created_at", "updated_at")
+SELECT at.achievement_type_id, 2, 100, '/achievements/broadcast-silver.webp', 'Драйвер чата', 'Написано 100 комментариев в эфире', NOW(), NOW()
+FROM "achievement_type" at
+WHERE at.metric = 'BROADCAST_COMMENTS'
+    AND NOT EXISTS (
+        SELECT 1 FROM "achievement_level" al
+        WHERE al.achievement_id = at.achievement_type_id AND al.level = 2
+    );
+
+INSERT INTO "achievement_level" ("achievement_id", "level", "threshold", "icon_url", "title", "description", "created_at", "updated_at")
+SELECT at.achievement_type_id, 3, 500, '/achievements/broadcast-gold.webp', 'Комментатор', 'Написано 500 комментариев в эфире', NOW(), NOW()
+FROM "achievement_type" at
+WHERE at.metric = 'BROADCAST_COMMENTS'
+    AND NOT EXISTS (
+        SELECT 1 FROM "achievement_level" al
+        WHERE al.achievement_id = at.achievement_type_id AND al.level = 3
+    );
+
+-- seed levels for express bets created
+INSERT INTO "achievement_level" ("achievement_id", "level", "threshold", "icon_url", "title", "description", "created_at", "updated_at")
+SELECT at.achievement_type_id, 1, 5, '/achievements/express-bronze.webp', 'Сборщик купонов', 'Создано 5 экспрессов', NOW(), NOW()
+FROM "achievement_type" at
+WHERE at.metric = 'EXPRESS_BETS_CREATED'
+    AND NOT EXISTS (
+        SELECT 1 FROM "achievement_level" al
+        WHERE al.achievement_id = at.achievement_type_id AND al.level = 1
+    );
+
+INSERT INTO "achievement_level" ("achievement_id", "level", "threshold", "icon_url", "title", "description", "created_at", "updated_at")
+SELECT at.achievement_type_id, 2, 25, '/achievements/express-silver.webp', 'Комбо-инженер', 'Создано 25 экспрессов', NOW(), NOW()
+FROM "achievement_type" at
+WHERE at.metric = 'EXPRESS_BETS_CREATED'
+    AND NOT EXISTS (
+        SELECT 1 FROM "achievement_level" al
+        WHERE al.achievement_id = at.achievement_type_id AND al.level = 2
+    );
+
+INSERT INTO "achievement_level" ("achievement_id", "level", "threshold", "icon_url", "title", "description", "created_at", "updated_at")
+SELECT at.achievement_type_id, 3, 100, '/achievements/express-gold.webp', 'Маэстро экспрессов', 'Создано 100 экспрессов', NOW(), NOW()
+FROM "achievement_type" at
+WHERE at.metric = 'EXPRESS_BETS_CREATED'
+    AND NOT EXISTS (
+        SELECT 1 FROM "achievement_level" al
+        WHERE al.achievement_id = at.achievement_type_id AND al.level = 3
+    );
+
+-- seed levels for total goals predictions won
+INSERT INTO "achievement_level" ("achievement_id", "level", "threshold", "icon_url", "title", "description", "created_at", "updated_at")
+SELECT at.achievement_type_id, 1, 15, '/achievements/betcount-bronze.webp', 'Ловец тоталов', 'Угадано 15 тоталов', NOW(), NOW()
+FROM "achievement_type" at
+WHERE at.metric = 'TOTAL_GOALS_PREDICTIONS_WON'
+    AND NOT EXISTS (
+        SELECT 1 FROM "achievement_level" al
+        WHERE al.achievement_id = at.achievement_type_id AND al.level = 1
+    );
+
+INSERT INTO "achievement_level" ("achievement_id", "level", "threshold", "icon_url", "title", "description", "created_at", "updated_at")
+SELECT at.achievement_type_id, 2, 50, '/achievements/betcount-silver.webp', 'Стратег тоталов', 'Угадано 50 тоталов', NOW(), NOW()
+FROM "achievement_type" at
+WHERE at.metric = 'TOTAL_GOALS_PREDICTIONS_WON'
+    AND NOT EXISTS (
+        SELECT 1 FROM "achievement_level" al
+        WHERE al.achievement_id = at.achievement_type_id AND al.level = 2
+    );
+
+INSERT INTO "achievement_level" ("achievement_id", "level", "threshold", "icon_url", "title", "description", "created_at", "updated_at")
+SELECT at.achievement_type_id, 3, 150, '/achievements/betcount-gold.webp', 'Оракул тоталов', 'Угадано 150 тоталов', NOW(), NOW()
+FROM "achievement_type" at
+WHERE at.metric = 'TOTAL_GOALS_PREDICTIONS_WON'
+    AND NOT EXISTS (
+        SELECT 1 FROM "achievement_level" al
+        WHERE al.achievement_id = at.achievement_type_id AND al.level = 3
+    );
+
+-- seed levels for shop orders completed
+INSERT INTO "achievement_level" ("achievement_id", "level", "threshold", "icon_url", "title", "description", "created_at", "updated_at")
+SELECT at.achievement_type_id, 1, 1, '/achievements/credits-bronze.webp', 'Коллекционер мерча', 'Оформлен 1 заказ в магазине', NOW(), NOW()
+FROM "achievement_type" at
+WHERE at.metric = 'SHOP_ORDERS_COMPLETED'
+    AND NOT EXISTS (
+        SELECT 1 FROM "achievement_level" al
+        WHERE al.achievement_id = at.achievement_type_id AND al.level = 1
+    );
+
+INSERT INTO "achievement_level" ("achievement_id", "level", "threshold", "icon_url", "title", "description", "created_at", "updated_at")
+SELECT at.achievement_type_id, 2, 5, '/achievements/credits-silver.webp', 'Хранитель коллекции', 'Оформлено 5 заказов в магазине', NOW(), NOW()
+FROM "achievement_type" at
+WHERE at.metric = 'SHOP_ORDERS_COMPLETED'
+    AND NOT EXISTS (
+        SELECT 1 FROM "achievement_level" al
+        WHERE al.achievement_id = at.achievement_type_id AND al.level = 2
+    );
+
+INSERT INTO "achievement_level" ("achievement_id", "level", "threshold", "icon_url", "title", "description", "created_at", "updated_at")
+SELECT at.achievement_type_id, 3, 15, '/achievements/credits-gold.webp', 'Повелитель мерча', 'Оформлено 15 заказов в магазине', NOW(), NOW()
+FROM "achievement_type" at
+WHERE at.metric = 'SHOP_ORDERS_COMPLETED'
+    AND NOT EXISTS (
+        SELECT 1 FROM "achievement_level" al
+        WHERE al.achievement_id = at.achievement_type_id AND al.level = 3
+    );
+
+-- Repair legacy icon URLs to use WebP assets
+UPDATE "achievement_level" al
+SET "icon_url" = '/achievements/streak-bronze.webp'
+FROM "achievement_type" at
+WHERE al."achievement_id" = at."achievement_type_id"
+    AND at.metric = 'DAILY_LOGIN'
+    AND al.level = 1;
+
+UPDATE "achievement_level" al
+SET "icon_url" = '/achievements/streak-silver.webp'
+FROM "achievement_type" at
+WHERE al."achievement_id" = at."achievement_type_id"
+    AND at.metric = 'DAILY_LOGIN'
+    AND al.level = 2;
+
+UPDATE "achievement_level" al
+SET "icon_url" = '/achievements/streak-gold.webp'
+FROM "achievement_type" at
+WHERE al."achievement_id" = at."achievement_type_id"
+    AND at.metric = 'DAILY_LOGIN'
+    AND al.level = 3;
+
+UPDATE "achievement_level" al
+SET "icon_url" = '/achievements/betcount-bronze.webp'
+FROM "achievement_type" at
+WHERE al."achievement_id" = at."achievement_type_id"
+    AND at.metric = 'TOTAL_PREDICTIONS'
+    AND al.level = 1;
+
+UPDATE "achievement_level" al
+SET "icon_url" = '/achievements/betcount-silver.webp'
+FROM "achievement_type" at
+WHERE al."achievement_id" = at."achievement_type_id"
+    AND at.metric = 'TOTAL_PREDICTIONS'
+    AND al.level = 2;
+
+UPDATE "achievement_level" al
+SET "icon_url" = '/achievements/betcount-gold.webp'
+FROM "achievement_type" at
+WHERE al."achievement_id" = at."achievement_type_id"
+    AND at.metric = 'TOTAL_PREDICTIONS'
+    AND al.level = 3;
+
+UPDATE "achievement_level" al
+SET "icon_url" = '/achievements/credits-bronze.webp'
+FROM "achievement_type" at
+WHERE al."achievement_id" = at."achievement_type_id"
+    AND at.metric = 'SEASON_POINTS'
+    AND al.level = 1;
+
+UPDATE "achievement_level" al
+SET "icon_url" = '/achievements/credits-silver.webp'
+FROM "achievement_type" at
+WHERE al."achievement_id" = at."achievement_type_id"
+    AND at.metric = 'SEASON_POINTS'
+    AND al.level = 2;
+
+UPDATE "achievement_level" al
+SET "icon_url" = '/achievements/credits-gold.webp'
+FROM "achievement_type" at
+WHERE al."achievement_id" = at."achievement_type_id"
+    AND at.metric = 'SEASON_POINTS'
+    AND al.level = 3;
+
+UPDATE "achievement_level" al
+SET "icon_url" = '/achievements/betwins-bronze.webp'
+FROM "achievement_type" at
+WHERE al."achievement_id" = at."achievement_type_id"
+    AND at.metric = 'CORRECT_PREDICTIONS'
+    AND al.level = 1;
+
+UPDATE "achievement_level" al
+SET "icon_url" = '/achievements/betwins-silver.webp'
+FROM "achievement_type" at
+WHERE al."achievement_id" = at."achievement_type_id"
+    AND at.metric = 'CORRECT_PREDICTIONS'
+    AND al.level = 2;
+
+UPDATE "achievement_level" al
+SET "icon_url" = '/achievements/betwins-gold.webp'
+FROM "achievement_type" at
+WHERE al."achievement_id" = at."achievement_type_id"
+    AND at.metric = 'CORRECT_PREDICTIONS'
+    AND al.level = 3;
+
+UPDATE "achievement_level" al
+SET "icon_url" = '/achievements/prediction-streak-bronze.webp'
+FROM "achievement_type" at
+WHERE al."achievement_id" = at."achievement_type_id"
+    AND at.metric = 'PREDICTION_STREAK'
+    AND al.level = 1;
+
+UPDATE "achievement_level" al
+SET "icon_url" = '/achievements/prediction-streak-silver.webp'
+FROM "achievement_type" at
+WHERE al."achievement_id" = at."achievement_type_id"
+    AND at.metric = 'PREDICTION_STREAK'
+    AND al.level = 2;
+
+UPDATE "achievement_level" al
+SET "icon_url" = '/achievements/prediction-streak-gold.webp'
+FROM "achievement_type" at
+WHERE al."achievement_id" = at."achievement_type_id"
+    AND at.metric = 'PREDICTION_STREAK'
+    AND al.level = 3;
+
+UPDATE "achievement_level" al
+SET "icon_url" = '/achievements/express-bronze.webp'
+FROM "achievement_type" at
+WHERE al."achievement_id" = at."achievement_type_id"
+    AND at.metric = 'EXPRESS_WINS'
+    AND al.level = 1;
+
+UPDATE "achievement_level" al
+SET "icon_url" = '/achievements/express-silver.webp'
+FROM "achievement_type" at
+WHERE al."achievement_id" = at."achievement_type_id"
+    AND at.metric = 'EXPRESS_WINS'
+    AND al.level = 2;
+
+UPDATE "achievement_level" al
+SET "icon_url" = '/achievements/express-gold.webp'
+FROM "achievement_type" at
+WHERE al."achievement_id" = at."achievement_type_id"
+    AND at.metric = 'EXPRESS_WINS'
+    AND al.level = 3;
+
+UPDATE "achievement_level" al
+SET "icon_url" = '/achievements/broadcast-bronze.webp'
+FROM "achievement_type" at
+WHERE al."achievement_id" = at."achievement_type_id"
+    AND at.metric = 'BROADCAST_WATCH_TIME'
+    AND al.level = 1;
+
+UPDATE "achievement_level" al
+SET "icon_url" = '/achievements/broadcast-silver.webp'
+FROM "achievement_type" at
+WHERE al."achievement_id" = at."achievement_type_id"
+    AND at.metric = 'BROADCAST_WATCH_TIME'
+    AND al.level = 2;
+
+UPDATE "achievement_level" al
+SET "icon_url" = '/achievements/broadcast-gold.webp'
+FROM "achievement_type" at
+WHERE al."achievement_id" = at."achievement_type_id"
+    AND at.metric = 'BROADCAST_WATCH_TIME'
+    AND al.level = 3;
+
+-- END: merged seed from 20251209_seed_achievement_data
 

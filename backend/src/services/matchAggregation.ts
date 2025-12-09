@@ -91,6 +91,7 @@ type PredictionSettlementResult = {
   voided: number
   cancelled: number
   winsByUser: Map<number, number>
+  totalGoalsWinsByUser: Map<number, number>
 }
 
 export async function handleMatchFinalization(

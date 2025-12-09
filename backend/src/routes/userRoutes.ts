@@ -663,15 +663,15 @@ function getAchievementRewardPoints(metric: string, level: number): number {
 function getStreakIconUrl(level: number): string {
   switch (level) {
     case 0:
-      return '/achievements/streak-locked.png'
+      return '/achievements/streak-locked.webp'
     case 1:
-      return '/achievements/streak-bronze.png'
+      return '/achievements/streak-bronze.webp'
     case 2:
-      return '/achievements/streak-silver.png'
+      return '/achievements/streak-silver.webp'
     case 3:
-      return '/achievements/streak-gold.png'
+      return '/achievements/streak-gold.webp'
     default:
-      return '/achievements/streak-locked.png'
+      return '/achievements/streak-locked.webp'
   }
 }
 
@@ -693,15 +693,15 @@ function getStreakLevelTitle(level: number): string {
 function getPredictionsIconUrl(level: number): string {
   switch (level) {
     case 0:
-      return '/achievements/betcount-locked.png'
+      return '/achievements/betcount-locked.webp'
     case 1:
-      return '/achievements/betcount-bronze.png'
+      return '/achievements/betcount-bronze.webp'
     case 2:
-      return '/achievements/betcount-silver.png'
+      return '/achievements/betcount-silver.webp'
     case 3:
-      return '/achievements/betcount-gold.png'
+      return '/achievements/betcount-gold.webp'
     default:
-      return '/achievements/betcount-locked.png'
+      return '/achievements/betcount-locked.webp'
   }
 }
 
@@ -723,15 +723,15 @@ function getPredictionsLevelTitle(level: number): string {
 function getSeasonPointsIconUrl(level: number): string {
   switch (level) {
     case 0:
-      return '/achievements/credits-locked.png'
+      return '/achievements/credits-locked.webp'
     case 1:
-      return '/achievements/credits-bronze.png'
+      return '/achievements/credits-bronze.webp'
     case 2:
-      return '/achievements/credits-silver.png'
+      return '/achievements/credits-silver.webp'
     case 3:
-      return '/achievements/credits-gold.png'
+      return '/achievements/credits-gold.webp'
     default:
-      return '/achievements/credits-locked.png'
+      return '/achievements/credits-locked.webp'
   }
 }
 
@@ -753,15 +753,15 @@ function getSeasonPointsLevelTitle(level: number): string {
 function getBetWinsIconUrl(level: number): string {
   switch (level) {
     case 0:
-      return '/achievements/betwins-locked.png'
+      return '/achievements/betwins-locked.webp'
     case 1:
-      return '/achievements/betwins-bronze.png'
+      return '/achievements/betwins-bronze.webp'
     case 2:
-      return '/achievements/betwins-silver.png'
+      return '/achievements/betwins-silver.webp'
     case 3:
-      return '/achievements/betwins-gold.png'
+      return '/achievements/betwins-gold.webp'
     default:
-      return '/achievements/betwins-locked.png'
+      return '/achievements/betwins-locked.webp'
   }
 }
 
@@ -784,15 +784,15 @@ function getBetWinsLevelTitle(level: number): string {
 function getPredictionStreakIconUrl(level: number): string {
   switch (level) {
     case 0:
-      return '/achievements/prediction-streak-placeholder.svg'
+      return '/achievements/prediction-streak-locked.webp'
     case 1:
-      return '/achievements/prediction-streak-placeholder.svg'
+      return '/achievements/prediction-streak-bronze.webp'
     case 2:
-      return '/achievements/prediction-streak-placeholder.svg'
+      return '/achievements/prediction-streak-silver.webp'
     case 3:
-      return '/achievements/prediction-streak-placeholder.svg'
+      return '/achievements/prediction-streak-gold.webp'
     default:
-      return '/achievements/prediction-streak-placeholder.svg'
+      return '/achievements/prediction-streak-locked.webp'
   }
 }
 
@@ -815,15 +815,15 @@ function getPredictionStreakLevelTitle(level: number): string {
 function getExpressWinsIconUrl(level: number): string {
   switch (level) {
     case 0:
-      return '/achievements/express-wins-placeholder.svg'
+      return '/achievements/express-locked.webp'
     case 1:
-      return '/achievements/express-wins-placeholder.svg'
+      return '/achievements/express-bronze.webp'
     case 2:
-      return '/achievements/express-wins-placeholder.svg'
+      return '/achievements/express-silver.webp'
     case 3:
-      return '/achievements/express-wins-placeholder.svg'
+      return '/achievements/express-gold.webp'
     default:
-      return '/achievements/express-wins-placeholder.svg'
+      return '/achievements/express-locked.webp'
   }
 }
 
@@ -846,15 +846,15 @@ function getExpressWinsLevelTitle(level: number): string {
 function getBroadcastWatchIconUrl(level: number): string {
   switch (level) {
     case 0:
-      return '/achievements/broadcast-watch-placeholder.svg'
+      return '/achievements/broadcast-locked.webp'
     case 1:
-      return '/achievements/broadcast-watch-placeholder.svg'
+      return '/achievements/broadcast-bronze.webp'
     case 2:
-      return '/achievements/broadcast-watch-placeholder.svg'
+      return '/achievements/broadcast-silver.webp'
     case 3:
-      return '/achievements/broadcast-watch-placeholder.svg'
+      return '/achievements/broadcast-gold.webp'
     default:
-      return '/achievements/broadcast-watch-placeholder.svg'
+      return '/achievements/broadcast-locked.webp'
   }
 }
 

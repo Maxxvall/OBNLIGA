@@ -73,9 +73,9 @@ const ACHIEVEMENT_LEVEL_NAMES: Record<string, Record<number, string>> = {
   },
   prediction_streak: {
     0: 'Новичок',
-    1: 'Счастливая тройка',
-    2: 'Семёрка удачи',
-    3: 'Магическая серия',
+    1: 'Искра Точности',
+    2: 'Пламя Прогноза',
+    3: 'Вспышка чемпиона',
   },
   express_wins: {
     0: 'Новичок',
@@ -190,7 +190,7 @@ const DEFAULT_ACHIEVEMENTS: UserAchievementSummaryItem[] = [
     currentLevel: 0,
     currentProgress: 0,
     nextThreshold: 7,
-    iconSrc: '/achievements/streak-locked.png',
+    iconSrc: '/achievements/streak-locked.webp',
     shortTitle: 'Скамейка',
     shouldPlayAnimation: false,
     animationRewardId: null,
@@ -202,7 +202,7 @@ const DEFAULT_ACHIEVEMENTS: UserAchievementSummaryItem[] = [
     currentLevel: 0,
     currentProgress: 0,
     nextThreshold: 20,
-    iconSrc: '/achievements/betcount-locked.png',
+    iconSrc: '/achievements/betcount-locked.webp',
     shortTitle: 'Новичок',
     shouldPlayAnimation: false,
     animationRewardId: null,
@@ -214,7 +214,7 @@ const DEFAULT_ACHIEVEMENTS: UserAchievementSummaryItem[] = [
     currentLevel: 0,
     currentProgress: 0,
     nextThreshold: 200,
-    iconSrc: '/achievements/credits-locked.png',
+    iconSrc: '/achievements/credits-locked.webp',
     shortTitle: 'Дебютант',
     shouldPlayAnimation: false,
     animationRewardId: null,
@@ -226,7 +226,7 @@ const DEFAULT_ACHIEVEMENTS: UserAchievementSummaryItem[] = [
     currentLevel: 0,
     currentProgress: 0,
     nextThreshold: 10,
-    iconSrc: '/achievements/betwins-locked.png',
+    iconSrc: '/achievements/betwins-locked.webp',
     shortTitle: 'Новичок',
     shouldPlayAnimation: false,
     animationRewardId: null,
@@ -238,7 +238,7 @@ const DEFAULT_ACHIEVEMENTS: UserAchievementSummaryItem[] = [
     currentLevel: 0,
     currentProgress: 0,
     nextThreshold: 3,
-    iconSrc: '/achievements/prediction-streak-placeholder.svg',
+    iconSrc: '/achievements/prediction-streak-locked.webp',
     shortTitle: 'Новичок',
     shouldPlayAnimation: false,
     animationRewardId: null,
@@ -250,7 +250,7 @@ const DEFAULT_ACHIEVEMENTS: UserAchievementSummaryItem[] = [
     currentLevel: 0,
     currentProgress: 0,
     nextThreshold: 5,
-    iconSrc: '/achievements/express-wins-placeholder.svg',
+    iconSrc: '/achievements/express-locked.webp',
     shortTitle: 'Новичок',
     shouldPlayAnimation: false,
     animationRewardId: null,
@@ -262,13 +262,69 @@ const DEFAULT_ACHIEVEMENTS: UserAchievementSummaryItem[] = [
     currentLevel: 0,
     currentProgress: 0,
     nextThreshold: 300,
-    iconSrc: '/achievements/broadcast-watch-placeholder.svg',
+    iconSrc: '/achievements/broadcast-locked.webp',
     shortTitle: 'Новичок',
     shouldPlayAnimation: false,
     animationRewardId: null,
     animationPoints: null,
   },
 ]
+
+// Специальные иконки для группы "bet_wins" (угаданные прогнозы)
+const BET_WINS_ICONS: Record<number, string> = {
+  0: '/achievements/betwins-locked.webp',
+  1: '/achievements/betwins-bronze.webp',
+  2: '/achievements/betwins-silver.webp',
+  3: '/achievements/betwins-gold.webp',
+}
+
+// Иконки для express_wins (угаданные экспрессы)
+const EXPRESS_WINS_ICONS: Record<number, string> = {
+  0: '/achievements/express-locked.webp',
+  1: '/achievements/express-bronze.webp',
+  2: '/achievements/express-silver.webp',
+  3: '/achievements/express-gold.webp',
+}
+
+// Иконки для broadcast_watch (просмотр трансляций)
+const BROADCAST_WATCH_ICONS: Record<number, string> = {
+  0: '/achievements/broadcast-locked.webp',
+  1: '/achievements/broadcast-bronze.webp',
+  2: '/achievements/broadcast-silver.webp',
+  3: '/achievements/broadcast-gold.webp',
+}
+
+// Иконки для prediction_streak (серия побед в прогнозах)
+const PREDICTION_STREAK_ICONS: Record<number, string> = {
+  0: '/achievements/prediction-streak-locked.webp',
+  1: '/achievements/prediction-streak-bronze.webp',
+  2: '/achievements/prediction-streak-silver.webp',
+  3: '/achievements/prediction-streak-gold.webp',
+}
+
+function resolveAchievementIcon(achievement: UserAchievementSummaryItem): string {
+  if (!achievement) return '/achievements/streak-locked.webp'
+
+  // Для угаданных прогнозов используем локальные webp-файлы по уровню
+  if (achievement.group === 'bet_wins') {
+    return BET_WINS_ICONS[achievement.currentLevel] ?? achievement.iconSrc ?? '/achievements/betwins-locked.webp'
+  }
+
+  if (achievement.group === 'express_wins') {
+    return EXPRESS_WINS_ICONS[achievement.currentLevel] ?? achievement.iconSrc ?? '/achievements/express-locked.webp'
+  }
+
+  if (achievement.group === 'broadcast_watch') {
+    return BROADCAST_WATCH_ICONS[achievement.currentLevel] ?? achievement.iconSrc ?? '/achievements/broadcast-locked.webp'
+  }
+
+  if (achievement.group === 'prediction_streak') {
+    return PREDICTION_STREAK_ICONS[achievement.currentLevel] ?? achievement.iconSrc ?? '/achievements/prediction-streak-locked.webp'
+  }
+
+  // По умолчанию используем иконку из данных или общий fallback
+  return achievement.iconSrc ?? '/achievements/streak-locked.webp'
+}
 
 function createDefaultAchievementsResponse(timestamp?: string): UserAchievementsResponse {
   return {
@@ -418,7 +474,7 @@ function AchievementModal({ achievement, onClose }: AchievementModalProps) {
       <div className="achievement-modal">
         <div className="achievement-modal-header">
           <img
-            src={achievement.iconSrc ?? '/achievements/streak-locked.png'}
+            src={resolveAchievementIcon(achievement)}
             alt={`${groupLabel} — ${levelName}`}
             className="achievement-modal-icon"
           />
@@ -541,7 +597,7 @@ export default function AchievementsGrid({ className }: AchievementsGridProps) {
                 markRewardLocallyNotified(rewardId)
 
                 setCelebration({
-                  iconSrc: rewardToAnimate.iconSrc ?? '/achievements/streak-locked.png',
+                  iconSrc: rewardToAnimate.iconSrc ?? '/achievements/streak-locked.webp',
                   levelName: rewardToAnimate.shortTitle,
                   points: rewardToAnimate.animationPoints ?? 0,
                   rewardId,
@@ -681,7 +737,7 @@ export default function AchievementsGrid({ className }: AchievementsGridProps) {
             >
               <div className="achievement-icon-wrapper">
                 <img
-                  src={achievement.iconSrc ?? '/achievements/streak-locked.png'}
+                  src={resolveAchievementIcon(achievement)}
                   alt={`${groupLabel} — ${levelName}`}
                   width={40}
                   height={40}

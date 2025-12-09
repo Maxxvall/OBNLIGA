@@ -120,7 +120,7 @@ export const NewsSection = () => {
             ? { 'If-None-Match': etagRef.current }
             : {}
         const response = await fetch(buildUrl('/api/news'), {
-          cache: 'no-store',
+          cache: 'default',
           headers,
         })
         if (response.status === 304) {

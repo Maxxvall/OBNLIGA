@@ -68,6 +68,11 @@ const BADGE_ICON_FALLBACKS: Record<string, Record<number, string>> = {
 const resolveBadgeIcon = (badge: AchievementBadge): string => {
   const groupIcons = BADGE_ICON_FALLBACKS[badge.group]
   if (badge.iconUrl && badge.iconUrl.length > 0) {
+    // Если в БД лежат старые пути (.png или .svg), попробуем подставить .webp
+    const lower = badge.iconUrl.toLowerCase()
+    if (lower.endsWith('.png') || lower.endsWith('.svg')) {
+      return badge.iconUrl.replace(/\.(png|svg)$/i, '.webp')
+    }
     return badge.iconUrl
   }
   if (groupIcons) {
@@ -267,6 +272,7 @@ export function ProfileCardModal({ isOpen, onClose, initialData, position }: Pro
             >
               {achievementBadges.slice(0, 10).map(badge => {
                 const title = badge.title ?? 'Достижение'
+                const initialSrc = resolveBadgeIcon(badge)
                 return (
                   <div
                     key={`${badge.achievementId}-${badge.level}`}
@@ -275,9 +281,24 @@ export function ProfileCardModal({ isOpen, onClose, initialData, position }: Pro
                     title={`${title} · уровень ${badge.level}`}
                   >
                     <img
-                      src={resolveBadgeIcon(badge)}
+                      src={initialSrc}
                       alt={`${title}, уровень ${badge.level}`}
                       loading="lazy"
+                      onError={(e) => {
+                        const img = e.currentTarget as HTMLImageElement
+                        // Попытаться подменить на известный фолбэк только один раз
+                        if (img.dataset.tried !== '1') {
+                          img.dataset.tried = '1'
+                          const groupIcons = BADGE_ICON_FALLBACKS[badge.group]
+                          if (groupIcons) {
+                            img.src = groupIcons[badge.level] ?? groupIcons[0]
+                          } else {
+                            img.src = '/achievements/streak-locked.webp'
+                          }
+                        } else {
+                          img.src = '/achievements/streak-locked.webp'
+                        }
+                      }}
                     />
                   </div>
                 )

@@ -6,7 +6,7 @@
 
 import { randomUUID } from 'crypto'
 import prisma from '../db'
-import { defaultCache } from '../cache'
+import { defaultCache, type CacheFetchOptions } from '../cache'
 import { AchievementMetric, MatchStatus, LineupRole } from '@prisma/client'
 import { incrementAchievementProgress } from './achievementProgress'
 
@@ -84,10 +84,10 @@ type MatchCommentPayload = {
 }
 
 const REDIS_PREFIX = 'pub:md:'
-const TTL_HEADER_SECONDS = 6
+const TTL_MATCH_LIVE_SECONDS = 8
+const TTL_MATCH_SCHEDULED_SECONDS = 5 * 60
+const TTL_MATCH_FINISHED_SECONDS = 45 * 60
 const TTL_LINEUPS_SECONDS = 15 * 60
-const TTL_STATS_SECONDS = 8
-const TTL_EVENTS_SECONDS = 6
 const TTL_BROADCAST_SECONDS = 24 * 60 * 60 // 1 day
 const TTL_COMMENTS_SECONDS = 4 * 60 * 60 // 4 hours
 
@@ -98,6 +98,33 @@ const MAX_AUTHOR_NAME_LENGTH = 64
 const MAX_USER_ID_LENGTH = 64
 const MAX_PHOTO_URL_LENGTH = 512
 const COMMENT_COOLDOWN_SECONDS = 3 * 60
+
+const resolveMatchCacheOptions = (
+  status: MatchStatus | null | undefined,
+  lockTimeoutSeconds: number
+): CacheFetchOptions => {
+  if (status === 'LIVE') {
+    return {
+      ttlSeconds: TTL_MATCH_LIVE_SECONDS,
+      staleWhileRevalidateSeconds: TTL_MATCH_LIVE_SECONDS * 2,
+      lockTimeoutSeconds,
+    }
+  }
+
+  if (status === 'FINISHED') {
+    return {
+      ttlSeconds: TTL_MATCH_FINISHED_SECONDS,
+      staleWhileRevalidateSeconds: TTL_MATCH_FINISHED_SECONDS,
+      lockTimeoutSeconds,
+    }
+  }
+
+  return {
+    ttlSeconds: TTL_MATCH_SCHEDULED_SECONDS,
+    staleWhileRevalidateSeconds: TTL_MATCH_SCHEDULED_SECONDS,
+    lockTimeoutSeconds,
+  }
+}
 
 export const matchBroadcastCacheKey = (matchId: bigint | string): string =>
   `${REDIS_PREFIX}${matchId.toString()}:broadcast`
@@ -157,6 +184,8 @@ export async function fetchMatchHeader(
 ): Promise<CachedResult<MatchDetailsHeader> | null> {
   const key = `${REDIS_PREFIX}${matchId}:header`
 
+  let statusForCache: MatchStatus | null = null
+
   const result = await defaultCache.getWithMeta(key, async () => {
     const match = await prisma.match.findUnique({
       where: { id: BigInt(matchId) },
@@ -200,6 +229,8 @@ export async function fetchMatchHeader(
 
     if (!match) return null
 
+    statusForCache = match.status
+
     const status = mapMatchStatus(match.status)
     const currentMin = getCurrentMinute(match.matchDateTime, match.status)
     const location = match.stadium
@@ -242,7 +273,7 @@ export async function fetchMatchHeader(
     }
 
     return header
-  }, { ttlSeconds: TTL_HEADER_SECONDS, staleWhileRevalidateSeconds: TTL_HEADER_SECONDS * 2, lockTimeoutSeconds: 4 })
+  }, () => resolveMatchCacheOptions(statusForCache, 4))
 
   return wrapCachedResult(result.value, result.version)
 }
@@ -348,6 +379,8 @@ export async function fetchMatchStats(
 ): Promise<CachedResult<MatchDetailsStats> | null> {
   const key = `${REDIS_PREFIX}${matchId}:stats`
 
+  let statusForCache: MatchStatus | null = null
+
   const result = await defaultCache.getWithMeta(key, async () => {
     const match = await prisma.match.findUnique({
       where: { id: BigInt(matchId) },
@@ -370,6 +403,8 @@ export async function fetchMatchStats(
     })
 
     if (!match) return null
+
+    statusForCache = match.status
 
     const homeVersion = calculateVersion(match.updatedAt)
     const awayVersion = calculateVersion(match.updatedAt)
@@ -401,7 +436,7 @@ export async function fetchMatchStats(
     }
 
     return stats
-  }, { ttlSeconds: TTL_STATS_SECONDS, staleWhileRevalidateSeconds: TTL_STATS_SECONDS * 2, lockTimeoutSeconds: 6 })
+  }, () => resolveMatchCacheOptions(statusForCache, 6))
 
   return wrapCachedResult(result.value, result.version)
 }
@@ -413,6 +448,8 @@ export async function fetchMatchEvents(
   matchId: string
 ): Promise<CachedResult<MatchDetailsEvents> | null> {
   const key = `${REDIS_PREFIX}${matchId}:events`
+
+  let statusForCache: MatchStatus | null = null
 
   const result = await defaultCache.getWithMeta(key, async () => {
     const match = await prisma.match.findUnique({
@@ -448,6 +485,8 @@ export async function fetchMatchEvents(
 
     if (!match) return null
 
+    statusForCache = match.status
+
     const version = calculateVersion(match.updatedAt)
 
     const events = match.events.map(ev => {
@@ -479,7 +518,7 @@ export async function fetchMatchEvents(
     }
 
     return result
-  }, { ttlSeconds: TTL_EVENTS_SECONDS, staleWhileRevalidateSeconds: TTL_EVENTS_SECONDS * 2, lockTimeoutSeconds: 6 })
+  }, () => resolveMatchCacheOptions(statusForCache, 6))
 
   return wrapCachedResult(result.value, result.version)
 }

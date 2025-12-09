@@ -13,6 +13,10 @@ export type CacheFetchOptions = {
   lockTimeoutSeconds?: number
 }
 
+type CacheFetchOptionsResolver<T> = (value: T) => number | CacheFetchOptions
+type CacheFetchOptionsInput<T> = number | CacheFetchOptions | CacheFetchOptionsResolver<T>
+type NormalizedOptionsResolver<T> = (value: T) => NormalizedOptions
+
 type NormalizedOptions = {
   ttlMs: number | null
   staleMs: number | null
@@ -54,9 +58,9 @@ export class MultiLevelCache {
   async get<T>(
     key: string,
     loader: Loader<T>,
-    options?: number | CacheFetchOptions
+    options?: CacheFetchOptionsInput<T>
   ): Promise<T> {
-    const normalized = this.normalizeOptions(options)
+    const { base, resolver } = this.normalizeOptionsInput<T>(options)
     const reference = nowMs()
 
     const memoryEnvelope = this.getEnvelopeFromMemory<T>(key)
@@ -69,16 +73,16 @@ export class MultiLevelCache {
           if (!this.isExpired(refreshed, reference)) {
             return refreshed.value
           }
-          return this.handleExpiredEnvelope(key, loader, refreshed, normalized, reference)
+          return this.handleExpiredEnvelope(key, loader, refreshed, base, reference, resolver)
         }
-        return this.buildFresh(key, loader, normalized, memoryEnvelope)
+        return this.buildFresh(key, loader, base, memoryEnvelope, resolver)
       }
 
       if (!this.isExpired(memoryEnvelope, reference)) {
         return memoryEnvelope.value as T
       }
 
-      return this.handleExpiredEnvelope(key, loader, memoryEnvelope, normalized, reference)
+      return this.handleExpiredEnvelope(key, loader, memoryEnvelope, base, reference, resolver)
     }
 
     const redisEnvelope = await this.readEnvelopeFromRedis<T>(key)
@@ -87,10 +91,10 @@ export class MultiLevelCache {
       if (!this.isExpired(redisEnvelope, reference)) {
         return redisEnvelope.value
       }
-      return this.handleExpiredEnvelope(key, loader, redisEnvelope, normalized, reference)
+      return this.handleExpiredEnvelope(key, loader, redisEnvelope, base, reference, resolver)
     }
 
-    return this.buildFresh(key, loader, normalized)
+    return this.buildFresh(key, loader, base, undefined, resolver)
   }
 
   async set<T>(key: string, value: T, options?: number | CacheFetchOptions) {
@@ -145,7 +149,22 @@ export class MultiLevelCache {
     // Удаляем из Redis (если доступен)
     if (this.redis) {
       try {
-        const keys = await this.redis.keys(`${prefix}*`)
+        let cursor = '0'
+        const keys: string[] = []
+        do {
+          const [nextCursor, batch] = await this.redis.scan(
+            cursor,
+            'MATCH',
+            `${prefix}*`,
+            'COUNT',
+            100
+          )
+          cursor = nextCursor
+          if (Array.isArray(batch) && batch.length > 0) {
+            keys.push(...batch)
+          }
+        } while (cursor !== '0')
+
         if (keys.length > 0) {
           await this.redis.del(...keys)
           // Инкрементируем версии для всех найденных ключей
@@ -164,7 +183,7 @@ export class MultiLevelCache {
   async getWithMeta<T>(
     key: string,
     loader: Loader<T>,
-    options?: number | CacheFetchOptions
+    options?: CacheFetchOptionsInput<T>
   ): Promise<{ value: T; version: number }> {
     const value = await this.get(key, loader, options)
     const version = await this.ensureVersion(key)
@@ -205,6 +224,22 @@ export class MultiLevelCache {
     }
   }
 
+  private normalizeOptionsInput<T>(
+    options?: CacheFetchOptionsInput<T>
+  ): { base: NormalizedOptions; resolver?: NormalizedOptionsResolver<T> } {
+    if (typeof options === 'function') {
+      return {
+        base: this.normalizeOptions(),
+        resolver: value => this.normalizeOptions(options(value)),
+      }
+    }
+
+    return {
+      base: this.normalizeOptions(options),
+      resolver: undefined,
+    }
+  }
+
   private getEnvelopeFromMemory<T>(key: string): CacheEnvelope<T> | undefined {
     const entry = this.lru.get(key)
     if (!entry) {
@@ -234,13 +269,14 @@ export class MultiLevelCache {
     loader: Loader<T>,
     envelope: CacheEnvelope<T>,
     options: NormalizedOptions,
-    reference: number
+    reference: number,
+    optionsResolver?: NormalizedOptionsResolver<T>
   ): Promise<T> {
     if (!this.isWithinStale(envelope, reference)) {
-      return this.buildFresh(key, loader, options, envelope)
+      return this.buildFresh(key, loader, options, envelope, optionsResolver)
     }
 
-    const refreshed = await this.revalidateIfPossible(key, loader, envelope, options)
+    const refreshed = await this.revalidateIfPossible(key, loader, envelope, options, optionsResolver)
     if (refreshed !== null) {
       return refreshed
     }
@@ -252,7 +288,8 @@ export class MultiLevelCache {
     key: string,
     loader: Loader<T>,
     options: NormalizedOptions,
-    previousEnvelope?: CacheEnvelope<T>
+    previousEnvelope?: CacheEnvelope<T>,
+    optionsResolver?: NormalizedOptionsResolver<T>
   ): Promise<T> {
     const lockToken = await this.acquireLock(key, options.lockMs)
     const previousFingerprint = previousEnvelope?.fingerprint
@@ -268,13 +305,15 @@ export class MultiLevelCache {
           return previousEnvelope.value
         }
         const fallback = await loader()
-        await this.storeEnvelope(key, fallback, options, previousFingerprint)
+        const resolvedOptions = optionsResolver ? optionsResolver(fallback) : options
+        await this.storeEnvelope(key, fallback, resolvedOptions, previousFingerprint)
         return fallback
       }
 
       try {
         const fresh = await loader()
-        await this.storeEnvelope(key, fresh, options, previousFingerprint)
+        const resolvedOptions = optionsResolver ? optionsResolver(fresh) : options
+        await this.storeEnvelope(key, fresh, resolvedOptions, previousFingerprint)
         return fresh
       } finally {
         await this.releaseLock(key, retryToken)
@@ -283,7 +322,8 @@ export class MultiLevelCache {
 
     try {
       const fresh = await loader()
-      await this.storeEnvelope(key, fresh, options, previousFingerprint)
+      const resolvedOptions = optionsResolver ? optionsResolver(fresh) : options
+      await this.storeEnvelope(key, fresh, resolvedOptions, previousFingerprint)
       return fresh
     } finally {
       await this.releaseLock(key, lockToken)
@@ -294,13 +334,15 @@ export class MultiLevelCache {
     key: string,
     loader: Loader<T>,
     envelope: CacheEnvelope<T>,
-    options: NormalizedOptions
+    options: NormalizedOptions,
+    optionsResolver?: NormalizedOptionsResolver<T>
   ): Promise<T | null> {
     const lockToken = await this.acquireLock(key, options.lockMs)
     if (lockToken) {
       try {
         const fresh = await loader()
-        await this.storeEnvelope(key, fresh, options, envelope.fingerprint)
+        const resolvedOptions = optionsResolver ? optionsResolver(fresh) : options
+        await this.storeEnvelope(key, fresh, resolvedOptions, envelope.fingerprint)
         return fresh
       } finally {
         await this.releaseLock(key, lockToken)
@@ -553,6 +595,6 @@ export class MultiLevelCache {
 }
 
 const redisUrl = process.env.REDIS_URL || process.env.REDIS || undefined
-export const defaultCache = new MultiLevelCache(redisUrl, { maxSize: 500 })
+export const defaultCache = new MultiLevelCache(redisUrl, { maxSize: 2500 })
 
 export default defaultCache

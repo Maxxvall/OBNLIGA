@@ -152,14 +152,6 @@ const formatMatchTime = (value: string | undefined): string => {
   return new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(parsed)
 }
 
-const formatMatchWeekday = (value: string | undefined): string => {
-  const parsed = parseMatchDate(value)
-  if (!parsed) {
-    return ''
-  }
-  return capitalizeFirst(new Intl.DateTimeFormat('ru-RU', { weekday: 'long' }).format(parsed))
-}
-
 const buildTeamCell = (club: Club | undefined, fallbackId: number, side: 'left' | 'right'): string => {
   const displayName = getClubName(club, fallbackId)
   const resolvedLogoUrl = resolveClubLogoUrl(club?.logoUrl)

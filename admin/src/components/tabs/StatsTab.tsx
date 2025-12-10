@@ -7,6 +7,7 @@ import {
   PlayerCareerStats,
   PlayerSeasonStats,
 } from '../../types'
+import { buildStatsExportHtml, type StatsExportSection } from '../../utils/statsExport'
 
 type StatView =
   | 'standings'
@@ -16,6 +17,18 @@ type StatView =
   | 'goalContribution'
   | 'discipline'
   | 'career'
+
+type FeedbackLevel = 'success' | 'error' | 'info'
+
+const dataSliceTabs: Array<{ key: StatView; label: string }> = [
+  { key: 'standings', label: 'Таблица' },
+  { key: 'scorers', label: 'Бомбардиры' },
+  { key: 'assists', label: 'Передачи' },
+  { key: 'goalContribution', label: 'Гол+Пасс' },
+  { key: 'discipline', label: 'Дисциплина' },
+]
+
+const exportableViews = new Set<StatView>(dataSliceTabs.map(tab => tab.key))
 
 const sortStandings = (rows: ClubSeasonStats[], matches: MatchSummary[]) => {
   const dataset = [...rows]
@@ -161,6 +174,18 @@ const sortTeams = (rows: ClubCareerTotals[]) => {
   })
 }
 
+const formatGoals = (goals: number, penaltyGoals?: number) => {
+  if (penaltyGoals && penaltyGoals > 0) {
+    return `${goals}(${penaltyGoals})`
+  }
+  return String(goals)
+}
+
+const formatEfficiency = (goals: number, matches: number) => {
+  if (!matches) return '0.00'
+  return (goals / matches).toFixed(2)
+}
+
 export const StatsTab = () => {
   const {
     token,
@@ -188,6 +213,18 @@ export const StatsTab = () => {
 
   const [activeView, setActiveView] = useState<StatView>('standings')
   const [careerClubId, setCareerClubId] = useState<number | undefined>(undefined)
+  const [feedback, setFeedback] = useState<string | null>(null)
+  const [feedbackLevel, setFeedbackLevel] = useState<FeedbackLevel>('info')
+
+  const handleFeedback = (message: string, level: FeedbackLevel) => {
+    setFeedback(message)
+    setFeedbackLevel(level)
+  }
+
+  const resolveViewLabel = (view: StatView): string => {
+    const tab = dataSliceTabs.find(entry => entry.key === view)
+    return tab ? tab.label : 'Статистика'
+  }
 
   // Одноразовая загрузка сезонов
   const bootRef = useRef(false)
@@ -418,18 +455,280 @@ export const StatsTab = () => {
     }
   }, [careerClubId, careerClubOptions])
 
+  const exportSections = useMemo<StatsExportSection[]>(() => {
+    if (!selectedSeason || !exportableViews.has(activeView)) return []
+
+    const buildStandingsRows = (
+      rows: ClubSeasonStats[],
+      qualifyCount?: number
+    ): StatsExportSection['rows'] => {
+      return rows.map((row, index) => {
+        const matchesKey = `${row.seasonId}:${row.clubId}`
+        const matches = finishedMatchesByClub.get(matchesKey)
+        const inferredDraws = Math.max(0, row.points - row.wins * 3)
+        const matchesPlayed = matches ?? row.wins + row.losses + inferredDraws
+        const draws = Math.max(0, matchesPlayed - row.wins - row.losses)
+        const goalDiff = row.goalsFor - row.goalsAgainst
+
+        return {
+          cells: {
+            rank: index + 1,
+            seed: groupSeedPreview?.get(row.clubId) ?? '—',
+            club: row.club.name,
+            matches: matchesPlayed,
+            wins: row.wins,
+            draws,
+            losses: row.losses,
+            goals: `${row.goalsFor}:${row.goalsAgainst} (${goalDiff})`,
+            points: row.points,
+          },
+          highlight: typeof qualifyCount === 'number' ? index < qualifyCount : false,
+        }
+      })
+    }
+
+    if (activeView === 'standings') {
+      if (groupStandings && groupStandings.length) {
+        const columns: StatsExportSection['columns'] = [
+          { key: 'rank', title: '#', align: 'center', width: '36px' },
+          { key: 'seed', title: 'Р', align: 'center', width: '42px' },
+          { key: 'club', title: 'Клуб', align: 'left' },
+          { key: 'matches', title: 'И', align: 'center', width: '48px' },
+          { key: 'wins', title: 'В', align: 'center', width: '42px' },
+          { key: 'draws', title: 'Н', align: 'center', width: '42px' },
+          { key: 'losses', title: 'П', align: 'center', width: '42px' },
+          { key: 'goals', title: 'Голы', align: 'center', width: '110px' },
+          { key: 'points', title: 'Очки', align: 'center', width: '56px' },
+        ]
+
+        return groupStandings.map(group => ({
+          title: group.label,
+          subtitle: `Проходят: ${group.qualifyCount}`,
+          columns,
+          rows: buildStandingsRows(group.rows, group.qualifyCount),
+        }))
+      }
+
+      if (!standings.length) return []
+
+      const columns: StatsExportSection['columns'] = [
+        { key: 'rank', title: '#', align: 'center', width: '36px' },
+        { key: 'club', title: 'Клуб', align: 'left' },
+        { key: 'matches', title: 'И', align: 'center', width: '48px' },
+        { key: 'wins', title: 'В', align: 'center', width: '42px' },
+        { key: 'draws', title: 'Н', align: 'center', width: '42px' },
+        { key: 'losses', title: 'П', align: 'center', width: '42px' },
+        { key: 'goals', title: 'Голы', align: 'center', width: '110px' },
+        { key: 'points', title: 'Очки', align: 'center', width: '56px' },
+      ]
+
+      return [
+        {
+          title: 'Турнирная таблица',
+          columns,
+          rows: buildStandingsRows(standings),
+        },
+      ]
+    }
+
+    if (activeView === 'scorers') {
+      if (!scorers.length) return []
+      const columns: StatsExportSection['columns'] = [
+        { key: 'rank', title: '#', align: 'center', width: '36px' },
+        { key: 'player', title: 'Игрок', align: 'left' },
+        { key: 'club', title: 'Клуб', align: 'left' },
+        { key: 'matches', title: 'Матчи', align: 'center', width: '70px' },
+        { key: 'efficiency', title: 'Кф.эфф', align: 'center', width: '72px' },
+        { key: 'goals', title: 'Голы', align: 'center', width: '64px' },
+      ]
+
+      const rows: StatsExportSection['rows'] = scorers.map((row, index) => ({
+        cells: {
+          rank: index + 1,
+          player: `${row.person.lastName} ${row.person.firstName}`,
+          club: row.club.name,
+          matches: row.matchesPlayed,
+          efficiency: formatEfficiency(row.goals, row.matchesPlayed),
+          goals: formatGoals(row.goals, row.penaltyGoals),
+        },
+      }))
+
+      return [
+        {
+          title: 'Бомбардиры',
+          columns,
+          rows,
+        },
+      ]
+    }
+
+    if (activeView === 'assists') {
+      if (!assistsTop.length) return []
+      const columns: StatsExportSection['columns'] = [
+        { key: 'rank', title: '#', align: 'center', width: '36px' },
+        { key: 'player', title: 'Игрок', align: 'left' },
+        { key: 'club', title: 'Клуб', align: 'left' },
+        { key: 'matches', title: 'Матчи', align: 'center', width: '70px' },
+        { key: 'assists', title: 'Передачи', align: 'center', width: '90px' },
+      ]
+
+      const rows: StatsExportSection['rows'] = assistsTop.map((row, index) => ({
+        cells: {
+          rank: index + 1,
+          player: `${row.person.lastName} ${row.person.firstName}`,
+          club: row.club.name,
+          matches: row.matchesPlayed,
+          assists: row.assists,
+        },
+      }))
+
+      return [
+        {
+          title: 'Таблица ассистентов',
+          columns,
+          rows,
+        },
+      ]
+    }
+
+    if (activeView === 'goalContribution') {
+      if (!goalContributions.length) return []
+      const columns: StatsExportSection['columns'] = [
+        { key: 'rank', title: '#', align: 'center', width: '36px' },
+        { key: 'player', title: 'Игрок', align: 'left' },
+        { key: 'club', title: 'Клуб', align: 'left' },
+        { key: 'matches', title: 'Матчи', align: 'center', width: '70px' },
+        { key: 'goals', title: 'Голы', align: 'center', width: '64px' },
+        { key: 'assists', title: 'Передачи', align: 'center', width: '90px' },
+        { key: 'total', title: 'Гол+Пасс', align: 'center', width: '96px' },
+      ]
+
+      const rows: StatsExportSection['rows'] = goalContributions.map((row, index) => ({
+        cells: {
+          rank: index + 1,
+          player: `${row.person.lastName} ${row.person.firstName}`,
+          club: row.club.name,
+          matches: row.matchesPlayed,
+          goals: formatGoals(row.goals, row.penaltyGoals),
+          assists: row.assists,
+          total: row.goals + row.assists,
+        },
+      }))
+
+      return [
+        {
+          title: 'Гол + Пасс',
+          columns,
+          rows,
+        },
+      ]
+    }
+
+    if (activeView === 'discipline') {
+      if (!discipline.length) return []
+      const columns: StatsExportSection['columns'] = [
+        { key: 'rank', title: '#', align: 'center', width: '36px' },
+        { key: 'player', title: 'Игрок', align: 'left' },
+        { key: 'club', title: 'Клуб', align: 'left' },
+        { key: 'yellowCards', title: 'ЖК', align: 'center', width: '64px' },
+        { key: 'redCards', title: 'КК', align: 'center', width: '64px' },
+      ]
+
+      const rows: StatsExportSection['rows'] = discipline.map((row, index) => ({
+        cells: {
+          rank: index + 1,
+          player: `${row.person.lastName} ${row.person.firstName}`,
+          club: row.club.name,
+          yellowCards: row.yellowCards,
+          redCards: row.redCards,
+        },
+      }))
+
+      return [
+        {
+          title: 'Дисциплина',
+          columns,
+          rows,
+        },
+      ]
+    }
+
+    return []
+  }, [
+    activeView,
+    assistsTop,
+    discipline,
+    finishedMatchesByClub,
+    goalContributions,
+    groupSeedPreview,
+    groupStandings,
+    scorers,
+    selectedSeason,
+    standings,
+  ])
+
   const isLoading = Boolean(loading.stats || loading.seasons)
 
-  const formatGoals = (goals: number, penaltyGoals?: number) => {
-    if (penaltyGoals && penaltyGoals > 0) {
-      return `${goals}(${penaltyGoals})`
-    }
-    return String(goals)
-  }
+  const canExportCurrentView = Boolean(
+    selectedSeason && exportableViews.has(activeView) && exportSections.length && !isLoading
+  )
 
-  const formatEfficiency = (goals: number, matches: number) => {
-    if (!matches) return '0.00'
-    return (goals / matches).toFixed(2)
+  const handleStatsExport = () => {
+    if (!selectedSeason) {
+      handleFeedback('Выберите сезон для экспорта статистики', 'error')
+      return
+    }
+    if (!exportableViews.has(activeView)) {
+      handleFeedback('Экспорт доступен только для вкладок «Срез данных»', 'error')
+      return
+    }
+    if (!exportSections.length) {
+      handleFeedback('Нет данных для экспорта выбранной вкладки', 'error')
+      return
+    }
+
+    const chips = dataSliceTabs.map(tab => ({
+      label: tab.label.toUpperCase(),
+      active: tab.key === activeView,
+    }))
+    const dateRangeLabel =
+      selectedSeason.startDate && selectedSeason.endDate
+        ? `${selectedSeason.startDate.slice(0, 10)} — ${selectedSeason.endDate.slice(0, 10)}`
+        : ''
+    const viewLabel = resolveViewLabel(activeView)
+
+    let markup: string
+    try {
+      markup = buildStatsExportHtml({
+        season: selectedSeason,
+        competitionName: selectedSeason.competition.name,
+        viewKey: activeView,
+        viewLabel,
+        chips,
+        sections: exportSections,
+        dateRange: dateRangeLabel,
+        footerNote: 'Все данные обновляются автоматически после завершения матчей.',
+      })
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Не удалось подготовить файл с экспортом статистики'
+      handleFeedback(message, 'error')
+      return
+    }
+
+    const exportWindow = window.open('', '_blank')
+    if (!exportWindow) {
+      handleFeedback('Разрешите всплывающие окна, чтобы открыть экспорт', 'error')
+      return
+    }
+    exportWindow.document.open()
+    exportWindow.document.write(markup)
+    exportWindow.document.close()
+    exportWindow.focus()
+    handleFeedback(
+      'Экспорт открыт в новом окне. Используйте кнопки, чтобы сохранить изображение или отправить на печать.',
+      'success'
+    )
   }
 
   return (
@@ -449,6 +748,7 @@ export const StatsTab = () => {
         </button>
       </header>
       {error ? <div className="inline-feedback error">{error}</div> : null}
+          {feedback ? <div className={`inline-feedback ${feedbackLevel}`}>{feedback}</div> : null}
       <section className="card-grid">
         <article className="card">
           <header>
@@ -496,9 +796,29 @@ export const StatsTab = () => {
           )}
         </article>
         <article className="card">
-          <header>
-            <h4>Срез данных</h4>
-            <p>Переключайтесь между показателями клубов и игроков.</p>
+          <header
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              justifyContent: 'space-between',
+              gap: '12px',
+              flexWrap: 'wrap',
+            }}
+          >
+            <div>
+              <h4>Срез данных</h4>
+              <p>Переключайтесь между показателями клубов и игроков.</p>
+            </div>
+            <div className="tab-header-actions">
+              <button
+                type="button"
+                className="button-ghost"
+                disabled={!canExportCurrentView}
+                onClick={handleStatsExport}
+              >
+                Экспорт
+              </button>
+            </div>
           </header>
           <nav className="chip-row">
             <button

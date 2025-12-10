@@ -1,4 +1,4 @@
-﻿import type { Club, MatchSummary, Season, Stadium } from '../types'
+import type { Club, MatchSummary, Season, Stadium } from '../types'
 
 type SeasonMatchGroup = {
   label: string
@@ -20,7 +20,6 @@ const statusClassMap: Record<MatchSummary['status'], string> = {
   POSTPONED: 'postponed',
 }
 
-
 const resolveClubLogoUrl = (logoUrl?: string | null): string | null => {
   if (!logoUrl) {
     return null
@@ -29,14 +28,12 @@ const resolveClubLogoUrl = (logoUrl?: string | null): string | null => {
   if (!trimmed) {
     return null
   }
-  // Если это полный URL (начинается с http или https), используем его напрямую
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
     return trimmed
   }
-  // Извлекаем имя файла из URL или пути
   let filename = trimmed
   if (filename.includes('/')) {
-    filename = filename.split('/').pop() || filename
+    filename = filename.split('/').pop() ?? filename
   }
   return `/teamlogos/${filename}`
 }
@@ -85,8 +82,6 @@ const formatRoundDate = (matches: MatchSummary[]): string | null => {
     return null
   }
 
-  const firstDate = parsedDates[0]
-  const lastDate = parsedDates[parsedDates.length - 1]
   const dateFormatter = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' })
   const weekdayFormatter = new Intl.DateTimeFormat('ru-RU', { weekday: 'long' })
 
@@ -96,11 +91,11 @@ const formatRoundDate = (matches: MatchSummary[]): string | null => {
     return `${datePart}, ${weekdayPart}`
   }
 
-  if (isSameCalendarDay(firstDate, lastDate)) {
-    return buildLabel(firstDate)
+  if (parsedDates.length === 1 || isSameCalendarDay(parsedDates[0], parsedDates[parsedDates.length - 1])) {
+    return buildLabel(parsedDates[0])
   }
 
-  return `${buildLabel(firstDate)} — ${buildLabel(lastDate)}`
+  return `${buildLabel(parsedDates[0])} – ${buildLabel(parsedDates[parsedDates.length - 1])}`
 }
 
 const escapeHtml = (value: string): string =>
@@ -113,14 +108,17 @@ const escapeHtml = (value: string): string =>
 
 const getClubName = (club: Club | undefined, fallbackId: number): string => {
   if (!club) {
-    return `Клуб #${fallbackId}`
+    return `Команда #${fallbackId}`
   }
   const name = club.name?.trim()
   if (name && name.length > 0) {
     return name
   }
   const shortName = club.shortName?.trim()
-  return shortName && shortName.length > 0 ? shortName : `Клуб #${fallbackId}`
+  if (shortName && shortName.length > 0) {
+    return shortName
+  }
+  return `Команда #${fallbackId}`
 }
 
 const getClubInitial = (name: string): string => {
@@ -128,153 +126,154 @@ const getClubInitial = (name: string): string => {
   if (!trimmed) {
     return '#'
   }
-  const match = trimmed.match(/[A-Za-zА-Яа-я0-9]/u)
+  const match = trimmed.match(/[A-Za-zА-Яа-яЁё0-9]/u)
   if (match && match[0]) {
     return match[0].toUpperCase()
   }
   return trimmed.charAt(0).toUpperCase()
 }
 
-const buildSeriesLabel = (match: MatchSummary): string | null => {
-  const series = match.series
-  if (!series) {
+const parseMatchDate = (value: string | undefined): Date | null => {
+  if (!value) {
     return null
   }
-  const parts: string[] = []
-  if (series.stageName && series.stageName.trim().length > 0) {
-    parts.push(series.stageName.trim())
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return null
   }
-  if (match.seriesMatchNumber && match.seriesMatchNumber > 0) {
-    parts.push(`Матч ${match.seriesMatchNumber}`)
-  }
-  return parts.length ? parts.join(' · ') : null
+  return parsed
 }
 
-const buildTeamBlock = (club: Club | undefined, fallbackId: number): string => {
+const formatMatchTime = (value: string | undefined): string => {
+  const parsed = parseMatchDate(value)
+  if (!parsed) {
+    return '--:--'
+  }
+  return new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(parsed)
+}
+
+const formatMatchWeekday = (value: string | undefined): string => {
+  const parsed = parseMatchDate(value)
+  if (!parsed) {
+    return ''
+  }
+  return capitalizeFirst(new Intl.DateTimeFormat('ru-RU', { weekday: 'long' }).format(parsed))
+}
+
+const buildTeamCell = (club: Club | undefined, fallbackId: number, side: 'left' | 'right'): string => {
   const displayName = getClubName(club, fallbackId)
   const resolvedLogoUrl = resolveClubLogoUrl(club?.logoUrl)
   const logoMarkup = resolvedLogoUrl
-    ? `<img src="${escapeHtml(resolvedLogoUrl)}" alt="${escapeHtml(displayName)}" />`
-    : `<span class="team-logo-fallback">${escapeHtml(getClubInitial(displayName))}</span>`
+    ? `<img src="${escapeHtml(resolvedLogoUrl)}" alt="${escapeHtml(displayName)}" width="44" height="44" style="display:block;width:44px;height:44px;object-fit:contain;object-position:center;background:transparent;border:none;border-radius:0;" />`
+    : `<span aria-hidden="true">${escapeHtml(getClubInitial(displayName))}</span>`
+  if (side === 'left') {
+    // имя, затем логотип, выровнено к правой границе колонки
+    return `
+      <div class="team-left">
+        <span class="team-badge-name">${escapeHtml(displayName)}</span>
+        <div class="team-logo">${logoMarkup}</div>
+      </div>
+    `
+  }
+  // логотип, затем имя, выровнено к левой границе колонки
   return `
-        <div class="league-match-team">
-          <div class="team-logo">${logoMarkup}</div>
-          <div class="team-name">${escapeHtml(displayName)}</div>
-        </div>
-      `
+    <div class="team-right">
+      <div class="team-logo">${logoMarkup}</div>
+      <span class="team-badge-name">${escapeHtml(displayName)}</span>
+    </div>
+  `
 }
 
-const buildMatchCard = (match: MatchSummary, clubMap: Map<number, Club>): string => {
+const getStadiumName = (stadiumId: number | null | undefined, stadiumMap: Map<number, Stadium>): string | null => {
+  if (!stadiumId) {
+    return null
+  }
+  const stadium = stadiumMap.get(stadiumId)
+  if (!stadium) {
+    return null
+  }
+  const name = stadium.name?.trim()
+  if (!name) {
+    return null
+  }
+  return name
+}
+
+const buildMatchRow = (
+  match: MatchSummary,
+  clubMap: Map<number, Club>,
+  stadiumMap: Map<number, Stadium>
+): string => {
   const homeClub = clubMap.get(match.homeTeamId)
   const awayClub = clubMap.get(match.awayTeamId)
+  const stadiumName = getStadiumName(match.stadiumId, stadiumMap)
+  const timeLabel = formatMatchTime(match.matchDateTime)
   const statusClass = statusClassMap[match.status]
-  const hasScore = match.status === 'LIVE' || match.status === 'FINISHED'
-  const homeScore = hasScore ? String(match.homeScore ?? 0) : '—'
-  const awayScore = hasScore ? String(match.awayScore ?? 0) : '—'
-  const penaltyDetail = match.hasPenaltyShootout
-    ? `Пенальти ${match.penaltyHomeScore}:${match.penaltyAwayScore}`
-    : ''
-  const seriesLabel = buildSeriesLabel(match)
-
   return `
-        <article class="league-match-card ${statusClass}">
-          <div class="league-match-main">
-            ${buildTeamBlock(homeClub, match.homeTeamId)}
-            <div class="league-match-score">
-              <div class="score-main">
-                <span class="score-value">${escapeHtml(homeScore)}</span>
-                <span class="score-separator">:</span>
-                <span class="score-value">${escapeHtml(awayScore)}</span>
-              </div>
-              ${penaltyDetail ? `<div class="score-detail">${escapeHtml(penaltyDetail)}</div>` : ''}
-              ${seriesLabel ? `<div class="series-info">${escapeHtml(seriesLabel)}</div>` : ''}
-            </div>
-            ${buildTeamBlock(awayClub, match.awayTeamId)}
-          </div>
-        </article>
-      `
-}
-
-const buildRoundSelectorOption = (group: SeasonMatchGroup, index: number): string => {
-  const roundId = resolveRoundIdentifier(group, index)
-  return `
-      <label class="round-option">
-        <input type="checkbox" data-round-id="${escapeHtml(roundId)}" />
-        <span class="round-option-label">${escapeHtml(group.label)}</span>
-        <span class="round-option-count">(${group.matches.length})</span>
-      </label>
-    `
-}
-
-const groupMatchesByDate = (matches: MatchSummary[]): Map<string, MatchSummary[]> => {
-  const groups = new Map<string, MatchSummary[]>()
-  matches.forEach(match => {
-    const date = new Date(match.matchDateTime)
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-    if (!groups.has(key)) {
-      groups.set(key, [])
-    }
-    groups.get(key)!.push(match)
-  })
-  return groups
+    <article class="schedule-match-row ${statusClass}" data-match-id="${escapeHtml(String(match.id))}">
+      <div class="match-time-block">
+        <span class="match-time-label">${escapeHtml(timeLabel)}</span>
+        
+      </div>
+      <div class="match-teams">
+        ${buildTeamCell(homeClub, match.homeTeamId, 'left')}
+        <span class="match-vs" aria-hidden="true">×</span>
+        ${buildTeamCell(awayClub, match.awayTeamId, 'right')}
+      </div>
+      <div class="match-location">${escapeHtml(stadiumName ?? '—')}</div>
+    </article>
+  `
 }
 
 const buildRoundSection = (
   group: SeasonMatchGroup,
   index: number,
-  clubMap: Map<number, Club>
+  clubMap: Map<number, Club>,
+  stadiumMap: Map<number, Stadium>
 ): string => {
-  const { label, matches } = group
-  const dateGroups = groupMatchesByDate(matches)
+  const rowsMarkup = group.matches.map(match => buildMatchRow(match, clubMap, stadiumMap)).join('')
   const roundId = resolveRoundIdentifier(group, index)
-
-  let bodyContent = ''
-  if (dateGroups.size === 1) {
-    // Один день
-    const matchCards = matches.map(match => buildMatchCard(match, clubMap)).join('')
-    bodyContent = `
-        <div class="league-round-card-body">
-          ${matchCards}
-        </div>
-      `
-  } else {
-    // Несколько дней
-    const sortedDates = Array.from(dateGroups.keys()).sort()
-    bodyContent = sortedDates.map(dateKey => {
-      const dayMatches = dateGroups.get(dateKey)!
-      const matchCards = dayMatches.map(match => buildMatchCard(match, clubMap)).join('')
-      const dateLabel = formatRoundDate(dayMatches)
-      return `
-          <div class="league-day-section">
-            <header class="league-day-header">
-              <h4>${escapeHtml(dateLabel || '')}</h4>
-            </header>
-            <div class="league-round-card-body">
-              ${matchCards}
-            </div>
-          </div>
-        `
-    }).join('')
+  const roundDate = formatRoundDate(group.matches)
+  // Форматируем метку раунда как: "ГРУППА X - ТУР Y" в верхнем регистре
+  const rawLabel = group.label ? group.label.trim() : ''
+  let formattedLabel = rawLabel.toUpperCase()
+  if (rawLabel) {
+    // Попробуем разбить по первому дефису/тире чтобы получить левую и правую части
+    const parts = rawLabel.split(/\s*[—–-]\s*/)
+    if (parts.length >= 2) {
+      const left = parts[0].toUpperCase()
+      const right = parts.slice(1).join(' - ').toUpperCase()
+      formattedLabel = `ГРУППА ${left} - ${right}`
+    } else {
+      formattedLabel = `ГРУППА ${rawLabel.toUpperCase()}`
+    }
   }
-  const headerHtml =
-    dateGroups.size === 1
-        ? (function () {
-          const dateLabel = formatRoundDate(matches)
-          return `
-            <h3>${escapeHtml(label)}</h3>
-            ${dateLabel ? `<div class="league-day-header"><h4>${escapeHtml(dateLabel)}</h4></div>` : ''}
-          `
-        })()
-      : `<h3>${escapeHtml(label)}</h3>`
 
   return `
-      <section class="league-round-card" data-round-id="${escapeHtml(roundId)}" data-round-label="${escapeHtml(label)}">
-        <header class="league-round-card-header">
-          ${headerHtml}
-        </header>
-        ${bodyContent}
-      </section>
-    `
+    <section class="league-round-card" data-round-id="${escapeHtml(roundId)}" data-round-label="${escapeHtml(
+      group.label || ''
+    )}">
+      <header class="schedule-round-header">
+        <div class="schedule-round-title">${escapeHtml(formattedLabel)}</div>
+        ${roundDate ? `<div class="schedule-round-date">${escapeHtml(roundDate)}</div>` : ''}
+      </header>
+      <div class="schedule-round-divider" aria-hidden="true"></div>
+      <div class="schedule-match-list">
+        ${rowsMarkup}
+      </div>
+    </section>
+  `
+}
+
+const buildRoundSelectorOption = (group: SeasonMatchGroup, index: number): string => {
+  const roundId = resolveRoundIdentifier(group, index)
+  return `
+    <label class="round-option">
+      <input type="checkbox" data-round-id="${escapeHtml(roundId)}" />
+      <span class="round-option-label">${escapeHtml(group.label)}</span>
+      <span class="round-option-count">(${group.matches.length})</span>
+    </label>
+  `
 }
 
 const baseStyles = `
@@ -287,246 +286,22 @@ const baseStyles = `
   body {
     margin: 0;
     font-family: 'Inter', 'Segoe UI', Tahoma, sans-serif;
-    background: radial-gradient(circle at top, #051632, #020b1a 45%, #01050d 100%);
+    background: radial-gradient(circle at top, rgba(8, 70, 22, 0.85), #03060d 55%, #010205 100%);
     color: rgba(235, 246, 255, 0.96);
-    line-height: 1.4;
     padding: 24px;
   }
 
   .print-shell {
-    max-width: 900px;
+    width: min(1100px, 100%);
     margin: 0 auto;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0.65));
+    border-radius: 26px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 32px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    align-items: center;
-    text-align: center;
-  }
-
-  .print-header {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    align-items: center;
-  }
-
-  .print-header h1 {
-    margin: 0;
-    font-size: 26px;
-    letter-spacing: 0.9px;
-  }
-
-  .print-header h2 {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 500;
-    text-transform: none;
-    letter-spacing: 0.4px;
-    color: rgba(210, 232, 255, 0.82);
-  }
-
-  .league-rounds {
-    background: rgba(12, 20, 36, 0.84);
-    border-radius: 14px;
-    border: 1px solid rgba(0, 240, 255, 0.14);
-    box-shadow: 0 14px 32px rgba(3, 8, 18, 0.62);
-    padding: 18px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    align-items: center;
-  }
-
-  .league-round-card {
-    border-radius: 12px;
-    border: 1px solid rgba(0, 240, 255, 0.14);
-    background: rgba(0, 240, 255, 0.05);
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    align-items: center;
-    text-align: center;
-  }
-
-  .league-round-card-header {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-  }
-
-  .league-round-card-header h3 {
-    margin: 0;
-    font-size: 17px;
-    display: block;
-    width: 100%;
-    gap: 8px;
-    align-items: baseline;
-    text-align: center;
-  }
-
-  .round-meta {
-    font-size: 12px;
-    font-weight: 500;
-    text-transform: none;
-    letter-spacing: 0.4px;
-    color: rgba(200, 222, 255, 0.78);
-  }
-
-  .league-round-card-body {
-    display: grid;
-    gap: 12px;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    justify-items: center;
-    /* Ensure all grid items (match cards) stretch to the same height */
-    align-items: stretch;
-    grid-auto-rows: 1fr;
-  }
-
-  /* Make match cards consistent in size and layout */
-  .league-round-card-body > .league-match-card,
-  .league-day-section .league-round-card-body > .league-match-card {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    padding: 12px 14px;
-  }
-
-  /* Keep team logo area stable */
-  .team-logo {
-    width: 64px;
-    height: 64px;
-    min-width: 64px;
-    min-height: 64px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  /* Limit team name height to two lines and center */
-  .team-name {
-    font-weight: 600;
-    font-size: 13px;
-    letter-spacing: 0.3px;
-    text-align: center;
-    line-height: 1.3;
-    color: rgba(228, 242, 255, 0.94);
-    max-height: 2.6em; /* approx 2 lines */
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  /* Ensure score block doesn't force card height differences */
-  .league-match-score {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    min-height: 56px;
-  }
-
-  .league-day-section {
-    margin-bottom: 20px;
-  }
-
-  .league-day-header {
-    margin-bottom: 10px;
-    text-align: center;
-    width: 100%;
-    flex-basis: 100%;
-  }
-
-  .league-day-header h4 {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 600;
-    color: rgba(210, 232, 255, 0.82);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .league-match-card {
-    border-radius: 12px;
-    border: 1px solid rgba(0, 240, 255, 0.12);
-    background: rgba(8, 21, 37, 0.94);
-    padding: 12px 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    width: min(280px, 100%);
-    margin: 0 auto;
-  }
-
-  .league-match-card.live {
-    border-color: rgba(255, 77, 130, 0.58);
-  }
-
-  .league-match-card.finished {
-    border-color: rgba(122, 255, 193, 0.3);
-  }
-
-  .league-match-card.postponed {
-    border-style: dashed;
-    opacity: 0.88;
-  }
-
-  .league-match-main {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-    align-items: center;
-    gap: 12px;
-    justify-items: center;
-  }
-
-  .league-match-team {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .team-logo {
-    width: 64px;
-    height: 64px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-  }
-
-  .team-logo img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-  }
-
-  .team-logo-fallback {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 22px;
-    font-weight: 700;
-    letter-spacing: 0.6px;
-    color: rgba(210, 232, 255, 0.92);
-    background: rgba(0, 240, 255, 0.12);
-  }
-
-  .team-name {
-    font-weight: 600;
-    font-size: 13px;
-    letter-spacing: 0.3px;
-    text-align: center;
-    line-height: 1.3;
-    color: rgba(228, 242, 255, 0.94);
+    gap: 28px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
   }
 
   .export-controls {
@@ -640,7 +415,6 @@ const baseStyles = `
   .round-selection-controls {
     display: flex;
     gap: 10px;
-    margin-bottom: 10px;
   }
 
   .round-control-button {
@@ -726,92 +500,322 @@ const baseStyles = `
     display: none !important;
   }
 
-  .league-match-score {
+  .print-header {
     display: flex;
     flex-direction: column;
-    align-items: center;
     gap: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
   }
 
-  .score-main {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
-    font-size: 20px;
-    font-weight: 700;
+  .print-header .competition-name {
+    font-size: 14px;
+    color: rgba(210, 232, 255, 0.82);
+  }
+
+  .print-header h1 {
+    margin: 0;
+    font-size: 36px;
     letter-spacing: 1px;
+    font-weight: 700;
   }
 
-  .score-value {
-    min-width: 24px;
-    text-align: center;
+  .schedule-panel {
+    background: rgba(5, 12, 24, 0.88);
+    border-radius: 20px;
+    border: 1px solid rgba(0, 240, 255, 0.24);
+    padding: 26px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
   }
 
-  .score-separator {
-    opacity: 0.78;
+  .schedule-intro {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
   }
 
-  .score-detail {
+  .schedule-title {
+    font-size: 20px;
+  }
+
+  .schedule-subtitle {
+    font-size: 14px;
+    color: rgba(210, 232, 255, 0.78);
+  }
+
+  .schedule-columns {
+    display: grid;
+    grid-template-columns: minmax(100px, 140px) 1fr minmax(120px, 1fr);
     font-size: 11px;
-    color: rgba(255, 206, 229, 0.86);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: rgba(192, 216, 255, 0.72);
+  }
+
+  .schedule-body {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .league-round-card {
+    background: rgba(8, 20, 38, 0.95);
+    border-radius: 18px;
+    border: 1px solid rgba(0, 224, 255, 0.12);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .schedule-round-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .schedule-round-title {
+    font-size: 16px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
 
-  .series-info {
-    font-size: 11px;
-    color: rgba(200, 222, 255, 0.78);
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
+  .schedule-round-date {
+    font-size: 13px;
+    text-transform: none;
+    color: rgba(210, 232, 255, 0.78);
   }
 
-  @page {
-    size: A4 portrait;
-    margin: 10mm;
+  .schedule-round-divider {
+    height: 1px;
+    background: linear-gradient(90deg, rgba(0, 240, 255, 0), rgba(0, 240, 255, 0.4), rgba(0, 240, 255, 0));
+    margin: 0 -20px;
+  }
+
+  .schedule-match-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .schedule-match-row {
+    display: grid;
+    grid-template-columns: minmax(100px, 150px) 1fr minmax(160px, 1fr);
+    align-items: center;
+    gap: 14px;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .schedule-match-row:last-child {
+    border-bottom: none;
+  }
+
+  .schedule-match-row.finished {
+    background: rgba(23, 45, 96, 0.25);
+  }
+
+  .schedule-match-row.live {
+    background: rgba(255, 77, 130, 0.08);
+  }
+
+  .schedule-match-row.postponed {
+    background: rgba(255, 195, 77, 0.08);
+  }
+
+  .match-time-block {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .match-time-label {
+    font-size: 22px;
+    font-weight: 600;
+  }
+
+  .match-weekday {
+    font-size: 12px;
+    color: rgba(210, 232, 255, 0.72);
+  }
+
+  .match-teams {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .team-badge {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 160px;
+    max-width: 240px;
+  }
+
+  .team-badge-logo {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .team-badge-logo img {
+    width: 44px;
+    height: 44px;
+    object-fit: contain;
+    display: block;
+  }
+
+  .team-badge-logo span {
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+
+  .team-badge-name {
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Новая верстка для выравнивания логотипов */
+  .match-teams {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .team-left,
+  .team-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .team-left {
+    justify-content: flex-end; /* имя и логотип выровнены к центру области */
+  }
+
+  .team-right {
+    justify-content: flex-start;
+  }
+
+  .team-logo {
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: transparent; /* do not render background */
+    border: none; /* no border */
+    border-radius: 0; /* no rounding */
+  }
+  .team-logo img { width: 44px; height: 44px; object-fit: contain; display: block; }
+
+  .match-vs {
+    font-size: 24px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .match-location {
+    text-align: right;
+    font-size: 13px;
+    color: rgba(210, 232, 255, 0.72);
+  }
+
+  .schedule-footer {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .schedule-footer .footer-links {
+    display: flex;
+    gap: 18px;
+  }
+
+  .schedule-footer a {
+    color: #ffffff;
+    text-decoration: none;
+    font-weight: 600;
   }
 
   @media print {
     body {
       padding: 0;
     }
-
-    .print-shell {
-      gap: 10px;
-    }
-
     .export-controls {
       display: none !important;
     }
+    .print-shell {
+      box-shadow: none;
+      border: none;
+    }
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
   }
 `
-
 
 export const buildSeasonExportHtml = ({
   season,
   groupedMatches,
   clubs,
+  stadiums,
 }: SeasonExportPayload): string => {
   const clubMap = new Map<number, Club>()
   clubs.forEach(club => {
     clubMap.set(club.id, club)
   })
 
-  const roundsMarkup = groupedMatches
-    .map((group, index) => buildRoundSection(group, index, clubMap))
+  const stadiumMap = new Map<number, Stadium>()
+  stadiums.forEach(stadium => {
+    stadiumMap.set(stadium.id, stadium)
+  })
+
+  const sectionsMarkup = groupedMatches
+    .map((group, index) => buildRoundSection(group, index, clubMap, stadiumMap))
     .join('')
   const roundSelectorMarkup = groupedMatches
     .map((group, index) => buildRoundSelectorOption(group, index))
     .join('')
 
-  const competitionName = season.competition?.name?.trim() ?? 'Соревнование'
+  const competitionName = season.competition?.name?.trim() ?? 'Неизвестное соревнование'
   const seasonName = season.name?.trim() ?? 'Сезон'
+  // Подзаголовок: показываем только дату тура (день и месяц), без названия группы/тура
+  let headerSubtitle = ''
+  if (groupedMatches.length) {
+    const roundDate = formatRoundDate(groupedMatches[0].matches)
+    if (roundDate) {
+      headerSubtitle = roundDate
+    }
+  }
   const fileBaseName = sanitizeFileName(`${seasonName}-${competitionName}`)
 
   return `<!DOCTYPE html>
 <html lang="ru">
   <head>
     <meta charset="utf-8" />
-    <title>${escapeHtml(seasonName)} — расписание</title>
+    <title>${escapeHtml(seasonName)} – Расписание</title>
     <style>${baseStyles}</style>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
   </head>
@@ -823,24 +827,38 @@ export const buildSeasonExportHtml = ({
     </div>
     <div class="print-shell">
       <header class="print-header">
+        <span class="competition-name">${escapeHtml(competitionName)}</span>
         <h1>${escapeHtml(seasonName)}</h1>
-        <h2>${escapeHtml(competitionName)}</h2>
       </header>
-      <section class="league-rounds">
-        ${roundsMarkup}
+      <section class="schedule-panel">
+        <div class="schedule-intro">
+          <span class="schedule-title">Расписание игр</span>
+          ${headerSubtitle ? `<span class="schedule-subtitle">${escapeHtml(headerSubtitle)}</span>` : ''}
+        </div>
+        <!-- Колонки убраны: заголовки не требуются -->
+        <div class="schedule-body">
+          ${sectionsMarkup}
+        </div>
       </section>
+      <footer class="schedule-footer">
+        <span>Подготовлено и оформлено командой НЛО</span>
+        <div class="footer-links">
+          <a href="https://t.me/footballobn_bot" target="_blank" rel="noreferrer">t.me/footballobn_bot</a>
+          <a href="https://vk.com/nochligaobninsk" target="_blank" rel="noreferrer">vk.com/nochligaobninsk</a>
+        </div>
+      </footer>
     </div>
     <div class="export-modal-backdrop" data-modal="round-selector" hidden>
       <div class="export-modal-card">
         <div class="export-modal-header">
           <div>
             <h3>Выбор туров</h3>
-            <p>Отметьте туры, которые должны попасть в изображение.</p>
+            <p>Отметьте туры, которые хотите включить в экспорт.</p>
           </div>
-          <button type="button" class="export-modal-close" data-action="cancel">Закрыть</button>
+          <button type="button" class="export-modal-close" data-action="cancel">Отмена</button>
         </div>
         <div class="export-modal-body">
-          <p>По умолчанию не выбраны туры. Отметьте галочки с тех туров, которые нужны.</p>
+          <p>Выберите хотя бы один тур. Экспорт без выбранных туров невозможен.</p>
           <div class="round-selection-controls">
             <button type="button" class="round-control-button" data-action="select-all">Выбрать все</button>
             <button type="button" class="round-control-button" data-action="deselect-all">Снять все</button>
@@ -851,7 +869,7 @@ export const buildSeasonExportHtml = ({
         </div>
         <div class="export-modal-footer">
           <button type="button" class="export-modal-button" data-action="cancel">Отмена</button>
-          <button type="button" class="export-modal-button primary" data-action="confirm">Скачать</button>
+          <button type="button" class="export-modal-button primary" data-action="confirm">Подтвердить</button>
         </div>
       </div>
     </div>
@@ -873,7 +891,7 @@ export const buildSeasonExportHtml = ({
             return
           }
           if (attempt > 25) {
-            console.error('Не удалось загрузить html2canvas для экспорта изображения')
+            console.error('Не удалось загрузить html2canvas для создания экспорта')
             return
           }
           setTimeout(function () {
@@ -900,23 +918,73 @@ export const buildSeasonExportHtml = ({
               })
             }
             var options = { backgroundColor: null, scale: 2, useCORS: true }
-            html2canvas(shell, options)
-              .then(function (canvas) {
-                var mime = format === 'jpg' ? 'image/jpeg' : 'image/png'
-                var quality = format === 'jpg' ? 0.92 : undefined
-                var link = document.createElement('a')
-                link.href = canvas.toDataURL(mime, quality)
-                link.download = fileBaseName + (format === 'jpg' ? '.jpg' : '.png')
-                link.click()
-              })
-              .catch(function (error) {
-                console.error('Не удалось сформировать изображение:', error)
-              })
-              .finally(function () {
-                hiddenSections.forEach(function (section) {
-                  section.classList.remove('round-hidden')
+
+            // Ensure all images inside the shell are decoded/loaded before capturing.
+            // Use robust waiting with a short timeout so export proceeds even if some
+            // resources are slow or blocked.
+            function waitForImages(root, timeoutMs) {
+              timeoutMs = timeoutMs || 3000
+              var imgs = Array.from((root || document).querySelectorAll('img'))
+              var promises = imgs.map(function (img) {
+                return new Promise(function (resolve) {
+                  // Already loaded and valid
+                  if (img.complete && img.naturalWidth > 0) {
+                    if (typeof img.decode === 'function') {
+                      img.decode().then(resolve).catch(function () { resolve() })
+                      return
+                    }
+                    resolve()
+                    return
+                  }
+
+                  var settled = false
+                  function done() {
+                    if (settled) return
+                    settled = true
+                    cleanup()
+                    resolve()
+                  }
+                  function onLoad() { done() }
+                  function onError() { done() }
+                  function cleanup() {
+                    img.removeEventListener('load', onLoad)
+                    img.removeEventListener('error', onError)
+                  }
+                  img.addEventListener('load', onLoad)
+                  img.addEventListener('error', onError)
+
+                  // Also attempt decode if already complete but not decoded
+                  if (img.complete && typeof img.decode === 'function') {
+                    img.decode().then(onLoad).catch(function () {})
+                  }
                 })
               })
+
+              return Promise.race([
+                Promise.all(promises),
+                new Promise(function (res) { setTimeout(res, timeoutMs) }),
+              ])
+            }
+
+            waitForImages(shell, 3000).then(function () {
+              html2canvas(shell, options)
+                .then(function (canvas) {
+                  var mime = format === 'jpg' ? 'image/jpeg' : 'image/png'
+                  var quality = format === 'jpg' ? 0.92 : undefined
+                  var link = document.createElement('a')
+                  link.href = canvas.toDataURL(mime, quality)
+                  link.download = fileBaseName + (format === 'jpg' ? '.jpg' : '.png')
+                  link.click()
+                })
+                .catch(function (error) {
+                  console.error('Не удалось сформировать изображение экспорта:', error)
+                })
+                .finally(function () {
+                  hiddenSections.forEach(function (section) {
+                    section.classList.remove('round-hidden')
+                  })
+                })
+            })
           })
         }
 
@@ -974,9 +1042,7 @@ export const buildSeasonExportHtml = ({
                 closeModal()
                 return
               }
-              var selected = Array.from(
-                modal.querySelectorAll('input[type="checkbox"]:checked')
-              )
+              var selected = Array.from(modal.querySelectorAll('input[type="checkbox"]:checked'))
                 .map(function (input) {
                   return input.getAttribute('data-round-id') || ''
                 })
@@ -984,7 +1050,7 @@ export const buildSeasonExportHtml = ({
                   return value.length > 0
                 })
               if (!selected.length) {
-                alert('Выберите хотя бы один тур для выгрузки.')
+                alert('Выберите хотя бы один тур для экспорта.')
                 return
               }
               var format = pendingFormat

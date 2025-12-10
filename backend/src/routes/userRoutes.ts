@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify'
 import { AchievementMetric, PredictionEntryStatus } from '@prisma/client'
 import prisma from '../db'
 import { serializePrisma, isSerializedAppUserPayload } from '../utils/serialization'
-import { defaultCache, type CacheFetchOptions } from '../cache'
+import { defaultCache } from '../cache'
 import { extractSessionToken, resolveSessionSubject } from '../utils/session'
 import { buildWeakEtag, matchesIfNoneMatch } from '../utils/httpCaching'
 import {
@@ -39,12 +39,6 @@ type UserUpsertBody = {
 
 type UserParams = {
   userId?: string
-}
-
-const ACHIEVEMENTS_CACHE_OPTIONS: CacheFetchOptions = {
-  ttlSeconds: 12 * 60 * 60,
-  staleWhileRevalidateSeconds: 12 * 60 * 60,
-  lockTimeoutSeconds: 20,
 }
 
 export default async function (server: FastifyInstance) {
@@ -489,7 +483,7 @@ export default async function (server: FastifyInstance) {
             totalUnlocked: userProgress.reduce((sum, p) => sum + p.currentLevel, 0),
           }
         },
-        ACHIEVEMENTS_CACHE_OPTIONS
+        3600 // 1 hour fresh
       )
 
       if (achievements === null) {

@@ -87,6 +87,27 @@ export const incrementAchievementProgress = async (
       },
     })
 
+    // Для некоторых метрик (одиночные прогнозы/победы) хотим, чтобы прогресс
+    // был виден пользователю сразу после обновления, даже если уровень не
+    // был повышен. Инвалидация префикса заставит следующий GET обновить кэш.
+    try {
+      const immediateInvalidateMetrics = new Set<AchievementMetric>([
+        AchievementMetric.TOTAL_PREDICTIONS,
+        AchievementMetric.CORRECT_PREDICTIONS,
+        AchievementMetric.EXPRESS_BETS_CREATED,
+      ])
+
+      if (immediateInvalidateMetrics.has(metric)) {
+        const appUser = await client.appUser.findUnique({ where: { id: userId }, select: { telegramId: true } })
+        const telegramId = appUser?.telegramId?.toString()
+        if (telegramId) {
+          await defaultCache.invalidatePrefix(`user:achievements:${telegramId}`).catch(() => undefined)
+        }
+      }
+    } catch {
+      // ignore cache invalidation errors
+    }
+
     const unlockedLevel = resolveUnlockedLevel(type.levels, progress.progressCount)
 
     if (unlockedLevel > progress.currentLevel) {

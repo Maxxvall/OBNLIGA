@@ -177,6 +177,15 @@ export const incrementAchievementProgress = async (
       }
 
       await invalidateUserCardExtra(userId)
+      try {
+        const appUser = await client.appUser.findUnique({ where: { id: userId }, select: { telegramId: true } })
+        const telegramId = appUser?.telegramId?.toString()
+        if (telegramId) {
+          await defaultCache.invalidatePrefix(`user:achievements:${telegramId}`).catch(() => undefined)
+        }
+      } catch {
+        // ignore cache invalidation errors
+      }
     }
   }
 }

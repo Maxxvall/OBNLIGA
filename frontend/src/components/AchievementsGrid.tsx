@@ -330,7 +330,7 @@ const DEFAULT_ACHIEVEMENTS: UserAchievementSummaryItem[] = [
     currentLevel: 0,
     currentProgress: 0,
     nextThreshold: 20,
-    iconSrc: '/achievements/broadcast-locked.webp',
+    iconSrc: '/achievements/broadcast-comments-locked.webp',
     shortTitle: 'Тихий зритель',
     shouldPlayAnimation: false,
     animationRewardId: null,
@@ -342,7 +342,7 @@ const DEFAULT_ACHIEVEMENTS: UserAchievementSummaryItem[] = [
     currentLevel: 0,
     currentProgress: 0,
     nextThreshold: 5,
-    iconSrc: '/achievements/express-locked.webp',
+    iconSrc: '/achievements/express-created-locked.webp',
     shortTitle: 'Новичок комбинирования',
     shouldPlayAnimation: false,
     animationRewardId: null,
@@ -354,7 +354,7 @@ const DEFAULT_ACHIEVEMENTS: UserAchievementSummaryItem[] = [
     currentLevel: 0,
     currentProgress: 0,
     nextThreshold: 15,
-    iconSrc: '/achievements/betcount-locked.webp',
+    iconSrc: '/achievements/total-goals-locked.webp',
     shortTitle: 'Новичок тоталов',
     shouldPlayAnimation: false,
     animationRewardId: null,
@@ -366,7 +366,7 @@ const DEFAULT_ACHIEVEMENTS: UserAchievementSummaryItem[] = [
     currentLevel: 0,
     currentProgress: 0,
     nextThreshold: 1,
-    iconSrc: '/achievements/credits-locked.webp',
+    iconSrc: '/achievements/shop-orders-locked.webp',
     shortTitle: 'Посетитель витрины',
     shouldPlayAnimation: false,
     animationRewardId: null,
@@ -398,20 +398,33 @@ const BROADCAST_WATCH_ICONS: Record<number, string> = {
   3: '/achievements/broadcast-gold.webp',
 }
 
-const EXPRESS_CREATED_ICONS: Record<number, string> = EXPRESS_WINS_ICONS
+// Отдельные иконки для участия в чате (комментарии во время эфира)
+const BROADCAST_COMMENTS_ICONS: Record<number, string> = {
+  0: '/achievements/broadcast-comments-locked.webp',
+  1: '/achievements/broadcast-comments-bronze.webp',
+  2: '/achievements/broadcast-comments-silver.webp',
+  3: '/achievements/broadcast-comments-gold.webp',
+}
+
+const EXPRESS_CREATED_ICONS: Record<number, string> = {
+  0: '/achievements/express-created-locked.webp',
+  1: '/achievements/express-created-bronze.webp',
+  2: '/achievements/express-created-silver.webp',
+  3: '/achievements/express-created-gold.webp',
+}
 
 const TOTAL_GOALS_ICONS: Record<number, string> = {
-  0: '/achievements/betcount-locked.webp',
-  1: '/achievements/betcount-bronze.webp',
-  2: '/achievements/betcount-silver.webp',
-  3: '/achievements/betcount-gold.webp',
+  0: '/achievements/total-goals-locked.webp',
+  1: '/achievements/total-goals-bronze.webp',
+  2: '/achievements/total-goals-silver.webp',
+  3: '/achievements/total-goals-gold.webp',
 }
 
 const SHOP_ORDERS_ICONS: Record<number, string> = {
-  0: '/achievements/credits-locked.webp',
-  1: '/achievements/credits-bronze.webp',
-  2: '/achievements/credits-silver.webp',
-  3: '/achievements/credits-gold.webp',
+  0: '/achievements/shop-orders-locked.webp',
+  1: '/achievements/shop-orders-bronze.webp',
+  2: '/achievements/shop-orders-silver.webp',
+  3: '/achievements/shop-orders-gold.webp',
 }
 
 // Иконки для prediction_streak (серия побед в прогнозах)
@@ -439,7 +452,7 @@ function resolveAchievementIcon(achievement: UserAchievementSummaryItem): string
   }
 
   if (achievement.group === 'broadcast_comments') {
-    return BROADCAST_WATCH_ICONS[achievement.currentLevel] ?? achievement.iconSrc ?? '/achievements/broadcast-locked.webp'
+    return BROADCAST_COMMENTS_ICONS[achievement.currentLevel] ?? achievement.iconSrc ?? '/achievements/broadcast-comments-locked.webp'
   }
 
   if (achievement.group === 'prediction_streak') {
@@ -447,15 +460,15 @@ function resolveAchievementIcon(achievement: UserAchievementSummaryItem): string
   }
 
   if (achievement.group === 'express_created') {
-    return EXPRESS_CREATED_ICONS[achievement.currentLevel] ?? achievement.iconSrc ?? '/achievements/express-locked.webp'
+    return EXPRESS_CREATED_ICONS[achievement.currentLevel] ?? achievement.iconSrc ?? '/achievements/express-created-locked.webp'
   }
 
   if (achievement.group === 'total_goals') {
-    return TOTAL_GOALS_ICONS[achievement.currentLevel] ?? achievement.iconSrc ?? '/achievements/betcount-locked.webp'
+    return TOTAL_GOALS_ICONS[achievement.currentLevel] ?? achievement.iconSrc ?? '/achievements/total-goals-locked.webp'
   }
 
   if (achievement.group === 'shop_orders') {
-    return SHOP_ORDERS_ICONS[achievement.currentLevel] ?? achievement.iconSrc ?? '/achievements/credits-locked.webp'
+    return SHOP_ORDERS_ICONS[achievement.currentLevel] ?? achievement.iconSrc ?? '/achievements/shop-orders-locked.webp'
   }
 
   // По умолчанию используем иконку из данных или общий fallback

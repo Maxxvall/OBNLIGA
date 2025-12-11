@@ -201,6 +201,19 @@ export function ProfileCardModal({ isOpen, onClose, initialData, position }: Pro
     )
   }
 
+  // Попытка исправить Mojibake (неправильную декодировку кириллицы)
+  const fixMojibake = (s: string | undefined | null): string | undefined => {
+    if (!s) return s
+    try {
+      // старый кросс-браузерный трюк: treat string as Latin1 bytes and decode as UTF-8
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore - escape/decodeURIComponent доступны в среде браузера
+      return decodeURIComponent(escape(s))
+    } catch (e) {
+      return s
+    }
+  }
+
   return (
     <div className="profile-card-overlay" onClick={onClose}>
       <div
@@ -271,7 +284,8 @@ export function ProfileCardModal({ isOpen, onClose, initialData, position }: Pro
               role="list"
             >
               {achievementBadges.slice(0, 10).map(badge => {
-                const title = badge.title ?? 'Достижение'
+                const rawTitle = badge.title ?? 'Достижение'
+                const title = fixMojibake(rawTitle) ?? rawTitle
                 const initialSrc = resolveBadgeIcon(badge)
                 return (
                   <div

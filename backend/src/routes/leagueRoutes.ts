@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from 'fastify'
 import prisma from '../db'
 import {
   defaultCache,
+  getMatchWindow,
   resolveCacheOptions,
   ARCHIVE_TTL_SECONDS,
   PUBLIC_FRIENDLY_RESULTS_KEY,
@@ -74,6 +75,14 @@ const resolveSeason = async (seasonIdRaw?: string): Promise<SeasonResolution> =>
   return { ok: true, season, requestedSeasonId, isArchived: season.isArchived }
 }
 
+const resolveClientCacheControl = async (): Promise<string> => {
+  const window = await getMatchWindow()
+  const inMatchWindow = window.phase === 'prewarm' || window.phase === 'live' || window.phase === 'post'
+  const maxAge = inMatchWindow ? 15 : 60
+  const swr = inMatchWindow ? 60 : 300
+  return `public, max-age=${maxAge}, stale-while-revalidate=${swr}, must-revalidate`
+}
+
 const leagueRoutes: FastifyPluginAsync = async fastify => {
   fastify.get('/api/league/seasons', async (_request, reply) => {
     const { value, version } = await defaultCache.getWithMeta<LeagueSeasonSummary[]>(
@@ -82,18 +91,20 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
       SEASONS_TTL_SECONDS
     )
     const etag = buildWeakEtag(SEASONS_CACHE_KEY, version)
+    const clientCacheControl = await resolveClientCacheControl()
 
     if (matchesIfNoneMatch(_request.headers, etag)) {
       return reply
         .status(304)
         .header('ETag', etag)
         .header('X-Resource-Version', String(version))
+        .header('Cache-Control', clientCacheControl)
         .send()
     }
 
     reply.header('ETag', etag)
     reply.header('X-Resource-Version', String(version))
-    reply.header('Cache-Control', 'no-cache')
+    reply.header('Cache-Control', clientCacheControl)
     return reply.send({ ok: true, data: value, meta: { version } })
   })
 
@@ -195,18 +206,20 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
       cacheOptions
     )
     const etag = buildWeakEtag(cacheKey, version)
+    const clientCacheControl = await resolveClientCacheControl()
 
     if (matchesIfNoneMatch(request.headers, etag)) {
       return reply
         .status(304)
         .header('ETag', etag)
         .header('X-Resource-Version', String(version))
+        .header('Cache-Control', clientCacheControl)
         .send()
     }
 
     reply.header('ETag', etag)
     reply.header('X-Resource-Version', String(version))
-    reply.header('Cache-Control', 'no-cache')
+    reply.header('Cache-Control', clientCacheControl)
     return reply.send({ ok: true, data: value, meta: { version } })
   })
 
@@ -231,18 +244,20 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
       cacheOptions
     )
     const etag = buildWeakEtag(cacheKey, version)
+    const clientCacheControl = await resolveClientCacheControl()
 
     if (matchesIfNoneMatch(request.headers, etag)) {
       return reply
         .status(304)
         .header('ETag', etag)
         .header('X-Resource-Version', String(version))
+        .header('Cache-Control', clientCacheControl)
         .send()
     }
 
     reply.header('ETag', etag)
     reply.header('X-Resource-Version', String(version))
-    reply.header('Cache-Control', 'no-cache')
+    reply.header('Cache-Control', clientCacheControl)
     return reply.send({ ok: true, data: value, meta: { version } })
   })
 
@@ -267,17 +282,20 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
       cacheOptions
     )
     const etag = buildWeakEtag(cacheKey, version)
+    const clientCacheControl = await resolveClientCacheControl()
 
     if (matchesIfNoneMatch(request.headers, etag)) {
       return reply
         .status(304)
         .header('ETag', etag)
         .header('X-Resource-Version', String(version))
+        .header('Cache-Control', clientCacheControl)
         .send()
     }
 
     reply.header('ETag', etag)
     reply.header('X-Resource-Version', String(version))
+    reply.header('Cache-Control', clientCacheControl)
     return reply.send({ ok: true, data: value, meta: { version } })
   })
 
@@ -320,17 +338,20 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
           cacheOptions
         )
         const etag = buildWeakEtag(cacheKey, version)
+        const clientCacheControl = await resolveClientCacheControl()
 
         if (matchesIfNoneMatch(request.headers, etag)) {
           return reply
             .status(304)
             .header('ETag', etag)
             .header('X-Resource-Version', String(version))
+            .header('Cache-Control', clientCacheControl)
             .send()
         }
 
         reply.header('ETag', etag)
         reply.header('X-Resource-Version', String(version))
+        reply.header('Cache-Control', clientCacheControl)
         return reply.send({ ok: true, data: value, meta: { version } })
       } catch (error) {
         if (error instanceof Error && error.message === 'round_not_found') {
@@ -350,18 +371,20 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
       cacheOptions
     )
     const etag = buildWeakEtag(cacheKey, version)
+    const clientCacheControl = await resolveClientCacheControl()
 
     if (matchesIfNoneMatch(request.headers, etag)) {
       return reply
         .status(304)
         .header('ETag', etag)
         .header('X-Resource-Version', String(version))
+        .header('Cache-Control', clientCacheControl)
         .send()
     }
 
     reply.header('ETag', etag)
     reply.header('X-Resource-Version', String(version))
-    reply.header('Cache-Control', 'no-cache')
+    reply.header('Cache-Control', clientCacheControl)
     return reply.send({ ok: true, data: value, meta: { version } })
   })
 
@@ -374,18 +397,20 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
       cacheOptions
     )
     const etag = buildWeakEtag(cacheKey, version)
+    const clientCacheControl = await resolveClientCacheControl()
 
     if (matchesIfNoneMatch(request.headers, etag)) {
       return reply
         .status(304)
         .header('ETag', etag)
         .header('X-Resource-Version', String(version))
+        .header('Cache-Control', clientCacheControl)
         .send()
     }
 
     reply.header('ETag', etag)
     reply.header('X-Resource-Version', String(version))
-    reply.header('Cache-Control', 'no-cache')
+    reply.header('Cache-Control', clientCacheControl)
     return reply.send({ ok: true, data: value, meta: { version } })
   })
 
@@ -480,18 +505,20 @@ const leagueRoutes: FastifyPluginAsync = async fastify => {
       cacheOptions
     )
     const etag = buildWeakEtag(cacheKey, version)
+    const clientCacheControl = await resolveClientCacheControl()
 
     if (matchesIfNoneMatch(request.headers, etag)) {
       return reply
         .status(304)
         .header('ETag', etag)
         .header('X-Resource-Version', String(version))
+        .header('Cache-Control', clientCacheControl)
         .send()
     }
 
     reply.header('ETag', etag)
     reply.header('X-Resource-Version', String(version))
-    reply.header('Cache-Control', 'no-cache')
+    reply.header('Cache-Control', clientCacheControl)
     return reply.send({ ok: true, data: value, meta: { version } })
   })
 

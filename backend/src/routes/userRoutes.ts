@@ -498,16 +498,20 @@ export default async function (server: FastifyInstance) {
       const etag = buildWeakEtag(cacheKey, version)
 
       // Проверяем If-None-Match для возврата 304
+      const clientCache = 'private, max-age=30, stale-while-revalidate=60'
+
       if (matchesIfNoneMatch(request.headers, etag)) {
         return reply
           .status(304)
           .header('ETag', etag)
           .header('X-Resource-Version', String(version))
+          .header('Cache-Control', clientCache)
           .send()
       }
 
       reply.header('ETag', etag)
       reply.header('X-Resource-Version', String(version))
+      reply.header('Cache-Control', clientCache)
 
       return reply.send({
         ok: true,

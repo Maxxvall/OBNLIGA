@@ -171,12 +171,16 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
       const etag = buildWeakEtag(cacheKey, version)
 
       if (matchesIfNoneMatch(request.headers, etag)) {
-        return reply.status(304).header('ETag', etag).send()
+        return reply
+          .status(304)
+          .header('ETag', etag)
+          .header('Cache-Control', 'private, max-age=30, stale-while-revalidate=60')
+          .send()
       }
 
       return reply
         .header('ETag', etag)
-        .header('Cache-Control', 'private, max-age=60')
+        .header('Cache-Control', 'private, max-age=30, stale-while-revalidate=60')
         .send({ ok: true, data: value })
     } catch (err) {
       fastify.log.error({ err, telegramId: telegramId.toString() }, 'Failed to fetch club subscriptions')
@@ -399,12 +403,16 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
       const etag = buildWeakEtag(cacheKey, version)
 
       if (matchesIfNoneMatch(request.headers, etag)) {
-        return reply.status(304).header('ETag', etag).send()
+        return reply
+          .status(304)
+          .header('ETag', etag)
+          .header('Cache-Control', 'private, max-age=30, stale-while-revalidate=60')
+          .send()
       }
 
       return reply
         .header('ETag', etag)
-        .header('Cache-Control', 'private, max-age=60')
+        .header('Cache-Control', 'private, max-age=30, stale-while-revalidate=60')
         .send({ ok: true, data: value })
     } catch (err) {
       fastify.log.error({ err, telegramId: telegramId.toString() }, 'Failed to fetch match subscriptions')
@@ -703,12 +711,16 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
       const etag = buildWeakEtag(cacheKey, version)
 
       if (matchesIfNoneMatch(request.headers, etag)) {
-        return reply.status(304).header('ETag', etag).send()
+        return reply
+          .status(304)
+          .header('ETag', etag)
+          .header('Cache-Control', 'private, max-age=30, stale-while-revalidate=60')
+          .send()
       }
 
       return reply
         .header('ETag', etag)
-        .header('Cache-Control', 'private, max-age=60')
+        .header('Cache-Control', 'private, max-age=30, stale-while-revalidate=60')
         .send({ ok: true, data: value })
     } catch (err) {
       fastify.log.error({ err, telegramId: telegramId.toString() }, 'Failed to fetch subscriptions summary')

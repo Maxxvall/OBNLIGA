@@ -303,6 +303,10 @@ model Match {
   notificationQueue   NotificationQueue[]
 
   @@unique([seriesId, seriesMatchNumber], map: "unique_series_match_number")
+  @@index([status, matchDateTime], map: "match_status_datetime_idx")
+  @@index([homeTeamId, status, isFriendly, matchDateTime], map: "match_home_status_friendly_datetime_idx")
+  @@index([awayTeamId, status, isFriendly, matchDateTime], map: "match_away_status_friendly_datetime_idx")
+  @@index([seasonId, status, isFriendly], map: "match_season_status_friendly_idx")
   @@map("match")
 }
 
@@ -481,6 +485,9 @@ model PredictionEntry {
   appUser  AppUser            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, templateId], map: "prediction_entry_user_template_unique")
+  @@index([userId, submittedAt(sort: Desc)], map: "prediction_entry_user_submitted_at_idx")
+  @@index([status, resolvedAt], map: "prediction_entry_status_resolved_idx")
+  @@index([status, resolvedAt, scoreAwarded], map: "prediction_entry_status_resolved_score_idx")
   @@index([templateId, status], map: "prediction_entry_template_status_idx")
   @@map("prediction_entry")
 }
@@ -825,6 +832,10 @@ model UserRating {
   updatedAt          DateTime    @updatedAt @map("updated_at")
   user               AppUser     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([seasonalPoints(sort: Desc)], map: "user_rating_seasonal_points_desc_idx")
+  @@index([yearlyPoints(sort: Desc)], map: "user_rating_yearly_points_desc_idx")
+  @@index([totalPoints(sort: Desc)], map: "user_rating_total_points_desc_idx")
+  @@index([currentLevel, mythicRank], map: "user_rating_level_mythic_rank_idx")
   @@map("user_rating")
 }
 

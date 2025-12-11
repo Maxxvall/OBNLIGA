@@ -20,6 +20,76 @@ const formatNumber = (value: number) => new Intl.NumberFormat('ru-RU').format(va
 
 type AchievementBadge = UserCardExtraView['achievementBadges'][number]
 
+// Локальные подписи уровней для групп достижений (кириллица без mojibake)
+const ACHIEVEMENT_LEVEL_NAMES: Record<string, Record<number, string>> = {
+  streak: {
+    0: 'Скамейка',
+    1: 'Запасной',
+    2: 'Основной',
+    3: 'Капитан',
+  },
+  predictions: {
+    0: 'Новичок',
+    1: 'Любитель',
+    2: 'Знаток',
+    3: 'Эксперт',
+  },
+  credits: {
+    0: 'Дебютант',
+    1: 'Форвард',
+    2: 'Голеадор',
+    3: 'Легенда',
+  },
+  bet_wins: {
+    0: 'Новичок',
+    1: 'Счастливчик',
+    2: 'Снайпер',
+    3: 'Чемпион',
+  },
+  prediction_streak: {
+    0: 'Новичок',
+    1: 'Искра точности',
+    2: 'Пламя прогноза',
+    3: 'Вспышка чемпиона',
+  },
+  express_wins: {
+    0: 'Новичок',
+    1: 'Экспресс-профи',
+    2: 'Экспресс-мастер',
+    3: 'Экспресс-легенда',
+  },
+  broadcast_watch: {
+    0: 'Новичок',
+    1: 'Зритель',
+    2: 'Фанат трансляций',
+    3: 'Постоянный зритель',
+  },
+  broadcast_comments: {
+    0: 'Тихий зритель',
+    1: 'Голос эфира',
+    2: 'Драйвер чата',
+    3: 'Комментатор',
+  },
+  express_created: {
+    0: 'Новичок комбинирования',
+    1: 'Сборщик купонов',
+    2: 'Комбо-инженер',
+    3: 'Маэстро экспрессов',
+  },
+  total_goals: {
+    0: 'Новичок тоталов',
+    1: 'Ловец тоталов',
+    2: 'Стратег тоталов',
+    3: 'Оракул тоталов',
+  },
+  shop_orders: {
+    0: 'Посетитель витрины',
+    1: 'Коллекционер мерча',
+    2: 'Хранитель коллекции',
+    3: 'Повелитель мерча',
+  },
+}
+
 const BADGE_ICON_FALLBACKS: Record<string, Record<number, string>> = {
   streak: {
     0: '/achievements/streak-locked.webp',
@@ -63,6 +133,12 @@ const BADGE_ICON_FALLBACKS: Record<string, Record<number, string>> = {
     2: '/achievements/broadcast-silver.webp',
     3: '/achievements/broadcast-gold.webp',
   },
+}
+
+const getLevelLabel = (group: string, level: number): string | null => {
+  const groupLabels = ACHIEVEMENT_LEVEL_NAMES[group]
+  if (!groupLabels) return null
+  return groupLabels[level] ?? null
 }
 
 const resolveBadgeIcon = (badge: AchievementBadge): string => {
@@ -285,19 +361,24 @@ export function ProfileCardModal({ isOpen, onClose, initialData, position }: Pro
             >
               {achievementBadges.slice(0, 10).map(badge => {
                 const rawTitle = badge.title ?? 'Достижение'
-                const title = fixMojibake(rawTitle) ?? rawTitle
+                const decodedTitle = fixMojibake(rawTitle) ?? rawTitle
+                const levelLabel = getLevelLabel(badge.group, badge.level)
+                const title = decodedTitle || levelLabel || 'Достижение'
                 const initialSrc = resolveBadgeIcon(badge)
+                const tooltip = levelLabel ? `${title} · ${levelLabel}` : `${title} · уровень ${badge.level}`
                 return (
                   <div
                     key={`${badge.achievementId}-${badge.level}`}
                     className="profile-card-badge"
                     role="listitem"
-                    title={`${title} · уровень ${badge.level}`}
+                    title={tooltip}
                   >
                     <img
                       src={initialSrc}
                       alt={`${title}, уровень ${badge.level}`}
                       loading="lazy"
+                      draggable={false}
+                      onContextMenu={event => event.preventDefault()}
                       onError={(e) => {
                         const img = e.currentTarget as HTMLImageElement
                         // Попытаться подменить на известный фолбэк только один раз

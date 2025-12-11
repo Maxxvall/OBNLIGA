@@ -95,6 +95,7 @@ export const incrementAchievementProgress = async (
         AchievementMetric.TOTAL_PREDICTIONS,
         AchievementMetric.CORRECT_PREDICTIONS,
         AchievementMetric.EXPRESS_BETS_CREATED,
+        AchievementMetric.EXPRESS_WINS,
       ])
 
       if (immediateInvalidateMetrics.has(metric)) {

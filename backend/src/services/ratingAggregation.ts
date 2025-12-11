@@ -123,6 +123,17 @@ export const recalculateUserRatings = async (
       `
     )
 
+    const expressTotals = await tx.$queryRaw<Array<{ user_id: number; total_points: bigint }>>(
+      Prisma.sql`
+        SELECT eb.user_id, COALESCE(SUM(eb.score_awarded), 0)::bigint AS total_points
+        FROM express_bet eb
+        WHERE eb.status <> 'PENDING'
+          AND eb.score_awarded IS NOT NULL
+          ${userFilter}
+        GROUP BY eb.user_id
+      `
+    )
+
     const current = await tx.$queryRaw<Array<{ user_id: number; current_points: bigint }>>(
       Prisma.sql`
         SELECT pe.user_id, COALESCE(SUM(pe.score_awarded), 0)::bigint AS current_points
@@ -136,6 +147,19 @@ export const recalculateUserRatings = async (
       `
     )
 
+    const expressCurrent = await tx.$queryRaw<Array<{ user_id: number; current_points: bigint }>>(
+      Prisma.sql`
+        SELECT eb.user_id, COALESCE(SUM(eb.score_awarded), 0)::bigint AS current_points
+        FROM express_bet eb
+        WHERE eb.status <> 'PENDING'
+          AND eb.score_awarded IS NOT NULL
+          AND eb.resolved_at IS NOT NULL
+          AND eb.resolved_at >= ${currentWindowStart}
+          ${userFilter}
+        GROUP BY eb.user_id
+      `
+    )
+
     const yearly = await tx.$queryRaw<Array<{ user_id: number; yearly_points: bigint }>>(
       Prisma.sql`
         SELECT pe.user_id, COALESCE(SUM(pe.score_awarded), 0)::bigint AS yearly_points
@@ -146,6 +170,19 @@ export const recalculateUserRatings = async (
           AND pe.resolved_at >= ${yearlyWindowStart}
           ${userFilter}
         GROUP BY pe.user_id
+      `
+    )
+
+    const expressYearly = await tx.$queryRaw<Array<{ user_id: number; yearly_points: bigint }>>(
+      Prisma.sql`
+        SELECT eb.user_id, COALESCE(SUM(eb.score_awarded), 0)::bigint AS yearly_points
+        FROM express_bet eb
+        WHERE eb.status <> 'PENDING'
+          AND eb.score_awarded IS NOT NULL
+          AND eb.resolved_at IS NOT NULL
+          AND eb.resolved_at >= ${yearlyWindowStart}
+          ${userFilter}
+        GROUP BY eb.user_id
       `
     )
 
@@ -260,11 +297,20 @@ export const recalculateUserRatings = async (
     const totalMap = new Map<number, number>()
     totals.forEach(row => totalMap.set(row.user_id, toNumber(row.total_points)))
 
+    const expressTotalMap = new Map<number, number>()
+    expressTotals.forEach(row => expressTotalMap.set(row.user_id, toNumber(row.total_points)))
+
     const currentMap = new Map<number, number>()
     current.forEach(row => currentMap.set(row.user_id, toNumber(row.current_points)))
 
+    const expressCurrentMap = new Map<number, number>()
+    expressCurrent.forEach(row => expressCurrentMap.set(row.user_id, toNumber(row.current_points)))
+
     const yearlyMap = new Map<number, number>()
     yearly.forEach(row => yearlyMap.set(row.user_id, toNumber(row.yearly_points)))
+
+    const expressYearlyMap = new Map<number, number>()
+    expressYearly.forEach(row => expressYearlyMap.set(row.user_id, toNumber(row.yearly_points)))
 
     const adjustmentMap = new Map<
       number,
@@ -305,8 +351,11 @@ export const recalculateUserRatings = async (
 
     const userIdSet = new Set<number>()
     totalMap.forEach((_, userId) => userIdSet.add(userId))
+    expressTotalMap.forEach((_, userId) => userIdSet.add(userId))
     currentMap.forEach((_, userId) => userIdSet.add(userId))
+    expressCurrentMap.forEach((_, userId) => userIdSet.add(userId))
     yearlyMap.forEach((_, userId) => userIdSet.add(userId))
+    expressYearlyMap.forEach((_, userId) => userIdSet.add(userId))
     adjustmentMap.forEach((_, userId) => userIdSet.add(userId))
     lastDateMap.forEach((_, userId) => userIdSet.add(userId))
     maxStreakMap.forEach((_, userId) => userIdSet.add(userId))
@@ -320,13 +369,18 @@ export const recalculateUserRatings = async (
     const entries: AggregatedUserRating[] = []
 
     for (const userId of userIdSet) {
-      const totalPoints = (totalMap.get(userId) ?? 0) + (adjustmentMap.get(userId)?.global ?? 0)
+      const totalPoints =
+        (totalMap.get(userId) ?? 0)
+        + (expressTotalMap.get(userId) ?? 0)
+        + (adjustmentMap.get(userId)?.global ?? 0)
       const seasonalPoints =
         (currentMap.get(userId) ?? 0)
+        + (expressCurrentMap.get(userId) ?? 0)
         + (adjustmentMap.get(userId)?.global ?? 0)
         + (adjustmentMap.get(userId)?.current ?? 0)
       const yearlyPoints =
         (yearlyMap.get(userId) ?? 0)
+        + (expressYearlyMap.get(userId) ?? 0)
         + (adjustmentMap.get(userId)?.global ?? 0)
         + (adjustmentMap.get(userId)?.yearly ?? 0)
 

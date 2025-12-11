@@ -555,8 +555,6 @@ const subscriptionRoutes: FastifyPluginAsync = async fastify => {
         goalEnabled: settings.goalEnabled,
       }
 
-      await invalidateUserCaches(telegramId, ['summary'])
-
       return reply.send({ ok: true, data: result })
     } catch (err) {
       fastify.log.error({ err, telegramId: telegramId.toString() }, 'Failed to fetch notification settings')

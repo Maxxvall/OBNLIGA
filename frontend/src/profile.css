@@ -151,6 +151,10 @@
   display: none;
 }
 
+.profile-section.hidden-on-compact {
+  display: none;
+}
+
 .profile-status-message {
   display: flex;
   align-items: center;

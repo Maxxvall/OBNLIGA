@@ -3,7 +3,7 @@
  * Позволяет управлять подписками и параметрами уведомлений.
  */
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   fetchSubscriptionsSummary,
   fetchNotificationSettings,
@@ -24,39 +24,49 @@ export const NotificationSettings: React.FC<NotificationSettingsProps> = ({ clas
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [summaryVersion, setSummaryVersion] = useState<string | undefined>(undefined)
-  const [settingsVersion, setSettingsVersion] = useState<string | undefined>(undefined)
+  const summaryVersionRef = useRef<string | undefined>(undefined)
+  const settingsVersionRef = useRef<string | undefined>(undefined)
+  const hasLoadedOnceRef = useRef(false)
 
   const loadData = useCallback(async () => {
-    setLoading(true)
+    // Skeleton только на первой загрузке. Дальше — тихое обновление.
+    if (!hasLoadedOnceRef.current) {
+      setLoading(true)
+    }
     setError(null)
 
     try {
       const [summaryResult, settingsResult] = await Promise.all([
-        fetchSubscriptionsSummary({ version: summaryVersion }),
-        fetchNotificationSettings({ version: settingsVersion }),
+        fetchSubscriptionsSummary({ version: summaryVersionRef.current }),
+        fetchNotificationSettings({ version: settingsVersionRef.current }),
       ])
 
       if (summaryResult.ok && !('notModified' in summaryResult && summaryResult.notModified)) {
         setClubs(summaryResult.data.clubs)
         if ('version' in summaryResult && summaryResult.version) {
-          setSummaryVersion(summaryResult.version)
+          summaryVersionRef.current = summaryResult.version
         }
+      } else if (summaryResult.ok && 'version' in summaryResult && summaryResult.version) {
+        // На случай если сервер возвращает версию и при 304
+        summaryVersionRef.current = summaryResult.version
       }
 
       if (settingsResult.ok && !('notModified' in settingsResult && settingsResult.notModified)) {
         setSettings(settingsResult.data)
         if ('version' in settingsResult && settingsResult.version) {
-          setSettingsVersion(settingsResult.version)
+          settingsVersionRef.current = settingsResult.version
         }
+      } else if (settingsResult.ok && 'version' in settingsResult && settingsResult.version) {
+        settingsVersionRef.current = settingsResult.version
       }
     } catch (err) {
       console.error('Failed to load notification settings:', err)
       setError('Не удалось загрузить настройки')
     } finally {
+      hasLoadedOnceRef.current = true
       setLoading(false)
     }
-  }, [summaryVersion, settingsVersion])
+  }, [])
   useEffect(() => {
     void loadData()
   }, [loadData])

@@ -43,6 +43,10 @@ function wasRewardLocallyNotified(rewardId: string): boolean {
 
 interface AchievementsGridProps {
   className?: string
+  /**
+   * Счетчик, меняющийся при необходимости перезагрузить данные из верхнего уровня.
+   */
+  refreshToken?: number
 }
 
 // Конфигурация названий уровней для достижений
@@ -726,7 +730,7 @@ function AchievementModal({ achievement, onClose }: AchievementModalProps) {
   )
 }
 
-export default function AchievementsGrid({ className }: AchievementsGridProps) {
+export default function AchievementsGrid({ className, refreshToken }: AchievementsGridProps) {
   const [achievements, setAchievements] = useState<UserAchievementsResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -739,26 +743,23 @@ export default function AchievementsGrid({ className }: AchievementsGridProps) {
     rewardId: string
   } | null>(null)
 
-  const loadedRef = useRef(false)
+  const loadGuardRef = useRef(false)
+  const hasLoadedOnceRef = useRef(false)
   const BATCH_SIZE = 4
 
   // Загрузка первоначального батча
   useEffect(() => {
-    // Предотвращаем двойную загрузку в StrictMode
-    if (loadedRef.current) return
-    loadedRef.current = true
-
     let cancelled = false
 
     async function load() {
-      setLoading(true)
+      if (!hasLoadedOnceRef.current) {
+        setLoading(true)
+      }
       try {
-        // force: true — всегда делаем запрос к серверу (но с ETag для 304)
         const result = await fetchMyAchievementsPaginated({
           limit: BATCH_SIZE,
           offset: 0,
           summary: true,
-          force: true,
         })
 
         if (!cancelled) {
@@ -797,18 +798,21 @@ export default function AchievementsGrid({ className }: AchievementsGridProps) {
       } finally {
         if (!cancelled) {
           setLoading(false)
+          hasLoadedOnceRef.current = true
         }
       }
     }
 
-    void load()
+    if (!loadGuardRef.current) {
+      loadGuardRef.current = true
+      void load()
+    }
 
     return () => {
       cancelled = true
-      // Сбрасываем ref при размонтировании, чтобы при следующем монтировании загрузка произошла
-      loadedRef.current = false
+      loadGuardRef.current = false
     }
-  }, [])
+  }, [refreshToken])
 
   // Загрузка следующего батча
   const loadMore = useCallback(async () => {

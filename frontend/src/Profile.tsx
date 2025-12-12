@@ -1,12 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   UserRatingSummary,
-  UserAchievementsSummary,
   DailyRewardSummary,
   DailyRewardClaimResponse,
 } from '@shared/types'
 import { fetchMyRating } from './api/ratingsApi'
-import { fetchMyAchievements, invalidateAchievementsCache } from './api/achievementsApi'
+import { invalidateAchievementsCache } from './api/achievementsApi'
 import { fetchDailyRewardSummary, claimDailyReward } from './api/dailyRewardApi'
 import DailyRewardCard from './components/DailyRewardCard'
 import AchievementsGrid from './components/AchievementsGrid'
@@ -67,7 +66,7 @@ export default function Profile() {
   const [verifyError, setVerifyError] = useState<string | null>(null)
   const [activeSection, setActiveSection] = useState<ProfileSection>('overview')
   const [rating, setRating] = useState<UserRatingSummary | null>(null)
-  const [, setAchievements] = useState<UserAchievementsSummary | null>(null)
+  const [achievementsRefreshToken, setAchievementsRefreshToken] = useState(0)
   const [dailyReward, setDailyReward] = useState<DailyRewardSummary | null>(null)
   const [dailyRewardLoading, setDailyRewardLoading] = useState(false)
   const [dailyRewardError, setDailyRewardError] = useState<string | null>(null)
@@ -92,6 +91,9 @@ export default function Profile() {
   const pointerStartRef = useRef<{ x: number; y: number; pointerId: number } | null>(null)
   const pressEntryRef = useRef<LeaguePlayerCareerEntry | null>(null)
   const shareInProgressRef = useRef(false)
+
+  const [visitedAchievements, setVisitedAchievements] = useState(false)
+  const [visitedSettings, setVisitedSettings] = useState(false)
 
   const isProfileLoading = authLoading && !authUser
 
@@ -156,6 +158,14 @@ export default function Profile() {
     }
   }, [isCompactLayout, activeSection])
 
+  useEffect(() => {
+    // На десктопе вкладок нет — секции всегда доступны.
+    if (!isCompactLayout) {
+      setVisitedAchievements(true)
+      setVisitedSettings(true)
+    }
+  }, [isCompactLayout])
+
   // Загрузка рейтинга пользователя
   useEffect(() => {
     if (!authUser) {
@@ -167,21 +177,6 @@ export default function Profile() {
       const result = await fetchMyRating()
       if (result.ok) {
         setRating(result.data)
-      }
-    })()
-  }, [authUser])
-
-  // Загрузка достижений пользователя
-  useEffect(() => {
-    if (!authUser) {
-      setAchievements(null)
-      return
-    }
-
-    void (async () => {
-      const result = await fetchMyAchievements({ force: true })
-      if (result.data) {
-        setAchievements(result.data)
       }
     })()
   }, [authUser])
@@ -338,16 +333,13 @@ export default function Profile() {
       // Инвалидируем кэш достижений, чтобы AchievementsGrid получил актуальные данные
       invalidateAchievementsCache()
 
-      const [ratingResult, achievementsResult] = await Promise.all([
-        fetchMyRating(),
-        fetchMyAchievements({ force: true }),
-      ])
+      // Триггерим перезагрузку AchievementsGrid (если он уже смонтирован)
+      setAchievementsRefreshToken(v => v + 1)
+
+      const ratingResult = await fetchMyRating()
 
       if (ratingResult.ok) {
         setRating(ratingResult.data)
-      }
-      if (achievementsResult.data) {
-        setAchievements(achievementsResult.data)
       }
     } catch (err) {
       setDailyRewardError('Не удалось получить награду. Попробуйте ещё раз.')
@@ -581,21 +573,14 @@ export default function Profile() {
     }
   }, [clearLongPress])
 
-  // Новый компактный блок достижений с поддержкой анимации
-  const achievementsBlock = useMemo(() => {
-    return (
-      <section className="profile-section">
-        <div className="profile-card">
-          <AchievementsGrid />
-        </div>
-      </section>
-    )
-  }, [])
-
   const shouldShowCareerSection = isVerified && (!isCompactLayout || activeSection === 'stats')
-  const shouldShowAchievements = !isCompactLayout || activeSection === 'achievements'
   const shouldShowDailyReward = !isCompactLayout || activeSection === 'overview'
-  const shouldShowSettings = !isCompactLayout || activeSection === 'settings'
+
+  const shouldMountAchievements = !isCompactLayout || visitedAchievements || activeSection === 'achievements'
+  const shouldMountSettings = !isCompactLayout || visitedSettings || activeSection === 'settings'
+
+  const achievementsSectionHidden = isCompactLayout && activeSection !== 'achievements'
+  const settingsSectionHidden = isCompactLayout && activeSection !== 'settings'
 
   const statusMessage = (() => {
     if (status === 'NONE') {
@@ -777,7 +762,10 @@ export default function Profile() {
             <button
               type="button"
               className={activeSection === 'achievements' ? 'active' : ''}
-              onClick={() => setActiveSection('achievements')}
+              onClick={() => {
+                setVisitedAchievements(true)
+                setActiveSection('achievements')
+              }}
               role="tab"
               aria-selected={activeSection === 'achievements'}
             >
@@ -786,7 +774,10 @@ export default function Profile() {
             <button
               type="button"
               className={activeSection === 'settings' ? 'active' : ''}
-              onClick={() => setActiveSection('settings')}
+              onClick={() => {
+                setVisitedSettings(true)
+                setActiveSection('settings')
+              }}
               role="tab"
               aria-selected={activeSection === 'settings'}
             >
@@ -885,15 +876,21 @@ export default function Profile() {
           />
         )}
 
-        {shouldShowAchievements && achievementsBlock}
+        {shouldMountAchievements ? (
+          <section className={`profile-section${achievementsSectionHidden ? ' hidden-on-compact' : ''}`}>
+            <div className="profile-card">
+              <AchievementsGrid refreshToken={achievementsRefreshToken} />
+            </div>
+          </section>
+        ) : null}
 
-        {shouldShowSettings && (
-          <section className="profile-section">
+        {shouldMountSettings ? (
+          <section className={`profile-section${settingsSectionHidden ? ' hidden-on-compact' : ''}`}>
             <div className="profile-card">
               <NotificationSettings />
             </div>
           </section>
-        )}
+        ) : null}
 
         {showVerifyModal ? (
           <div className="verify-modal-backdrop" role="dialog" aria-modal="true">

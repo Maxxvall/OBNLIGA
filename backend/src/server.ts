@@ -29,6 +29,9 @@ server.register(cors, {
 
     const allowedOrigins = [
       process.env.WEBAPP_URL?.trim(),
+      process.env.ADMIN_URL?.trim(),
+      // default admin panel on Render (can be overridden by ADMIN_URL)
+      'https://obnligaadmin.onrender.com',
       'https://web.telegram.org',
       /^https:\/\/[\w-]+\.telegram\.org$/,
     ].filter((v): v is string | RegExp => Boolean(v))

@@ -1691,7 +1691,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (etag) {
       headers['If-None-Match'] = etag
     }
-    if (/^[\x00-\x7F]*$/.test(initData)) {
+    const isAsciiOnly = Array.from(initData).every(ch => ch.charCodeAt(0) <= 0x7f)
+    if (isAsciiOnly) {
       headers['X-Telegram-Init-Data'] = initData
     }
 

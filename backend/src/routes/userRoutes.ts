@@ -285,6 +285,27 @@ export default async function (server: FastifyInstance) {
 
     const cacheKey = `user:achievements:${subject}:${limit}:${offset}:${isSummary}`
 
+    // Ранняя проверка версии (только Redis/LRU, без loader/БД)
+    // Важно: используем peekVersion (не создаёт версию, если её нет), чтобы не отдавать 304 при «неизвестной» версии.
+    const ifNoneMatch = request.headers['if-none-match']
+    if (ifNoneMatch) {
+      const currentVersion = await defaultCache.peekVersion(cacheKey)
+      if (currentVersion !== null) {
+        const expectedEtag = buildWeakEtag(cacheKey, currentVersion)
+        const clientCache = 'private, max-age=30, stale-while-revalidate=60'
+
+        if (matchesIfNoneMatch(request.headers, expectedEtag)) {
+          defaultCache.markEarlyEtag304()
+          return reply
+            .status(304)
+            .header('ETag', expectedEtag)
+            .header('X-Resource-Version', String(currentVersion))
+            .header('Cache-Control', clientCache)
+            .send()
+        }
+      }
+    }
+
     console.log('[Achievements API] Request:', { subject, limit, offset, isSummary, cacheKey })
 
     try {

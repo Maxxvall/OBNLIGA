@@ -2,6 +2,7 @@ import QuickLRU from 'quick-lru'
 import Redis from 'ioredis'
 import dotenv from 'dotenv'
 import { createHash, randomBytes } from 'crypto'
+import { gzipSync, gunzipSync } from 'zlib'
 
 dotenv.config({ path: `${__dirname}/../../.env` })
 
@@ -39,6 +40,12 @@ const VERSION_KEY_PREFIX = '__v:'
 const REDIS_RELEASE_SCRIPT =
   'if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end'
 
+const versionTtlCandidate = Number(process.env.CACHE_VERSION_TTL_SECONDS ?? 24 * 60 * 60)
+const VERSION_TTL_SECONDS = Number.isFinite(versionTtlCandidate) ? versionTtlCandidate : 24 * 60 * 60
+const REDIS_GZIP_ENABLED = process.env.CACHE_REDIS_GZIP === '1' || process.env.CACHE_REDIS_GZIP === 'true'
+const REDIS_GZIP_MIN_BYTES = Number(process.env.CACHE_REDIS_GZIP_MIN_BYTES ?? 2048)
+const REDIS_GZIP_PREFIX = 'gz:'
+
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 const nowMs = () => Date.now()
 
@@ -47,6 +54,17 @@ export class MultiLevelCache {
   private redis: Redis | null
   private versions: Map<string, number>
   private localLocks: Map<string, number>
+
+  private metrics = {
+    lruHits: 0,
+    lruMisses: 0,
+    redisHits: 0,
+    redisMisses: 0,
+    loaderCalls: 0,
+    versionPeekHits: 0,
+    versionPeekMisses: 0,
+    etag304Early: 0,
+  }
 
   constructor(redisUrl?: string, lruOptions = { maxSize: 1000 }) {
     this.lru = new QuickLRU<string, CacheEnvelope<unknown>>(lruOptions)
@@ -65,6 +83,7 @@ export class MultiLevelCache {
 
     const memoryEnvelope = this.getEnvelopeFromMemory<T>(key)
     if (memoryEnvelope) {
+      this.metrics.lruHits += 1
       const remoteVersion = await this.ensureVersion(key)
       if (this.redis && remoteVersion > memoryEnvelope.version) {
         const refreshed = await this.readEnvelopeFromRedis<T>(key)
@@ -85,14 +104,19 @@ export class MultiLevelCache {
       return this.handleExpiredEnvelope(key, loader, memoryEnvelope, base, reference, resolver)
     }
 
+    this.metrics.lruMisses += 1
+
     const redisEnvelope = await this.readEnvelopeFromRedis<T>(key)
     if (redisEnvelope) {
+      this.metrics.redisHits += 1
       this.saveEnvelopeToMemory(key, redisEnvelope)
       if (!this.isExpired(redisEnvelope, reference)) {
         return redisEnvelope.value
       }
       return this.handleExpiredEnvelope(key, loader, redisEnvelope, base, reference, resolver)
     }
+
+    this.metrics.redisMisses += 1
 
     return this.buildFresh(key, loader, base, undefined, resolver)
   }
@@ -110,11 +134,12 @@ export class MultiLevelCache {
     if (this.redis) {
       try {
         const versionKey = this.versionKey(key)
-        const results = await this.redis
-          .multi()
-          .del(key)
-          .incr(versionKey)
-          .exec()
+        const pipeline = this.redis.multi().del(key).incr(versionKey)
+        if (VERSION_TTL_SECONDS > 0) {
+          pipeline.expire(versionKey, VERSION_TTL_SECONDS)
+        }
+
+        const results = await pipeline.exec()
         const incrResult = results?.[1]?.[1]
         if (typeof incrResult === 'number') {
           nextVersion = incrResult
@@ -170,7 +195,11 @@ export class MultiLevelCache {
           // Инкрементируем версии для всех найденных ключей
           const pipeline = this.redis.pipeline()
           for (const key of keys) {
-            pipeline.incr(this.versionKey(key))
+            const versionKey = this.versionKey(key)
+            pipeline.incr(versionKey)
+            if (VERSION_TTL_SECONDS > 0) {
+              pipeline.expire(versionKey, VERSION_TTL_SECONDS)
+            }
           }
           await pipeline.exec()
         }
@@ -178,6 +207,52 @@ export class MultiLevelCache {
         // ignore redis errors on invalidate
       }
     }
+  }
+
+  /**
+   * Быстрая версия ключа без побочных эффектов.
+   * Не вызывает loader/БД и не создаёт версию в Redis, если её нет.
+   * Возвращает null, если версия неизвестна.
+   */
+  async peekVersion(key: string): Promise<number | null> {
+    if (this.versions.has(key)) {
+      this.metrics.versionPeekHits += 1
+      return this.versions.get(key) as number
+    }
+
+    if (!this.redis) {
+      this.metrics.versionPeekMisses += 1
+      return null
+    }
+
+    try {
+      const versionKey = this.versionKey(key)
+      const raw = await this.redis.get(versionKey)
+      if (raw == null) {
+        this.metrics.versionPeekMisses += 1
+        return null
+      }
+      const parsed = Number(raw)
+      const version = Number.isFinite(parsed) ? parsed : 0
+      this.versions.set(key, version)
+      this.metrics.versionPeekHits += 1
+      return version
+    } catch {
+      this.metrics.versionPeekMisses += 1
+      return null
+    }
+  }
+
+  /**
+   * Увеличивает метрику ранних 304 ответов (ETag совпал по версии).
+   * Вызывается из роутов, чтобы не смешивать HTTP-логику с кэшем.
+   */
+  markEarlyEtag304() {
+    this.metrics.etag304Early += 1
+  }
+
+  getMetrics() {
+    return { ...this.metrics }
   }
 
   async getWithMeta<T>(
@@ -321,6 +396,7 @@ export class MultiLevelCache {
     }
 
     try {
+      this.metrics.loaderCalls += 1
       const fresh = await loader()
       const resolvedOptions = optionsResolver ? optionsResolver(fresh) : options
       await this.storeEnvelope(key, fresh, resolvedOptions, previousFingerprint)
@@ -340,6 +416,7 @@ export class MultiLevelCache {
     const lockToken = await this.acquireLock(key, options.lockMs)
     if (lockToken) {
       try {
+        this.metrics.loaderCalls += 1
         const fresh = await loader()
         const resolvedOptions = optionsResolver ? optionsResolver(fresh) : options
         await this.storeEnvelope(key, fresh, resolvedOptions, envelope.fingerprint)
@@ -413,7 +490,8 @@ export class MultiLevelCache {
 
   private parseEnvelope<T>(key: string, payload: string): CacheEnvelope<T> | null {
     try {
-      const parsed = JSON.parse(payload)
+      const decoded = this.decodeRedisPayload(payload)
+      const parsed = JSON.parse(decoded)
       if (!parsed || typeof parsed !== 'object') {
         return null
       }
@@ -469,7 +547,8 @@ export class MultiLevelCache {
 
     if (this.redis) {
       try {
-        const payload = JSON.stringify(envelope)
+        const rawPayload = JSON.stringify(envelope)
+        const payload = this.encodeRedisPayload(rawPayload)
         const ttlSeconds = this.computeRedisTtlSeconds(options)
         if (ttlSeconds > 0) {
           await this.redis.set(key, payload, 'EX', ttlSeconds)
@@ -543,6 +622,10 @@ export class MultiLevelCache {
   }
 
   private async ensureVersion(key: string): Promise<number> {
+    if (this.versions.has(key)) {
+      return this.versions.get(key) as number
+    }
+
     if (this.redis) {
       try {
         const versionKey = this.versionKey(key)
@@ -552,14 +635,14 @@ export class MultiLevelCache {
           this.versions.set(key, parsed)
           return parsed
         }
-        await this.redis.setnx(versionKey, '0')
+        if (VERSION_TTL_SECONDS > 0) {
+          await this.redis.set(versionKey, '0', 'EX', VERSION_TTL_SECONDS, 'NX')
+        } else {
+          await this.redis.setnx(versionKey, '0')
+        }
       } catch (err) {
         // fall back to local version cache
       }
-    }
-
-    if (this.versions.has(key)) {
-      return this.versions.get(key) as number
     }
 
     this.versions.set(key, 0)
@@ -579,7 +662,20 @@ export class MultiLevelCache {
     if (this.redis) {
       try {
         const versionKey = this.versionKey(key)
-        nextVersion = await this.redis.incr(versionKey)
+        const pipeline = this.redis.multi().incr(versionKey)
+        if (VERSION_TTL_SECONDS > 0) {
+          pipeline.expire(versionKey, VERSION_TTL_SECONDS)
+        }
+        const results = await pipeline.exec()
+        const incrResult = results?.[0]?.[1]
+        if (typeof incrResult === 'number') {
+          nextVersion = incrResult
+        } else if (typeof incrResult === 'string') {
+          const parsed = Number(incrResult)
+          nextVersion = Number.isNaN(parsed) ? 0 : parsed
+        } else {
+          nextVersion = 0
+        }
       } catch (err) {
         const current = this.versions.get(key) ?? 0
         nextVersion = current + 1
@@ -591,6 +687,42 @@ export class MultiLevelCache {
 
     this.versions.set(key, nextVersion)
     return nextVersion
+  }
+
+  private encodeRedisPayload(rawJson: string): string {
+    if (!REDIS_GZIP_ENABLED) {
+      return rawJson
+    }
+
+    if (rawJson.length < REDIS_GZIP_MIN_BYTES) {
+      return rawJson
+    }
+
+    try {
+      const compressed = gzipSync(Buffer.from(rawJson, 'utf8'))
+      // Сжимаем только если реально выгодно
+      if (compressed.length >= rawJson.length * 0.9) {
+        return rawJson
+      }
+      return `${REDIS_GZIP_PREFIX}${compressed.toString('base64')}`
+    } catch {
+      return rawJson
+    }
+  }
+
+  private decodeRedisPayload(payload: string): string {
+    if (!payload.startsWith(REDIS_GZIP_PREFIX)) {
+      return payload
+    }
+
+    try {
+      const b64 = payload.slice(REDIS_GZIP_PREFIX.length)
+      const decompressed = gunzipSync(Buffer.from(b64, 'base64'))
+      return decompressed.toString('utf8')
+    } catch {
+      // Если формат битый/неожиданный — пробуем как обычный JSON
+      return payload
+    }
   }
 }
 

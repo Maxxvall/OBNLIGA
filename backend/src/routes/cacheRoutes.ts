@@ -5,6 +5,18 @@ import { maybePrewarmPublicLeagueCaches } from '../services/cachePrewarm'
 const PREWARM_TOKEN = process.env.CACHE_PREWARM_TOKEN ?? process.env.PREWARM_TOKEN ?? null
 
 export default async function (server: FastifyInstance) {
+  server.get('/api/cache/metrics', async (request, reply) => {
+    if (PREWARM_TOKEN) {
+      const headerTokenRaw = request.headers['x-prewarm-token']
+      const headerToken = Array.isArray(headerTokenRaw) ? headerTokenRaw[0] : headerTokenRaw
+      if (!headerToken || headerToken !== PREWARM_TOKEN) {
+        return reply.status(401).send({ ok: false, error: 'unauthorized' })
+      }
+    }
+
+    return reply.send({ ok: true, metrics: cache.getMetrics() })
+  })
+
   server.get<{ Params: { key: string } }>('/api/cache/:key', async (request, reply) => {
     const { key } = request.params
     const value = await cache.get(
@@ -22,8 +34,8 @@ export default async function (server: FastifyInstance) {
     '/api/cache/invalidate/:key',
     async (request, reply) => {
       const { key } = request.params
-    await cache.invalidate(key)
-    return reply.send({ ok: true })
+      await cache.invalidate(key)
+      return reply.send({ ok: true })
     }
   )
 

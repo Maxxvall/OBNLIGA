@@ -12,7 +12,7 @@ import DailyRewardCard from './components/DailyRewardCard'
 import AchievementsGrid from './components/AchievementsGrid'
 import NotificationSettings from './components/NotificationSettings'
 import { useAppStore } from './store/appStore'
-import { buildApiUrl } from './api/httpClient'
+import { buildApiUrl, getHttpAuthHeaders } from './api/httpClient'
 import './profile.css'
 import {
   type LeaguePlayerCareerEntry,
@@ -629,6 +629,7 @@ export default function Profile() {
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
+          ...getHttpAuthHeaders(),
         },
         body: JSON.stringify({}),
       })

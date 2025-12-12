@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { FRIENDLY_SEASON_ID } from '@shared/types'
-import { buildApiUrl } from '../api/httpClient'
+import { buildApiUrl, setHttpAuthToken } from '../api/httpClient'
 import { readProfileUser, type ProfileUser } from '../types/profileUser'
 import type {
   LeagueRoundCollection,
@@ -1153,6 +1153,7 @@ interface ErrorState {
 
 interface AppState {
   authUser: ProfileUser | null
+  authSessionToken: string | null
   authProfileEtag?: string
   authReady: boolean
   authLoading: boolean
@@ -1542,6 +1543,7 @@ const isClubSummaryResponsePayload = (
 
 export const useAppStore = create<AppState>((set, get) => ({
   authUser: null,
+  authSessionToken: null,
   authProfileEtag: undefined,
   authReady: false,
   authLoading: false,
@@ -1624,6 +1626,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     const etag = options?.force ? undefined : current.authProfileEtag
     if (etag) {
       headers['If-None-Match'] = etag
+    }
+
+    // Fallback for Telegram WebView: use Bearer token when cookies are not persisted.
+    if (current.authSessionToken) {
+      headers.Authorization = `Bearer ${current.authSessionToken}`
     }
 
     try {
@@ -1709,6 +1716,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       const payload = await response.json().catch(() => null)
+
+      if (payload && typeof payload === 'object') {
+        const maybeToken = (payload as { token?: unknown }).token
+        if (typeof maybeToken === 'string' && maybeToken.trim()) {
+          const token = maybeToken.trim()
+          setHttpAuthToken(token)
+          set({ authSessionToken: token })
+        }
+      }
+
       const profile = readProfileUser(payload)
       if (profile) {
         set({ authUser: profile, authProfileEtag: nextEtag, authReady: true, authError: undefined })

@@ -1,5 +1,15 @@
 const API_BASE = import.meta.env.VITE_BACKEND_URL ?? ''
 
+let httpAuthToken: string | null = null
+
+export const setHttpAuthToken = (token: string | null): void => {
+  httpAuthToken = typeof token === 'string' && token.trim().length > 0 ? token.trim() : null
+}
+
+export const getHttpAuthHeaders = (): Record<string, string> => {
+  return httpAuthToken ? { Authorization: `Bearer ${httpAuthToken}` } : {}
+}
+
 export const buildApiUrl = (path: string): string => {
   if (typeof path !== 'string') {
     throw new Error('API path must be a string')
@@ -70,6 +80,12 @@ export async function httpRequest<T>(path: string, options?: HttpRequestOptions)
   const requestHeaders: Record<string, string> = headers
     ? { ...jsonHeaders, ...(headers as Record<string, string>) }
     : { ...jsonHeaders }
+
+  // Telegram mobile WebView can block third-party cookies; fall back to Bearer when available.
+  if (httpAuthToken && !('Authorization' in requestHeaders)) {
+    requestHeaders.Authorization = `Bearer ${httpAuthToken}`
+  }
+
   if (version) {
     requestHeaders['If-None-Match'] = version
   }

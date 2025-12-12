@@ -31,7 +31,7 @@ server.register(cors, {
       process.env.WEBAPP_URL?.trim(),
       'https://web.telegram.org',
       /^https:\/\/[\w-]+\.telegram\.org$/,
-    ].filter(Boolean)
+    ].filter((v): v is string | RegExp => Boolean(v))
 
     if (!origin) {
       // non-browser clients (curl, server-to-server) may omit Origin

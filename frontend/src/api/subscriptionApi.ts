@@ -3,7 +3,6 @@
  */
 
 import { httpRequest, type ApiResponse } from './httpClient'
-import { authHeader } from './sessionToken'
 
 // =================== ТИПЫ ===================
 
@@ -123,7 +122,6 @@ export async function fetchClubSubscriptions(
 ): Promise<ApiResponse<ClubSubscriptionView[]>> {
   const result = await httpRequest<ClubSubscriptionView[]>('/api/subscriptions/clubs', {
     ...options,
-    headers: authHeader(),
   })
   
   // Обновляем локальный кэш
@@ -155,7 +153,7 @@ export async function checkClubSubscriptionStatus(
   // Если кэш устарел — запрашиваем с сервера
   const result = await httpRequest<SubscriptionStatusResult>(
     `/api/subscriptions/clubs/${encodeURIComponent(clubId)}/status`,
-    { ...options, headers: authHeader() }
+    { ...options }
   )
 
   if (result.ok && !('notModified' in result && result.notModified)) {
@@ -182,7 +180,7 @@ export async function subscribeToClub(
 ): Promise<ApiResponse<SubscribeResult>> {
   const result = await httpRequest<SubscribeResult>(
     `/api/subscriptions/clubs/${encodeURIComponent(clubId)}`,
-    { ...options, method: 'POST', headers: authHeader() }
+    { ...options, method: 'POST' }
   )
 
   if (result.ok && !('notModified' in result && result.notModified)) {
@@ -204,7 +202,7 @@ export async function unsubscribeFromClub(
 ): Promise<ApiResponse<SubscribeResult>> {
   const result = await httpRequest<SubscribeResult>(
     `/api/subscriptions/clubs/${encodeURIComponent(clubId)}`,
-    { ...options, method: 'DELETE', headers: authHeader() }
+    { ...options, method: 'DELETE' }
   )
 
   if (result.ok) {
@@ -226,7 +224,6 @@ export async function fetchNotificationSettings(
   return httpRequest<NotificationSettingsView>('/api/notifications/settings', {
     ...options,
     version: options?.version,
-    headers: authHeader(),
   })
 }
 
@@ -237,13 +234,11 @@ export async function updateNotificationSettings(
   settings: Partial<NotificationSettingsView>,
   options?: { signal?: AbortSignal }
 ): Promise<ApiResponse<NotificationSettingsView>> {
-  const auth = authHeader()
   return httpRequest<NotificationSettingsView>('/api/notifications/settings', {
     ...options,
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
-      ...auth,
     },
     body: JSON.stringify(settings),
   })
@@ -258,7 +253,6 @@ export async function fetchSubscriptionsSummary(
   const result = await httpRequest<SubscriptionsSummaryView>('/api/subscriptions/summary', {
     ...options,
     version: options?.version,
-    headers: authHeader(),
   })
 
   // Обновляем локальный кэш

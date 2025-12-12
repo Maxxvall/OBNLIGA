@@ -24,6 +24,11 @@ export default function App() {
   const tapLeagueNav = useAppStore(state => state.tapLeagueNav)
   const leagueMenuOpen = useAppStore(state => state.leagueMenuOpen)
   const matchDetailsOpen = useAppStore(state => state.matchDetails.open)
+  const bootstrapAuth = useAppStore(state => state.bootstrapAuth)
+
+  useEffect(() => {
+    void bootstrapAuth()
+  }, [bootstrapAuth])
 
   useEffect(() => {
     const duration = 1600 // splash duration in ms

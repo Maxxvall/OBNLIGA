@@ -19,7 +19,33 @@ const validateRequiredEnv = (required: string[]) => {
 
 // Register CORS to allow frontend requests from different origin
 server.register(cors, {
-  origin: true, // Allow all origins in development, configure specifically for production
+  origin: (origin, callback) => {
+    // In development allow all origins to simplify local work (Vite, curl, etc.).
+    // In production keep the strict allowlist.
+    if (process.env.NODE_ENV !== 'production') {
+      callback(null, true)
+      return
+    }
+
+    const allowedOrigins = [
+      process.env.WEBAPP_URL?.trim(),
+      'https://web.telegram.org',
+      /^https:\/\/[\w-]+\.telegram\.org$/,
+    ].filter(Boolean)
+
+    if (!origin) {
+      // non-browser clients (curl, server-to-server) may omit Origin
+      callback(null, true)
+      return
+    }
+
+    const isAllowed = allowedOrigins.some(entry =>
+      typeof entry === 'string' ? entry === origin : entry.test(origin)
+    )
+
+    if (isAllowed) callback(null, true)
+    else callback(new Error('Not allowed by CORS'), false)
+  },
   credentials: true,
   exposedHeaders: ['ETag', 'X-Resource-Version', 'Cache-Control'],
 })

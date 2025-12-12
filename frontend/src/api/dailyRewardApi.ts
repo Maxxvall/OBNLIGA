@@ -1,5 +1,4 @@
 import { buildApiUrl, httpRequest } from './httpClient'
-import { authHeader } from './sessionToken'
 import type { ApiResponse } from './httpClient'
 import type { DailyRewardClaimResponse, DailyRewardSummary } from '@shared/types'
 
@@ -64,7 +63,6 @@ export const fetchDailyRewardSummary = async (options: { force?: boolean } = {})
 
   const response = await httpRequest<DailyRewardSummary>(buildApiUrl('/api/users/me/daily-reward'), {
     version: cache?.etag,
-    headers: authHeader(),
     credentials: 'include',
   })
 
@@ -114,7 +112,6 @@ export const claimDailyReward = async (): Promise<DailyRewardClaimResponse> => {
       body: JSON.stringify({}),
       headers: {
         'Content-Type': 'application/json',
-        ...authHeader(),
       },
       credentials: 'include',
     }

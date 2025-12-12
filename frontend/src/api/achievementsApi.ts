@@ -4,7 +4,6 @@
  */
 
 import { buildApiUrl, httpRequest } from './httpClient'
-import { authHeader } from './sessionToken'
 import type {
   UserAchievementsSummary,
   UserAchievementsResponse,
@@ -133,7 +132,6 @@ export async function fetchMyAchievementsPaginated(options: {
   const response = await httpRequest<UserAchievementsResponse>(url, {
     version: cache?.etag,
     credentials: 'include',
-    headers: authHeader(),
   })
 
   logAchievements('Server response', {
@@ -192,7 +190,6 @@ export async function fetchMyAchievementsPaginated(options: {
     // Повторный запрос без ETag
     const freshResponse = await httpRequest<UserAchievementsResponse>(url, {
       credentials: 'include',
-      headers: authHeader(),
     })
     if (!freshResponse.ok || !('data' in freshResponse)) {
       return {
@@ -293,7 +290,6 @@ export async function markRewardNotified(rewardId: string): Promise<boolean> {
       method: 'POST',
       credentials: 'include',
       headers: {
-        ...authHeader(),
         'Content-Type': 'application/json',
       },
       // Fastify returns 400 if Content-Type is JSON but body is empty.
@@ -385,7 +381,6 @@ export async function fetchMyAchievements(options: { force?: boolean } = {}): Pr
     {
       version: cache?.etag,
       credentials: 'include',
-      headers: authHeader(),
     }
   )
 

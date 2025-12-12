@@ -95,6 +95,8 @@ type ReplyWithOptionalSetCookie = FastifyReply & {
       httpOnly?: boolean
       path?: string
       sameSite?: 'lax' | 'strict' | 'none'
+      secure?: boolean
+      maxAge?: number
     }
   ) => unknown
 }
@@ -794,18 +796,20 @@ export default async function (server: FastifyInstance) {
         expiresIn: '7d',
       })
 
-      // set cookie (httpOnly). Fastify reply.setCookie requires fastify-cookie plugin; we fallback to header if not present.
-      try {
-        // try set cookie if plugin available
-        const replyWithCookie = reply as ReplyWithOptionalSetCookie
-        replyWithCookie.setCookie?.('session', token, {
-          httpOnly: true,
-          path: '/',
-          sameSite: 'lax',
-        })
-      } catch (e) {
-        // fallback: send token in body only
+      const replyWithCookie = reply as ReplyWithOptionalSetCookie
+      const setCookie = replyWithCookie.setCookie
+      if (typeof setCookie !== 'function') {
+        server.log.error({ userId }, 'fastify-cookie plugin is not registered; cannot set session cookie')
+        return reply.status(500).send({ error: 'session_cookie_not_configured' })
       }
+
+      setCookie('session', token, {
+        httpOnly: true,
+        path: '/',
+        sameSite: 'none',
+        secure: true,
+        maxAge: 7 * 24 * 60 * 60, // 7 days
+      })
 
       return reply.send({ ok: true, user: serializedUser, token })
     } catch (err) {

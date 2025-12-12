@@ -148,11 +148,6 @@ const invalidateAllExpressCache = () => {
   writeCacheIndex(index)
 }
 
-const getToken = (): string | undefined => {
-  if (typeof window === 'undefined') return undefined
-  return window.localStorage.getItem('session') ?? undefined
-}
-
 // =================== API PATHS ===================
 
 const EXPRESS_BASE = '/api/predictions/express'
@@ -170,11 +165,6 @@ export const fetchMyExpresses = async (
 ): Promise<MyExpressesResult> => {
   const cache = readCache<ExpressBetView[]>(EXPRESS_MY_CACHE_KEY)
   const now = Date.now()
-
-  const token = getToken()
-  if (!token) {
-    return { data: [], fromCache: false, unauthorized: true }
-  }
 
   const isFresh = cache && cache.expiresAt > now
   const isStale = cache && cache.staleUntil > now && cache.expiresAt <= now
@@ -203,9 +193,6 @@ export const fetchMyExpresses = async (
       const response = await httpRequest<ExpressBetView[]>(EXPRESS_MY_PATH, {
         version: cache?.etag,
         credentials: 'include',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
       })
 
       if (!response.ok) {
@@ -263,11 +250,6 @@ export const fetchWeekCount = async (
   const cache = readCache<ExpressWeekCount>(EXPRESS_WEEK_COUNT_CACHE_KEY)
   const now = Date.now()
 
-  const token = getToken()
-  if (!token) {
-    return { data: null, fromCache: false, unauthorized: true }
-  }
-
   const isFresh = cache && cache.expiresAt > now
   const isStale = cache && cache.staleUntil > now && cache.expiresAt <= now
 
@@ -292,9 +274,6 @@ export const fetchWeekCount = async (
     try {
       const response = await httpRequest<ExpressWeekCount>(EXPRESS_WEEK_COUNT_PATH, {
         credentials: 'include',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
       })
 
       if (!response.ok) {
@@ -415,17 +394,11 @@ export const fetchExpressConfig = async (
 export const createExpress = async (
   items: CreateExpressItemInput[]
 ): Promise<CreateExpressResult> => {
-  const token = getToken()
-  if (!token) {
-    return { ok: false, unauthorized: true, error: 'no_token' }
-  }
-
   try {
     const response = await fetch(buildApiUrl(EXPRESS_BASE), {
       method: 'POST',
       credentials: 'include',
       headers: {
-        Authorization: `Bearer ${token}`,
         Accept: 'application/json',
         'Content-Type': 'application/json',
       },
@@ -491,17 +464,9 @@ export const createExpress = async (
 export const fetchExpressById = async (
   id: string
 ): Promise<{ data: ExpressBetView | null; error?: string; unauthorized?: boolean }> => {
-  const token = getToken()
-  if (!token) {
-    return { data: null, unauthorized: true, error: 'no_token' }
-  }
-
   try {
     const response = await httpRequest<ExpressBetView>(`${EXPRESS_BASE}/${id}`, {
       credentials: 'include',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
     })
 
     if (!response.ok) {

@@ -11,72 +11,13 @@ import { fetchDailyRewardSummary, claimDailyReward } from './api/dailyRewardApi'
 import DailyRewardCard from './components/DailyRewardCard'
 import AchievementsGrid from './components/AchievementsGrid'
 import NotificationSettings from './components/NotificationSettings'
+import { useAppStore } from './store/appStore'
+import { buildApiUrl } from './api/httpClient'
 import './profile.css'
-
-type LeaguePlayerStatus = 'NONE' | 'PENDING' | 'VERIFIED'
-
-interface LeaguePlayerProfile {
-  id: number
-  firstName: string
-  lastName: string
-}
-
-interface LeaguePlayerStats {
-  matches: number
-  goals: number
-  assists: number
-  penaltyGoals: number
-  yellowCards: number
-  redCards: number
-}
-
-interface LeaguePlayerCareerEntry {
-  clubId: number
-  clubName: string
-  clubShortName: string
-  clubLogoUrl: string | null
-  fromYear: number | null
-  toYear: number | null
-  matches: number
-  assists: number
-  goals: number
-  penaltyGoals: number
-  yellowCards: number
-  redCards: number
-}
-
-interface ProfileUser {
-  telegramId?: string
-  username?: string | null
-  firstName?: string | null
-  photoUrl?: string | null
-  createdAt?: string | null
-  updatedAt?: string | null
-  leaguePlayerStatus?: LeaguePlayerStatus
-  leaguePlayerRequestedAt?: string | null
-  leaguePlayerVerifiedAt?: string | null
-  leaguePlayerId?: number | null
-  leaguePlayer?: LeaguePlayerProfile | null
-  leaguePlayerStats?: LeaguePlayerStats | null
-  leaguePlayerCareer?: LeaguePlayerCareerEntry[] | null
-}
-
-interface CacheEntry {
-  data: ProfileUser
-  timestamp: number
-  etag?: string
-}
-
-type Nullable<T> = T | null
-
-interface TelegramUserPayload {
-  id: number
-  first_name?: string
-  last_name?: string
-  username?: string
-  photo_url?: string
-  language_code?: string
-}
+import {
+  type LeaguePlayerCareerEntry,
+  type LeaguePlayerStatus,
+} from './types/profileUser'
 
 interface TelegramShareMediaAttachment {
   type: 'photo'
@@ -94,10 +35,6 @@ type TelegramShareContent =
     }
 
 interface TelegramWebApp {
-  initData?: string
-  initDataUnsafe?: {
-    user?: TelegramUserPayload
-  }
   shareToTelegram?: (content: TelegramShareContent) => Promise<void>
   showAlert?: (message: string) => void
 }
@@ -108,42 +45,23 @@ interface TelegramWindow extends Window {
   }
 }
 
-type DevTelegramUserConfig = {
-  id: number
-  firstName?: string
-  lastName?: string
-  username?: string
-  photoUrl?: string
-}
-
 const LONG_PRESS_DELAY_MS = 650
 const MOVE_CANCEL_THRESHOLD_PX = 18
 const SHARE_PIXEL_RATIO_LIMIT = 2.5
 const MIN_SHARE_PIXEL_RATIO = 1.6
 
-function isAscii(value: string): boolean {
-  for (let index = 0; index < value.length; index += 1) {
-    if (value.charCodeAt(index) > 0x7f) {
-      return false
-    }
-  }
-  return true
-}
-
-const CACHE_TTL = 5 * 60 * 1000 // 5 минут
-const CACHE_KEY = 'obnliga_profile_cache'
 const PROFILE_REFRESH_INTERVAL_MS = 90_000
 const VERIFY_PROMPT_STORAGE_KEY = 'profile_verify_prompt_hidden'
-// Минимальный интервал между запросами к API (защита от частых переключений)
-const MIN_REQUEST_INTERVAL_MS = 3000
-// Храним timestamp последнего запроса в модуле (сохраняется между монтированиями)
-let lastRequestTimestamp = 0
+const isLeagueStatus = (value: unknown): value is LeaguePlayerStatus =>
+  value === 'NONE' || value === 'PENDING' || value === 'VERIFIED'
 
 type ProfileSection = 'overview' | 'stats' | 'achievements' | 'settings'
 
 export default function Profile() {
-  const [user, setUser] = useState<Nullable<ProfileUser>>(null)
-  const [loading, setLoading] = useState<boolean>(false)
+  const authUser = useAppStore(state => state.authUser)
+  const authLoading = useAppStore(state => state.authLoading)
+  const refreshAuthProfile = useAppStore(state => state.refreshAuthProfile)
+
   const [showVerifyModal, setShowVerifyModal] = useState(false)
   const [verifyLoading, setVerifyLoading] = useState(false)
   const [verifyError, setVerifyError] = useState<string | null>(null)
@@ -167,8 +85,6 @@ export default function Profile() {
     }
     return window.matchMedia('(max-width: 425px)').matches
   })
-  const isFetchingRef = useRef(false)
-  const userRef = useRef<Nullable<ProfileUser>>(null)
   const careerCardRef = useRef<HTMLDivElement | null>(null)
   const [activeShareRowKey, setActiveShareRowKey] = useState<string | null>(null)
   const [isShareBusy, setIsShareBusy] = useState(false)
@@ -177,50 +93,7 @@ export default function Profile() {
   const pressEntryRef = useRef<LeaguePlayerCareerEntry | null>(null)
   const shareInProgressRef = useRef(false)
 
-  useEffect(() => {
-    userRef.current = user
-  }, [user])
-
-  function getCachedProfile(): CacheEntry | null {
-    try {
-      const stored = localStorage.getItem(CACHE_KEY)
-      if (!stored) return null
-
-      const parsed = JSON.parse(stored) as Partial<CacheEntry> & { data?: unknown }
-      if (!parsed || typeof parsed !== 'object') return null
-      if (typeof parsed.timestamp !== 'number') return null
-      const dataCandidate = parsed.data
-      if (!isProfileUser(dataCandidate)) return null
-
-      const entry: CacheEntry = {
-        data: dataCandidate,
-        timestamp: parsed.timestamp,
-        etag: typeof parsed.etag === 'string' ? parsed.etag : undefined,
-      }
-
-      const now = Date.now()
-      if (now - entry.timestamp > CACHE_TTL) {
-        localStorage.removeItem(CACHE_KEY)
-        return null
-      }
-      return entry
-    } catch {
-      return null
-    }
-  }
-
-  function setCachedProfile(data: ProfileUser, etag?: string) {
-    try {
-      const entry: CacheEntry = {
-        data,
-        timestamp: Date.now(),
-        etag,
-      }
-      localStorage.setItem(CACHE_KEY, JSON.stringify(entry))
-    } catch {
-      // ignore
-    }
-  }
+  const isProfileLoading = authLoading && !authUser
 
   const updateVerifyPromptHidden = useCallback((next: boolean) => {
     setVerifyPromptHidden(next)
@@ -242,212 +115,9 @@ export default function Profile() {
     updateVerifyPromptHidden(false)
   }, [updateVerifyPromptHidden])
 
-  const loadProfile = useCallback(async (opts?: { background?: boolean; skipCache?: boolean; force?: boolean }) => {
-    if (isFetchingRef.current) {
-      return
-    }
-
-    const isBackground = Boolean(opts?.background)
-    const skipCache = Boolean(opts?.skipCache)
-    const force = Boolean(opts?.force)
-    const cached = skipCache ? null : getCachedProfile()
-    
-    // Throttle: если недавно делали запрос и есть кэш — показываем кэш без запроса
-    const now = Date.now()
-    const timeSinceLastRequest = now - lastRequestTimestamp
-    const shouldThrottle = !force && timeSinceLastRequest < MIN_REQUEST_INTERVAL_MS
-    
-    if (shouldThrottle && cached?.data) {
-      // Показываем кэш без запроса к серверу
-      if (!isBackground) {
-        setUser(cached.data)
-      }
-      return
-    }
-    
-    if (!isBackground && cached?.data) {
-      setUser(cached.data)
-    }
-
-    isFetchingRef.current = true
-    lastRequestTimestamp = now
-    
-    if (!isBackground) {
-      // Показываем "Загрузка" только если нет кэша
-      if (!cached?.data) {
-        setLoading(true)
-      }
-    }
-
-    try {
-      const backendRaw = import.meta.env.VITE_BACKEND_URL ?? ''
-      const backend = backendRaw || ''
-      const meUrl = backend ? `${backend.replace(/\/$/, '')}/api/auth/me` : '/api/auth/me'
-      const initUrl = backend
-        ? `${backend.replace(/\/$/, '')}/api/auth/telegram-init`
-        : '/api/auth/telegram-init'
-
-      const authenticateUsingPayload = async (
-        userPayload: TelegramUserPayload,
-        initDataOverride: string | undefined,
-        source: 'telegram' | 'dev'
-      ) => {
-        // debug: authenticateUsingPayload called
-        if (!userRef.current) {
-          setUser(prev =>
-            prev ?? {
-              telegramId: String(userPayload.id),
-              username: userPayload.username ?? null,
-              firstName: userPayload.first_name ?? null,
-              photoUrl: userPayload.photo_url ?? null,
-              createdAt: new Date().toISOString(),
-            }
-          )
-        }
-
-        const initDataValue =
-          typeof initDataOverride === 'string' && initDataOverride.length > 0
-            ? initDataOverride
-            : JSON.stringify({
-              user: {
-                id: userPayload.id,
-                first_name: userPayload.first_name,
-                last_name: userPayload.last_name,
-                username: userPayload.username,
-                photo_url: userPayload.photo_url,
-                language_code: userPayload.language_code,
-              },
-            })
-
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-        if (initDataValue.length > 0 && isAscii(initDataValue)) {
-          headers['X-Telegram-Init-Data'] = initDataValue
-        }
-        if (!skipCache && cached?.etag) {
-          headers['If-None-Match'] = cached.etag
-        }
-
-        const response = await fetch(initUrl, {
-          method: 'POST',
-          headers,
-          credentials: 'include',
-          body: JSON.stringify({ initData: initDataValue }),
-        })
-
-        if (response.status === 304) {
-          if (cached?.data) {
-            setCachedProfile(cached.data, response.headers.get('ETag') ?? cached.etag)
-            setUser(cached.data)
-          }
-          return true
-        }
-
-        if (response.ok) {
-          const responseBody = (await response.json()) as unknown
-          const sessionToken = readTokenFromResponse(responseBody)
-          if (sessionToken) {
-            localStorage.setItem('session', sessionToken)
-          }
-
-          const profileUser = readProfileUser(responseBody)
-          if (profileUser) {
-            const etag = response.headers.get('ETag') ?? undefined
-            setCachedProfile(profileUser, etag)
-            setUser(profileUser)
-            return true
-          }
-          console.warn('[Profile] auth response received, но данные профиля отсутствуют')
-          setUser(null)
-        } else {
-          console.error(
-            `[Profile] ${source} auth failed:`,
-            response.status,
-            await response.text()
-          )
-          setUser(null)
-        }
-
-        return false
-      }
-
-      // 1) Check if we're inside Telegram WebApp first and try to authenticate
-      try {
-        const telegramWindow = window as TelegramWindow
-        const tg = telegramWindow.Telegram?.WebApp
-        const unsafe = tg?.initDataUnsafe?.user
-        const devConfig = resolveDevTelegramUser()
-
-        if (tg && unsafe) {
-          const success = await authenticateUsingPayload(unsafe, tg.initData, 'telegram')
-          if (success) {
-            return
-          }
-        }
-
-        if (devConfig) {
-          const devPayload: TelegramUserPayload = {
-            id: devConfig.id,
-            first_name: devConfig.firstName,
-            last_name: devConfig.lastName,
-            username: devConfig.username,
-            photo_url: devConfig.photoUrl,
-          }
-          const success = await authenticateUsingPayload(devPayload, undefined, 'dev')
-          if (success) {
-            return
-          }
-        }
-      } catch (e) {
-        console.error('Telegram WebApp auth error:', e)
-        setUser(null)
-      }
-
-      // 2) Try token-based load as fallback
-      try {
-        const token = localStorage.getItem('session')
-        if (token) {
-          const headers: Record<string, string> = { Authorization: `Bearer ${token}` }
-          if (!skipCache && cached?.etag) {
-            headers['If-None-Match'] = cached.etag
-          }
-
-          const resp = await fetch(meUrl, { headers, credentials: 'include' })
-
-          if (resp.status === 304) {
-            if (cached?.data) {
-              setCachedProfile(cached.data, resp.headers.get('ETag') ?? cached.etag)
-              setUser(cached.data)
-            }
-            return
-          } else if (resp.ok) {
-            const payload = (await resp.json()) as unknown
-            const profileUser = readProfileUser(payload)
-            if (profileUser) {
-              const etag = resp.headers.get('ETag') ?? undefined
-              setCachedProfile(profileUser, etag)
-              setUser(profileUser)
-              return
-            }
-          }
-        }
-      } catch (e) {
-        console.error('Token-based load error:', e)
-      }
-    } finally {
-      if (!isBackground) {
-        setLoading(false)
-      }
-      isFetchingRef.current = false
-    }
-  }, [])
-
-  useEffect(() => {
-    void loadProfile()
-  }, [loadProfile])
-
   useEffect(() => {
     if (typeof window === 'undefined') {
-      return
+      return undefined
     }
 
     const media = window.matchMedia('(max-width: 425px)')
@@ -465,10 +135,11 @@ export default function Profile() {
       if (typeof document !== 'undefined' && document.hidden) {
         return
       }
-      void loadProfile({ background: true })
+      void refreshAuthProfile()
     }
 
     const timer = window.setInterval(tick, PROFILE_REFRESH_INTERVAL_MS)
+    tick()
     return () => {
       window.clearInterval(timer)
       if (typeof media.removeEventListener === 'function') {
@@ -477,7 +148,7 @@ export default function Profile() {
         media.removeListener(handleMediaChange)
       }
     }
-  }, [loadProfile])
+  }, [refreshAuthProfile])
 
   useEffect(() => {
     if (!isCompactLayout && activeSection !== 'overview') {
@@ -487,30 +158,36 @@ export default function Profile() {
 
   // Загрузка рейтинга пользователя
   useEffect(() => {
-    if (!user) return
-    
+    if (!authUser) {
+      setRating(null)
+      return
+    }
+
     void (async () => {
       const result = await fetchMyRating()
       if (result.ok) {
         setRating(result.data)
       }
     })()
-  }, [user])
+  }, [authUser])
 
   // Загрузка достижений пользователя
   useEffect(() => {
-    if (!user) return
-    
+    if (!authUser) {
+      setAchievements(null)
+      return
+    }
+
     void (async () => {
       const result = await fetchMyAchievements({ force: true })
       if (result.data) {
         setAchievements(result.data)
       }
     })()
-  }, [user])
+  }, [authUser])
 
   useEffect(() => {
-    if (!user) {
+    if (!authUser) {
       setDailyReward(null)
       setDailyRewardError(null)
       setLastReward(null)
@@ -568,26 +245,31 @@ export default function Profile() {
       cancelled = true
       window.clearInterval(intervalId)
     }
-  }, [user])
+  }, [authUser])
 
-  const status: LeaguePlayerStatus =
-    user && isLeagueStatus(user.leaguePlayerStatus) ? user.leaguePlayerStatus : 'NONE'
+  const status: LeaguePlayerStatus = (() => {
+    const candidate = authUser?.leaguePlayerStatus
+    if (isLeagueStatus(candidate)) {
+      return candidate
+    }
+    return 'NONE'
+  })()
   const isVerified = status === 'VERIFIED'
-  const displayName = user?.firstName?.trim()?.length
-    ? String(user.firstName)
-    : user?.username?.trim()?.length
-      ? String(user.username)
+  const displayName = authUser?.firstName?.trim()?.length
+    ? String(authUser.firstName)
+    : authUser?.username?.trim()?.length
+      ? String(authUser.username)
       : 'Гость'
 
   const careerRows = useMemo(() => {
     if (!isVerified) {
       return []
     }
-    if (Array.isArray(user?.leaguePlayerCareer)) {
-      return user.leaguePlayerCareer
+    if (Array.isArray(authUser?.leaguePlayerCareer)) {
+      return authUser.leaguePlayerCareer
     }
     return []
-  }, [isVerified, user?.leaguePlayerCareer])
+  }, [isVerified, authUser?.leaguePlayerCareer])
 
   const renderCareerRange = useCallback((entry: LeaguePlayerCareerEntry): string => {
     const hasStart = typeof entry.fromYear === 'number'
@@ -938,29 +620,16 @@ export default function Profile() {
   const submitVerificationRequest = useCallback(async () => {
     if (verifyLoading) return
 
-    const token = localStorage.getItem('session')
-    if (!token) {
-      setVerifyError('Сессия не найдена. Авторизуйтесь и попробуйте снова.')
-      return
-    }
-
     setVerifyLoading(true)
     setVerifyError(null)
 
     try {
-      const backendRaw = import.meta.env.VITE_BACKEND_URL ?? ''
-      const backend = backendRaw || ''
-      const verifyUrl = backend
-        ? `${backend.replace(/\/$/, '')}/api/users/league-player/request`
-        : '/api/users/league-player/request'
-
-      const response = await fetch(verifyUrl, {
+      const response = await fetch(buildApiUrl('/api/users/league-player/request'), {
         method: 'POST',
+        credentials: 'include',
         headers: {
-          Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
         body: JSON.stringify({}),
       })
 
@@ -983,19 +652,14 @@ export default function Profile() {
         return
       }
 
-      const profile = readProfileUser(parsed)
-      if (profile) {
-        setUser(profile)
-      }
-      localStorage.removeItem(CACHE_KEY)
-      void loadProfile({ skipCache: true })
+      await refreshAuthProfile({ force: true })
       setShowVerifyModal(false)
     } catch (err) {
       setVerifyError('Не удалось отправить запрос. Попробуйте позже.')
     } finally {
       setVerifyLoading(false)
     }
-  }, [verifyLoading, loadProfile])
+  }, [verifyLoading, refreshAuthProfile])
 
   return (
     <div className="profile-container">
@@ -1014,14 +678,14 @@ export default function Profile() {
             ) : null}
             <div className="avatar-section">
               <div className={`profile-avatar-wrapper${rating ? ` rating-border-${rating.currentLevel.toLowerCase()}` : ''}`}>
-                {user && user.photoUrl ? (
+                {authUser && authUser.photoUrl ? (
                   <img
-                    src={user.photoUrl}
+                    src={authUser.photoUrl}
                     alt={displayName}
                     className="profile-avatar"
                   />
                 ) : (
-                  <div className="profile-avatar placeholder">{loading ? '⏳' : '👤'}</div>
+                  <div className="profile-avatar placeholder">{isProfileLoading ? '⏳' : '👤'}</div>
                 )}
                 {isVerified ? (
                   <div className="verified-indicator" title="Подтверждён игрок лиги">
@@ -1032,7 +696,7 @@ export default function Profile() {
                 ) : null}
               </div>
               <div className="profile-display-name">
-                {loading ? 'Загрузка...' : displayName}
+                {isProfileLoading ? 'Загрузка...' : displayName}
               </div>
             </div>
 
@@ -1271,147 +935,6 @@ export default function Profile() {
   )
 }
 
-function isNullableString(value: unknown): value is string | null | undefined {
-  return value === undefined || value === null || typeof value === 'string'
-}
-
-function getNullableString(value: unknown): string | null | undefined {
-  if (value === undefined || value === null) {
-    return value as undefined | null
-  }
-  return typeof value === 'string' ? value : undefined
-}
-
-function isLeagueStatus(value: unknown): value is LeaguePlayerStatus {
-  return value === 'NONE' || value === 'PENDING' || value === 'VERIFIED'
-}
-
-function isLeaguePlayerProfile(value: unknown): value is LeaguePlayerProfile {
-  if (!value || typeof value !== 'object') return false
-  const record = value as Record<string, unknown>
-  return (
-    typeof record.id === 'number' &&
-    typeof record.firstName === 'string' &&
-    typeof record.lastName === 'string'
-  )
-}
-
-function isLeaguePlayerStats(value: unknown): value is LeaguePlayerStats {
-  if (!value || typeof value !== 'object') return false
-  const record = value as Record<string, unknown>
-  const keys: Array<keyof LeaguePlayerStats> = [
-    'matches',
-    'goals',
-    'assists',
-    'penaltyGoals',
-    'yellowCards',
-    'redCards',
-  ]
-  return keys.every(key => typeof record[key] === 'number')
-}
-
-function isLeaguePlayerCareerEntry(value: unknown): value is LeaguePlayerCareerEntry {
-  if (!value || typeof value !== 'object') {
-    return false
-  }
-  const record = value as Record<string, unknown>
-  const numberOrNull = (candidate: unknown) => candidate === null || typeof candidate === 'number'
-  return (
-    typeof record.clubId === 'number' &&
-    typeof record.clubName === 'string' &&
-    typeof record.clubShortName === 'string' &&
-    (record.clubLogoUrl === null || typeof record.clubLogoUrl === 'string') &&
-    numberOrNull(record.fromYear) &&
-    numberOrNull(record.toYear) &&
-    typeof record.matches === 'number' &&
-    typeof record.assists === 'number' &&
-    typeof record.goals === 'number' &&
-    typeof record.penaltyGoals === 'number' &&
-    typeof record.yellowCards === 'number' &&
-    typeof record.redCards === 'number'
-  )
-}
-
-function isProfileUser(value: unknown): value is ProfileUser {
-  if (!value || typeof value !== 'object') return false
-  const record = value as Record<string, unknown>
-  if (!isNullableString(record.telegramId)) return false
-  if (!isNullableString(record.username)) return false
-  if (!isNullableString(record.firstName)) return false
-  if (!isNullableString(record.photoUrl)) return false
-  if (!isNullableString(record.createdAt)) return false
-  if (!isNullableString(record.updatedAt)) return false
-  return true
-}
-
-function normalizeProfilePayload(value: unknown): ProfileUser | null {
-  if (!isProfileUser(value)) return null
-  const record = value as ProfileUser & Record<string, unknown>
-  const normalized: ProfileUser = {
-    telegramId: record.telegramId,
-    username: record.username ?? null,
-    firstName: record.firstName ?? null,
-    photoUrl: record.photoUrl ?? null,
-    createdAt: record.createdAt ?? null,
-    updatedAt: record.updatedAt ?? null,
-  }
-
-  if (isLeagueStatus(record.leaguePlayerStatus)) {
-    normalized.leaguePlayerStatus = record.leaguePlayerStatus
-  }
-
-  if (typeof record.leaguePlayerId === 'number') {
-    normalized.leaguePlayerId = record.leaguePlayerId
-  }
-
-  const requestedAt = getNullableString((record as Record<string, unknown>).leaguePlayerRequestedAt)
-  if (requestedAt !== undefined) {
-    normalized.leaguePlayerRequestedAt = requestedAt ?? null
-  }
-
-  const verifiedAt = getNullableString((record as Record<string, unknown>).leaguePlayerVerifiedAt)
-  if (verifiedAt !== undefined) {
-    normalized.leaguePlayerVerifiedAt = verifiedAt ?? null
-  }
-
-  const leaguePlayerRaw = (record as Record<string, unknown>).leaguePlayer
-  normalized.leaguePlayer = isLeaguePlayerProfile(leaguePlayerRaw) ? leaguePlayerRaw : null
-
-  const statsRaw = (record as Record<string, unknown>).leaguePlayerStats
-  normalized.leaguePlayerStats = isLeaguePlayerStats(statsRaw) ? statsRaw : null
-
-  const careerRaw = (record as Record<string, unknown>).leaguePlayerCareer
-  if (Array.isArray(careerRaw)) {
-    const parsed = careerRaw.filter(isLeaguePlayerCareerEntry)
-    normalized.leaguePlayerCareer = parsed
-  } else if (careerRaw === null) {
-    normalized.leaguePlayerCareer = null
-  } else {
-    normalized.leaguePlayerCareer = []
-  }
-
-  return normalized
-}
-
-function readProfileUser(payload: unknown): ProfileUser | null {
-  if (!payload || typeof payload !== 'object') return null
-  const record = payload as Record<string, unknown>
-  if ('user' in record) {
-    const candidate = (record as { user?: unknown }).user
-    const normalized = normalizeProfilePayload(candidate)
-    if (normalized) {
-      return normalized
-    }
-  }
-  return normalizeProfilePayload(payload)
-}
-
-function readTokenFromResponse(payload: unknown): string | null {
-  if (!payload || typeof payload !== 'object') return null
-  const token = (payload as Record<string, unknown>).token
-  return typeof token === 'string' ? token : null
-}
-
 function translateVerificationError(code: string): string {
   const normalized = code.trim().toLowerCase()
   if (!normalized) {
@@ -1430,29 +953,4 @@ function translateVerificationError(code: string): string {
     return 'Сессия истекла. Авторизуйтесь и попробуйте снова.'
   }
   return 'Не удалось отправить запрос. Попробуйте позже.'
-}
-
-function resolveDevTelegramUser(): DevTelegramUserConfig | null {
-  if (!import.meta.env.DEV) {
-    return null
-  }
-
-  const rawId = import.meta.env.VITE_DEV_TELEGRAM_ID
-  if (!rawId) {
-    return null
-  }
-
-  const numericId = Number(rawId)
-  if (!Number.isFinite(numericId) || numericId <= 0) {
-    console.warn('[Profile] VITE_DEV_TELEGRAM_ID задан, но имеет недопустимое значение')
-    return null
-  }
-
-  return {
-    id: Math.trunc(numericId),
-    firstName: import.meta.env.VITE_DEV_TELEGRAM_FIRST_NAME,
-    lastName: import.meta.env.VITE_DEV_TELEGRAM_LAST_NAME,
-    username: import.meta.env.VITE_DEV_TELEGRAM_USERNAME,
-    photoUrl: import.meta.env.VITE_DEV_TELEGRAM_PHOTO_URL,
-  }
 }

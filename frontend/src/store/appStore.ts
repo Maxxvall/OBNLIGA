@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import { FRIENDLY_SEASON_ID } from '@shared/types'
+import { buildApiUrl } from '../api/httpClient'
+import { readProfileUser, type ProfileUser } from '../types/profileUser'
 import type {
   LeagueRoundCollection,
   LeagueRoundMatches,
@@ -148,6 +150,72 @@ const LEAGUE_POLL_INTERVAL_MS = 60_000
 const TEAM_POLL_INTERVAL_MS = 60_000
 const MATCH_DETAILS_POLL_INTERVAL_MS = 30_000
 const hasWindow = typeof window !== 'undefined'
+
+type TelegramWindow = Window & {
+  Telegram?: {
+    WebApp?: {
+      initData?: string
+    }
+  }
+}
+
+type DevTelegramUserConfig = {
+  id: number
+  firstName?: string
+  lastName?: string
+  username?: string
+  photoUrl?: string
+}
+
+const resolveDevTelegramUser = (): DevTelegramUserConfig | null => {
+  if (!import.meta.env.DEV) {
+    return null
+  }
+
+  const rawId = import.meta.env.VITE_DEV_TELEGRAM_ID
+  if (!rawId) {
+    return null
+  }
+
+  const numericId = Number(rawId)
+  if (!Number.isFinite(numericId) || numericId <= 0) {
+    console.warn('[appStore] VITE_DEV_TELEGRAM_ID задан, но имеет недопустимое значение')
+    return null
+  }
+
+  return {
+    id: Math.trunc(numericId),
+    firstName: import.meta.env.VITE_DEV_TELEGRAM_FIRST_NAME,
+    lastName: import.meta.env.VITE_DEV_TELEGRAM_LAST_NAME,
+    username: import.meta.env.VITE_DEV_TELEGRAM_USERNAME,
+    photoUrl: import.meta.env.VITE_DEV_TELEGRAM_PHOTO_URL,
+  }
+}
+
+const resolveTelegramInitData = (): string | null => {
+  if (hasWindow) {
+    const tg = (window as TelegramWindow).Telegram?.WebApp
+    const initData = tg?.initData
+    if (typeof initData === 'string' && initData.trim()) {
+      return initData.trim()
+    }
+  }
+
+  const devConfig = resolveDevTelegramUser()
+  if (devConfig) {
+    return JSON.stringify({
+      user: {
+        id: devConfig.id,
+        first_name: devConfig.firstName,
+        last_name: devConfig.lastName,
+        username: devConfig.username,
+        photo_url: devConfig.photoUrl,
+      },
+    })
+  }
+
+  return null
+}
 
 type ShopCartEntry = {
   itemId: number
@@ -1084,6 +1152,11 @@ interface ErrorState {
 }
 
 interface AppState {
+  authUser: ProfileUser | null
+  authProfileEtag?: string
+  authReady: boolean
+  authLoading: boolean
+  authError?: string
   currentTab: UITab
   leagueSubTab: LeagueSubTab
   leagueMenuOpen: boolean
@@ -1148,6 +1221,11 @@ interface AppState {
   seasonArchivesFetchedAt: Record<number, number>
   seasonArchivesLoading: Record<number, boolean>
   seasonArchivesErrors: Record<number, string | undefined>
+  setAuthUser: (user: ProfileUser | null, etag?: string) => void
+  setAuthReady: (ready: boolean) => void
+  setAuthLoading: (loading: boolean) => void
+  refreshAuthProfile: (options?: { force?: boolean }) => Promise<void>
+  bootstrapAuth: () => Promise<void>
   setTab: (tab: UITab) => void
   setLeagueSubTab: (tab: LeagueSubTab) => void
   toggleLeagueMenu: (force?: boolean) => void
@@ -1463,6 +1541,11 @@ const isClubSummaryResponsePayload = (
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
+  authUser: null,
+  authProfileEtag: undefined,
+  authReady: false,
+  authLoading: false,
+  authError: undefined,
   currentTab: 'home',
   leagueSubTab: 'table',
   leagueMenuOpen: false,
@@ -1527,6 +1610,118 @@ export const useAppStore = create<AppState>((set, get) => ({
   seasonArchivesFetchedAt: {},
   seasonArchivesLoading: {},
   seasonArchivesErrors: {},
+  setAuthUser: (user, etag) =>
+    set(prev => ({
+      authUser: user,
+      authProfileEtag: etag ?? prev.authProfileEtag,
+      authError: undefined,
+    })),
+  setAuthReady: ready => set({ authReady: ready }),
+  setAuthLoading: loading => set({ authLoading: loading }),
+  refreshAuthProfile: async options => {
+    const current = get()
+    const headers: Record<string, string> = { Accept: 'application/json' }
+    const etag = options?.force ? undefined : current.authProfileEtag
+    if (etag) {
+      headers['If-None-Match'] = etag
+    }
+
+    try {
+      const response = await fetch(buildApiUrl('/api/auth/me'), {
+        credentials: 'include',
+        headers,
+      })
+      const nextEtag = response.headers.get('etag') ?? undefined
+
+      if (response.status === 304 && current.authUser) {
+        set({ authReady: true, authProfileEtag: nextEtag ?? current.authProfileEtag, authError: undefined })
+        return
+      }
+
+      if (response.status === 401) {
+        set({ authUser: null, authProfileEtag: undefined, authReady: true, authError: undefined })
+        return
+      }
+
+      if (!response.ok) {
+        set({ authError: 'auth_failed', authReady: true })
+        return
+      }
+
+      const payload = await response.json().catch(() => null)
+      const profile = readProfileUser(payload)
+      if (profile) {
+        set({ authUser: profile, authProfileEtag: nextEtag, authReady: true, authError: undefined })
+      } else {
+        set({ authUser: null, authProfileEtag: undefined, authReady: true, authError: 'profile_missing' })
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'auth_failed'
+      set({ authError: message, authReady: true })
+    }
+  },
+  bootstrapAuth: async () => {
+    if (get().authLoading) {
+      return
+    }
+
+    set({ authLoading: true, authError: undefined })
+    await get().refreshAuthProfile()
+
+    if (get().authUser) {
+      set({ authLoading: false, authReady: true })
+      return
+    }
+
+    const initData = resolveTelegramInitData()
+    if (!initData) {
+      set({ authLoading: false, authReady: true })
+      return
+    }
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    const etag = get().authProfileEtag
+    if (etag) {
+      headers['If-None-Match'] = etag
+    }
+    if (/^[\x00-\x7F]*$/.test(initData)) {
+      headers['X-Telegram-Init-Data'] = initData
+    }
+
+    try {
+      const response = await fetch(buildApiUrl('/api/auth/telegram-init'), {
+        method: 'POST',
+        credentials: 'include',
+        headers,
+        body: JSON.stringify({ initData }),
+      })
+
+      const nextEtag = response.headers.get('etag') ?? undefined
+
+      if (response.status === 304 && get().authUser) {
+        set({ authProfileEtag: nextEtag ?? get().authProfileEtag, authReady: true })
+        return
+      }
+
+      if (!response.ok) {
+        set({ authUser: null, authProfileEtag: undefined, authReady: true, authError: 'auth_failed' })
+        return
+      }
+
+      const payload = await response.json().catch(() => null)
+      const profile = readProfileUser(payload)
+      if (profile) {
+        set({ authUser: profile, authProfileEtag: nextEtag, authReady: true, authError: undefined })
+      } else {
+        set({ authUser: null, authProfileEtag: undefined, authReady: true, authError: 'profile_missing' })
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'auth_failed'
+      set({ authUser: null, authProfileEtag: undefined, authReady: true, authError: message })
+    } finally {
+      set({ authLoading: false })
+    }
+  },
   setTab: tab => {
     set(state => ({
       currentTab: tab,
@@ -3505,9 +3700,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     const username = state.shopContact.username?.trim()
     const firstName = state.shopContact.firstName?.trim()
-    // allow submitting if we have a session token (Telegram auth) even when contact not present
-    const hasSessionToken = typeof window !== 'undefined' && !!window.localStorage.getItem('session')
-    if (!username && !hasSessionToken) {
+    const isAuthenticated = Boolean(state.authUser)
+    if (!username && !isAuthenticated) {
       set({ shopOrderError: 'shop_contact_required' })
       return { ok: false, error: 'shop_contact_required' }
     }

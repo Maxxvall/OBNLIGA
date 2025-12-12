@@ -416,22 +416,10 @@ export const submitPrediction = async (
   templateId: string,
   selection: string
 ): Promise<SubmitPredictionResult> => {
-  const token =
-    typeof window !== 'undefined' ? window.localStorage.getItem('session') ?? undefined : undefined
-
-  if (!token) {
-    return {
-      ok: false,
-      unauthorized: true,
-      error: 'no_token',
-    }
-  }
-
   const response = await fetch(buildSubmitUrl(templateId), {
     method: 'POST',
     credentials: 'include',
     headers: {
-      Authorization: `Bearer ${token}`,
       Accept: 'application/json',
       'Content-Type': 'application/json',
     },
@@ -496,17 +484,6 @@ export const fetchMyPredictions = async (options: FetchOptions = {}): Promise<My
   const cache = readCache<UserPredictionEntry[]>(MY_CACHE_KEY)
   const now = Date.now()
 
-  const token =
-    typeof window !== 'undefined' ? window.localStorage.getItem('session') ?? undefined : undefined
-
-  if (!token) {
-    return {
-      data: [],
-      fromCache: false,
-      unauthorized: true,
-    }
-  }
-
   // Проверка: данные свежие
   const isFresh = cache && cache.expiresAt > now
   // Проверка: данные устаревшие, но ещё можно показать (SWR)
@@ -538,9 +515,6 @@ export const fetchMyPredictions = async (options: FetchOptions = {}): Promise<My
   const response = await httpRequest<UserPredictionEntry[]>(MY_PATH, {
     version: cache?.etag,
     credentials: 'include',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
   })
 
   if (!response.ok) {

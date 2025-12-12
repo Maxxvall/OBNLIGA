@@ -4,6 +4,14 @@ import WebSocket, { RawData } from 'ws'
 import Redis from 'ioredis'
 import jwt from 'jsonwebtoken'
 
+/* eslint-disable no-var */
+declare global {
+  // store last unauthorized warn timestamps to avoid log spam
+  // attach to global to persist across hot-reloads in dev
+  var __realtimeUnauthorizedLog: Map<string, number> | undefined
+}
+/* eslint-enable no-var */
+
 declare module 'fastify' {
   interface FastifyInstance {
     publishTopic(topic: string, payload: unknown): Promise<number>
@@ -193,7 +201,31 @@ export default async function registerRealtime(server: FastifyInstance) {
     }
 
     if (!verified) {
-      req.log.warn('realtime: unauthorized connection rejected')
+      // Throttle repeated warnings to avoid log spam from clients/healthchecks
+      // Key by remoteAddress + token prefix so identical failing attempts are deduped
+      const remote = (req.socket && req.socket.remoteAddress) || req.headers['x-forwarded-for'] || 'unknown'
+      const tokenPrefix = token ? String(token).slice(0, 16) : 'no-token'
+      const warnKey = `${remote}:${tokenPrefix}`
+
+      // stored in module-scoped map to survive across connections
+      try {
+        if (!global.__realtimeUnauthorizedLog) {
+          global.__realtimeUnauthorizedLog = new Map<string, number>()
+        }
+        const map: Map<string, number> = global.__realtimeUnauthorizedLog
+        const last = map.get(warnKey) ?? 0
+        const now = Date.now()
+        const WARN_INTERVAL_MS = 360 * 1000 // 6 minutes
+        if (now - last > WARN_INTERVAL_MS) {
+          req.log.warn('realtime: unauthorized connection rejected')
+          map.set(warnKey, now)
+        } else {
+          req.log.info({ warnKey }, 'realtime: unauthorized connection (suppressed warn)')
+        }
+      } catch (e) {
+        req.log.warn('realtime: unauthorized connection rejected')
+      }
+
       socket.close(4001, 'unauthorized')
       return
     }

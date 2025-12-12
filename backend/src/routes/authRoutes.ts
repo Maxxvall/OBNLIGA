@@ -797,17 +797,20 @@ export default async function (server: FastifyInstance) {
       })
 
       const replyWithCookie = reply as ReplyWithOptionalSetCookie
-      const setCookie = replyWithCookie.setCookie
-      if (typeof setCookie !== 'function') {
+      if (typeof replyWithCookie.setCookie !== 'function') {
         server.log.error({ userId }, 'fastify-cookie plugin is not registered; cannot set session cookie')
         return reply.status(500).send({ error: 'session_cookie_not_configured' })
       }
 
-      setCookie('session', token, {
+      // IMPORTANT: don't destructure setCookie; it relies on `this` binding.
+      const isProd = process.env.NODE_ENV === 'production'
+      replyWithCookie.setCookie('session', token, {
         httpOnly: true,
         path: '/',
-        sameSite: 'none',
-        secure: true,
+        // Local dev often runs on http://localhost, so Secure cookies won't be stored.
+        // In production (Telegram WebApp + HTTPS) we need SameSite=None;Secure.
+        sameSite: isProd ? 'none' : 'lax',
+        secure: isProd,
         maxAge: 7 * 24 * 60 * 60, // 7 days
       })
 
